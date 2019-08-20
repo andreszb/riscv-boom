@@ -277,20 +277,20 @@ class BoomDataArray(implicit p: Parameters) extends BoomModule with HasL1HellaCa
 
   val bankBits    = log2Ceil(nBanks)
   val bankOffBits = log2Ceil(rowWords)
-  val idxBits     = log2Ceil(bankSize)
-  val idxOffBits  = bankOffBits + bankBits
+  val bidxBits    = log2Ceil(bankSize)
+  val bidxOffBits = bankOffBits + bankBits
 
   //----------------------------------------------------------------------------------------------------
 
-  val s0_rbanks = if (nBanks > 1) VecInit(io.read.map((_.bits.addr >> bankOffBits)(bankBits-1,0))) else Vec(1, 0.U)
+  val s0_rbanks = if (nBanks > 1) VecInit(io.read.map(r => (r.bits.addr >> bankOffBits)(bankBits-1,0))) else Vec(1, 0.U)
   val s0_wbank  = if (nBanks > 1) (io.write.bits.addr >> bankOffBits)(bankBits-1,0) else 0.U
-  val s0_ridxs  = VecInit(io.read.map((_.bits.addr >> idxOffBits)(idxBits-1,0)))
-  val s0_widx   = (io.write.bits.addr >> idxOffBits)(idxBits-1,0)
+  val s0_ridxs  = VecInit(io.read.map(r => (r.bits.addr >> bidxOffBits)(bidxBits-1,0)))
+  val s0_widx   = (io.write.bits.addr >> bidxOffBits)(idxBits-1,0)
 
   val s0_read_valids    = VecInit(io.read.map(_.valid))
-  val s0_bank_conflicts = pipeMap(w => (0 until w).foldLeft(false.B)(i => io.read(i).valid && rbank(i) === rbank(w)))
+  val s0_bank_conflicts = pipeMap(w => (0 until w).foldLeft(false.B)((c,i) => c || io.read(i).valid && s0_rbanks(i) === s0_rbanks(w)))
   val s0_do_bank_read   = s0_read_valids zip s0_bank_conflicts map {case (v,c) => v && !c}
-  val s0_bank_read_gnts = Transpose(s0_rbanks zip s0_do_bank_read map {case (b,d) => (UIntToOH(b) & Fill(nBanks,d)).asBools})
+  val s0_bank_read_gnts = Transpose(VecInit(s0_rbanks zip s0_do_bank_read map {case (b,d) => VecInit((UIntToOH(b) & Fill(nBanks,d)).asBools)}))
   val s0_bank_write_gnt = (UIntToOH(s0_wbank) & Fill(nBanks, io.write.valid)).asBools
 
   //----------------------------------------------------------------------------------------------------
@@ -298,10 +298,9 @@ class BoomDataArray(implicit p: Parameters) extends BoomModule with HasL1HellaCa
   val s1_rbanks         = RegNext(s0_rbanks)
   val s1_ridxs          = RegNext(s0_ridxs)
   val s1_read_valids    = RegNext(s0_read_valids)
-  val s1_bank_conflicts = RegNext(s0_bank_conflicts)
-  val s1_bank_selection = pipeMap(w => PriorityEncoderOH((0 to w).map(i =>
-                            if (i == w) true.B else s1_read_valids(i) && s1_rbanks(i) === s1_rbanks(w))))
-  val s1_ridx_match     = pipeMap(w => (0 to w).map(i => if (i == w) true.B else s1_ridxs(i) === s1_ridxs(w)))
+  val s1_bank_selection = pipeMap(w => VecInit(PriorityEncoderOH((0 to w).map(i =>
+                            if (i == w) true.B else s1_read_valids(i) && s1_rbanks(i) === s1_rbanks(w)))))
+  val s1_ridx_match     = pipeMap(w => VecInit((0 to w).map(i => if (i == w) true.B else s1_ridxs(i) === s1_ridxs(w))))
   val s1_nacks          = VecInit((s1_bank_selection zip s1_ridx_match) map {case (s,m) => (s.asUInt & ~m.asUInt).orR})
 
   //----------------------------------------------------------------------------------------------------
@@ -322,7 +321,7 @@ class BoomDataArray(implicit p: Parameters) extends BoomModule with HasL1HellaCa
 
       val ridx = Mux1H(s0_bank_read_gnts(b), s0_ridxs)
       val way_en = Mux1H(s0_bank_read_gnts(b), io.read.map(_.bits.way_en))
-      s1_bank_reads(b) := array.read(ridx, way_en && s0_bank_read_gnts(b))
+      s2_bank_reads(b) := array.read(ridx, way_en(w) && s0_bank_read_gnts(b).reduce(_||_))
 
       when (io.write.bits.way_en(w) && s0_bank_write_gnt(b)) {
         val data = Vec.tabulate(rowWords)(i => io.write.bits.data(encDataBits*(i+1)-1,encDataBits*i))
@@ -330,12 +329,12 @@ class BoomDataArray(implicit p: Parameters) extends BoomModule with HasL1HellaCa
       }
     }
 
-    io.resp(w) := Mux1H(s2_bank_selection, s2_bank_reads)
+    io.resp(w) := Mux1H(s2_bank_selection(w), s2_bank_reads)
   }
 
   io.nacks := s2_nacks
 
-  io.read.ready  := true.B
+  (0 until memWidth) foreach (w => io.read(w).ready := true.B)
   io.write.ready := true.B
 }
 
@@ -435,11 +434,11 @@ class BoomNonBlockingDCacheModule(outer: BoomNonBlockingDCache) extends LazyModu
     data.io.read(w).valid := dataReadArb.io.out.bits.valid(w)
     data.io.read(w).bits  := dataReadArb.io.out.bits.req(w)
   }
-  dataReadArb.io.out.ready := data.map(_.io.read.ready).reduce(_||_)
+  dataReadArb.io.out.ready := data.io.read.map(_.ready).reduce(_||_)
 
-  data(w).io.write.valid := dataWriteArb.io.out.fire()
-  data(w).io.write.bits  := dataWriteArb.io.out.bits
-  dataWriteArb.io.out.ready := data.map(_.io.write.ready).reduce(_||_)
+  data.io.write.valid := dataWriteArb.io.out.fire()
+  data.io.write.bits  := dataWriteArb.io.out.bits
+  dataWriteArb.io.out.ready := data.io.write.ready
 
   // ------------
   // New requests
