@@ -1,28 +1,4 @@
-//******************************************************************************
-// Copyright (c) 2013 - 2018, The Regents of the University of California (Regents).
-// All Rights Reserved. See LICENSE and LICENSE.SiFive for license details.
-//------------------------------------------------------------------------------
-// Author: Christopher Celio
-//------------------------------------------------------------------------------
-
-//------------------------------------------------------------------------------
-//------------------------------------------------------------------------------
-// Re-order Buffer
-//------------------------------------------------------------------------------
-//------------------------------------------------------------------------------
-//
-// Bank the ROB, such that each "dispatch" group gets its own row of the ROB,
-// and each instruction in the dispatch group goes to a different bank.
-// We can compress out the PC by only saving the high-order bits!
-//
-// ASSUMPTIONS:
-//    - dispatch groups are aligned to the PC.
-//
-// NOTES:
-//    - Currently we do not compress out bubbles in the ROB.
-//    - commit_width is tied directly to the dispatch_width.
-//    - Exceptions are only taken when at the head of the commit bundle --
-//      this helps deal with loads, stores, and refetch instructions.
+cl
 
 package boom.exu
 
@@ -114,6 +90,14 @@ class RobIo(
 
    // pass out debug information to high-level printf
    val debug = Output(new DebugRobSignals())
+
+
+   /* erlingrj 2/9: add support for a SB */
+   val sb_tail = Input(UInt(SB_ADDR_SZ.W))
+   val sb_enque_uop = Output(Bool())
+   val sb_commit_uop = Output(UInt(SB_ADDR_SZ.W))
+
+
 
    val debug_tsc = Input(UInt(xLen.W))
 }
@@ -313,6 +297,9 @@ class Rob(
       val rob_uop       = Reg(Vec(NUM_ROB_ROWS, new MicroOp()))
       val rob_exception = Mem(NUM_ROB_ROWS, Bool())
       val rob_fflags    = Mem(NUM_ROB_ROWS, Bits(freechips.rocketchip.tile.FPConstants.FLAGS_SZ.W))
+      /* erlingrj 2/9: SB implementation*/
+      val rob_sb_val    = Mem(NUM_ROB_ROWS, Bool())
+      val rob_sb_idx    = Mem(NUM_ROB_ROWS, Bits(log2Ceil(NUM_SB_ENTRIES)))
 
       //-----------------------------------------------
       // Dispatch: Add Entry to ROB
