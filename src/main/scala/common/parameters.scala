@@ -26,6 +26,7 @@ case class BoomCoreParams(
    fetchWidth: Int = 1,
    decodeWidth: Int = 1,
    numRobEntries: Int = 64,
+   numSbEntries: Int = 16,
    issueParams: Seq[IssueParams] = Seq(
          IssueParams(issueWidth=1, numEntries=16, iqType=IQT_MEM.litValue),
          IssueParams(issueWidth=2, numEntries=16, iqType=IQT_INT.litValue),
@@ -133,6 +134,9 @@ trait HasBoomCoreParameters extends freechips.rocketchip.tile.HasCoreParameters
    val numIntPhysRegs  = boomParams.numIntPhysRegisters // size of the integer physical register file
    val numFpPhysRegs   = boomParams.numFpPhysRegisters  // size of the floating point physical register file
 
+   // erlingrj 2/9: Shadow Buffer size
+   val NUM_SB_ENTRIES  = boomParams.numSbEntries
+
    //************************************
    // Functional Units
    val usingFDivSqrt = boomParams.fpu.isDefined && boomParams.fpu.get.divSqrt
@@ -235,6 +239,7 @@ trait HasBoomCoreParameters extends freechips.rocketchip.tile.HasCoreParameters
    // Implicitly calculated constants
    val NUM_ROB_ROWS      = NUM_ROB_ENTRIES/coreWidth
    val ROB_ADDR_SZ       = log2Ceil(NUM_ROB_ENTRIES)
+   val SB_ADDR_SZ        = log2Ceil(NUM_SB_ENTRIES)
    // the f-registers are mapped into the space above the x-registers
    val LOGICAL_REG_COUNT = if (usingFPU) 64 else 32
    val LREG_SZ           = log2Ceil(LOGICAL_REG_COUNT)
