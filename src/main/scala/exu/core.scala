@@ -138,6 +138,9 @@ class BoomCore(implicit p: Parameters, edge: freechips.rocketchip.tilelink.TLEdg
                                  NUM_ROB_ENTRIES,
                                  num_irf_write_ports + 1 + num_fp_wakeup_ports, // +1 for ll writebacks
                                  num_fp_wakeup_ports))
+   /*erlingrj 2/9 */
+   val sb               = Module(new ShadowBuffer)
+
    // Used to wakeup registers in rename and issue. ROB needs to listen to something else.
    val int_wakeups      = Wire(Vec(num_int_wakeup_ports, Valid(new ExeUnitResp(xLen))))
    int_wakeups := DontCare
@@ -628,6 +631,15 @@ class BoomCore(implicit p: Parameters, edge: freechips.rocketchip.tilelink.TLEdg
    val dec_has_br_or_jalr_in_packet =
       (dec_valids zip dec_uops map {case(v,u) => v && u.is_br_or_jmp && !u.is_jal}).reduce(_|_)
 
+
+   /*erlingrj 2/9 Connect ShadowBuffer and ROB*/
+   rob.io.sb_tail := sb.io.sb_tail
+   rob.io.sb_head := sb.io.sb_head
+   rob.io.sb_full := sb.io.sb_full
+   rob.io.sb_empty := sb.io.sb_empty
+   sb.io.rob_enq := rob.io.sb_enq
+   sb.io.rob_commit_uop := rob.io.sb_commit
+   sb.io.rob_commit_valid := rob.io.sb_commit_valid
    //-------------------------------------------------------------
    //-------------------------------------------------------------
    // **** Register Rename Stage ****

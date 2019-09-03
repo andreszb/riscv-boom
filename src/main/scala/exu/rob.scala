@@ -1,18 +1,16 @@
-cl
 
 package boom.exu
 
 import scala.math.ceil
-
 import chisel3._
 import chisel3.util._
 import chisel3.experimental.chiselName
-
-import freechips.rocketchip.config.Parameters
-import freechips.rocketchip.util.Str
-
 import boom.common._
 import boom.util._
+
+import freechips.rocketchip.config.Parameters
+import freechips.rocketchip.util.{Str, UIntIsOneOf, CoreMonitorBundle}
+
 
 /**
  * IO bundle to interact with the ROB
@@ -93,9 +91,16 @@ class RobIo(
 
 
    /* erlingrj 2/9: add support for a SB */
+   // TODO: Make this into a ShadowBufferInterface type
    val sb_tail = Input(UInt(SB_ADDR_SZ.W))
-   val sb_enque_uop = Output(Bool())
-   val sb_commit_uop = Output(UInt(SB_ADDR_SZ.W))
+   val sb_head = Input(UInt(SB_ADDR_SZ.W))
+   val sb_enq = Output(Bool())
+   val sb_full = Input(Bool())
+   val sb_empty = Input(Bool())
+   val sb_commit = Output(UInt(SB_ADDR_SZ.W))
+   val sb_commit_valid = Output(Bool())
+   /* end erlingrj 2/9*/
+
 
 
 
@@ -245,6 +250,10 @@ class Rob(
 
    val exception_thrown = Wire(Bool())
 
+   /* erlingrj 2/9: Probably this should be done in core.scala instead?*/
+
+
+
    // exception info
    // TODO compress xcpt cause size. Most bits in the middle are zero.
    val r_xcpt_val       = RegInit(false.B)
@@ -299,7 +308,10 @@ class Rob(
       val rob_fflags    = Mem(NUM_ROB_ROWS, Bits(freechips.rocketchip.tile.FPConstants.FLAGS_SZ.W))
       /* erlingrj 2/9: SB implementation*/
       val rob_sb_val    = Mem(NUM_ROB_ROWS, Bool())
-      val rob_sb_idx    = Mem(NUM_ROB_ROWS, Bits(log2Ceil(NUM_SB_ENTRIES)))
+      val rob_sb_idx    = Mem(NUM_ROB_ROWS, Bits(log2Ceil(NUM_SB_ENTRIES).W))
+      /* end erlingrj 2/9 */
+
+
 
       //-----------------------------------------------
       // Dispatch: Add Entry to ROB
@@ -317,6 +329,18 @@ class Rob(
 
          assert (rob_val(rob_tail) === false.B, "[rob] overwriting a valid entry.")
          assert ((io.enq_uops(w).rob_idx >> log2Ceil(width)) === rob_tail)
+
+         /* erlingrj 2/9 */
+         when(io.enq_uops(w).is_br_or_jmp) {
+            rob_sb_val(rob_tail) := true.B
+            rob_sb_idx(rob_tail) := io.sb_tail
+            io.sb_enq := true.B
+         }.otherwise
+         {
+            rob_sb_val(rob_tail) := false.B
+            io.sb_enq := false.B
+         }
+         /* end erlingrj 2/9 */
       }
       .elsewhen (io.enq_valids.reduce(_|_) && !rob_val(rob_tail))
       {
@@ -340,6 +364,14 @@ class Rob(
                printf("%d; O3PipeView:complete:%d\n",
                   rob_uop(row_idx).debug_events.fetch_seq,
                   io.debug_tsc)
+            }
+            /* erlingrj 2/9 */
+            when (rob_sb_val(row_idx))
+            {
+               io.sb_commit := rob_sb_idx(row_idx)
+               io.sb_commit_valid := true.B
+            }.otherwise {
+               io.sb_commit_valid := false.B
             }
          }
          // TODO check that fflags aren't overwritten
