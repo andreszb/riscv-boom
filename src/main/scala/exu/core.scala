@@ -139,7 +139,8 @@ class BoomCore(implicit p: Parameters, edge: freechips.rocketchip.tilelink.TLEdg
                                  num_irf_write_ports + 1 + num_fp_wakeup_ports, // +1 for ll writebacks
                                  num_fp_wakeup_ports))
    /*erlingrj 2/9 */
-   val sb               = Module(new ShadowBuffer)
+   val sb               = Module(new ShadowBuffer(
+                                 coreWidth))
 
    // Used to wakeup registers in rename and issue. ROB needs to listen to something else.
    val int_wakeups      = Wire(Vec(num_int_wakeup_ports, Valid(new ExeUnitResp(xLen))))
