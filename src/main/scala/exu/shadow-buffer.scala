@@ -20,65 +20,99 @@ import boom.util._
 import freechips.rocketchip.config.Parameters
 
 
-class ShadowBufferIo(implicit p: Parameters) extends BoomBundle()(p) {
+class ShadowBufferIo(
+  val machine_widt:Int,
+  val num_wakeup_ports:Int
+)(implicit p: Parameters) extends BoomBundle()(p) {
   // From ROB
-  val rob_enq = Input(Bool())
-  val rob_commit_uop = Input(UInt(SB_ADDR_SZ.W))
-  val rob_commit_valid = Input(Bool())
+  val rob_enq = Input(Vec(machine_width, Bool()))
+  val rob_commit_uop = Input(Vec(machine_width, Vec(num_wakeup_ports, UInt(SB_ADDR_SZ.W))))
+  val rob_commit_valid = Input(Vec(machine_width,Vec(num_wakeup_ports, Bool())))
 
-  //
+  // To Rob
+  val rob_q_idx = Output(Vec(machine_width, UInt(SB_ADDR_SZ.W)))
+
   val sb_tail = Output(UInt(SB_ADDR_SZ.W))
   val sb_head = Output(UInt(SB_ADDR_SZ.W))
+
+
 
   val sb_full = Output(Bool())
   val sb_empty = Output(Bool())
 }
 
 
-class ShadowBuffer(implicit p: Parameters) extends BoomModule()(p)
+class ShadowBuffer(
+  width: Int,
+  num_wakeup_ports: Int
+)(implicit p: Parameters) extends BoomModule()(p)
 {
-  val io = IO(new ShadowBufferIo)
+  val io = IO(new ShadowBufferIo(width))
 
 
   // Tail and head pointers are registers
   val sb_tail     = RegInit(0.U(SB_ADDR_SZ.W))
   val sb_head     = RegInit(0.U(SB_ADDR_SZ.W))
+  val sb_full     = RegInit(false.B)
 
   // Actual buffer. Only need 1 bit per entry T/F
   val sb_data      = Mem(NUM_SB_ENTRIES, Bool())
 
+  // We need 1 wire per port to do the calculation of index to send back
+  val rob_q_idx = Vec(width, Wire(UInt(SB_ADDR_SZ.W)))
 
-  when (io.rob_enq)
+  // Handle dispatch
+  for (w <- 0 until width)
   {
-    sb_data(sb_tail) := true.B
-    sb_tail := sb_tail + 1.U
+    if (w == 0) {
+      rob_q_idx(w) := sb_tail
+    } else {
+      // Here we calculate the q idx to pass back to the ROB
+      rob_q_idx(w) := Mux(io.rob_enq(w-1), rob_q_idx+1,rob_q_idx)
+    }
+    // Write to the SB buffer modulus ensures wrap-around
+    when(io.rob_enq(w)) {
+      sb_data.write((rob_q_idx(w) % SB_ADDR_SZ.U) , true.B)
+    }
+    // Expose the shadow buffer index to the ROB
+    io.rob_q_idx(w) := rob_q_idx(w)
 
-    // Wrap around (its a circular buffer
-    when (sb_tail === NUM_SB_ENTRIES.U)
+    // Handle commits
+    for(i <- 0 until num_wakeup_ports)
     {
-      sb_tail := 0.U(SB_ADDR_SZ.W)
-    }
-
-    when (sb_tail === sb_head) {
-      io.sb_full := true.B
-    }
-
-    if (DEBUG_PRINTF) {
-      printf("SB received rob_enq signal. tail=%d\n", sb_tail)
+      when(io.rob_commit_valid(w)(i))
+      {
+        sb_data.write(io.rob_commit_uop(w)(i), false.B)
+      }
     }
   }
-  when (io.rob_commit_valid)
+
+  
+  // Calculate next SB_TAIL
+  val sb_tail_next =(rob_q_idx(w) + 1) % SB_ADDR_SZ.U
+  
+  // Calculate next SB_HEAD
+  when(sb_data.read(sb_head) === false.B) 
   {
-    sb_data(io.rob_commit_uop) := false.B
-    if (DEBUG_PRINTF) {
-      printf("SB received commit signal for idx=%d\n", io.rob_commit_uop)
-    }
-
+    val sb_head_next = (sb_head - 1) % SB_ADDR_SZ.U
   }
 
+  // Check if we are "full". This is sub-optimal but to reduce complexity
+  // Also this is bugprone and needs to be safeguarded wrt SB_ADDR_SZ
+  when((sb_tail_next + width) % SB_ADDR_SZ.U >= sb_head_next)
+  {
+    sb_full := true.B
+  }.otherwise
+  {
+    sb_full := false.B
+  }
+
+  sb_tail := sb_tail_next
+  sb_head := sb_head_next
+
+  io.sb_full := sb_full
   io.sb_tail := sb_tail
   io.sb_head := sb_head
-
 
 
 }

@@ -90,23 +90,22 @@ class RobIo(
    val debug = Output(new DebugRobSignals())
 
 
-   /* erlingrj 2/9: add support for a SB */
+   /* erlingrj 17/9: add support for a SB */
    // TODO: Make this into a ShadowBufferInterface type
-   val sb_tail = Input(UInt(SB_ADDR_SZ.W))
-   val sb_head = Input(UInt(SB_ADDR_SZ.W))
+   val sb_tail = Input(UInt(SB_ADDR_SZ.W)) //Probably not needed
+   val sb_head = Input(UInt(SB_ADDR_SZ.W)) //Probably not needed
 
    val sb_q_idx = Input(Vec(machine_width, UInt(SB_ADDR_SZ)))
-   val sb_q_val = Input(Vec(machine_width, Bool()))
    
    val sb_enq = Output(Vec(machine_width,Bool()))
-   val sb_commit = Output(Vec(machine_width, UInt(SB_ADDR_SZ.W)))
-   val sb_commit_valid = Output(Vec(machine_width, Bool()))
+   val sb_commit_uop = Input(Vec(machine_width, Vec(num_wakeup_ports, UInt(SB_ADDR_SZ.W))))
+   val sb_commit_valid = Input(Vec(machine_width,Vec(num_wakeup_ports, Bool())))
    
 
    val sb_full = Input(Bool())
    val sb_empty = Input(Bool())
    
-   /* end erlingrj 2/9*/
+   /* end erlingrj 17/9*/
 
 
 
@@ -337,18 +336,19 @@ class Rob(
          assert (rob_val(rob_tail) === false.B, "[rob] overwriting a valid entry.")
          assert ((io.enq_uops(w).rob_idx >> log2Ceil(width)) === rob_tail)
 
-         /* erlingrj 2/9 */
+         /* erlingrj 17/9 */
          when(io.enq_uops(w).is_br_or_jmp) {
-            rob_sb_val(rob_tail) := true.B
-            rob_sb_idx(rob_tail) := io.sb_tail
-            io.sb_enq := true.B
+            io.sb_enq(w)         := true.B
+            rob_sb_val(rob_tail) := io.sb_q_val(q)
+            rob_sb_idx(rob_tail) := io.sb_q_idx(q)  
          }.otherwise
          {
             rob_sb_val(rob_tail) := false.B
-            io.sb_enq := false.B
+            io.sb_enq(w) := false.B
          }
-         /* end erlingrj 2/9 */
+         /* end erlingrj 17/9 */
       }
+
       .elsewhen (io.enq_valids.reduce(_|_) && !rob_val(rob_tail))
       {
          rob_uop(rob_tail).inst := BUBBLE // just for debug purposes
@@ -375,10 +375,10 @@ class Rob(
             /* erlingrj 2/9 */
             when (rob_sb_val(row_idx))
             {
-               io.sb_commit := rob_sb_idx(row_idx)
-               io.sb_commit_valid := true.B
+               io.sb_commit(w)(i) := rob_sb_idx(row_idx)
+               io.sb_commit_valid(w)(i) := true.B
             }.otherwise {
-               io.sb_commit_valid := false.B
+               io.sb_commit_valid(w)(i) := false.B
             }
          }
          // TODO check that fflags aren't overwritten
