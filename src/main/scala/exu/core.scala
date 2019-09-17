@@ -140,7 +140,8 @@ class BoomCore(implicit p: Parameters, edge: freechips.rocketchip.tilelink.TLEdg
                                  num_fp_wakeup_ports))
    /*erlingrj 2/9 */
    val sb               = Module(new ShadowBuffer(
-                                 coreWidth))
+                                 coreWidth,
+                                  num_irf_write_ports + 1 + num_fp_wakeup_ports)) //TODO: WHY THIS? erlingrj 17. september
 
    // Used to wakeup registers in rename and issue. ROB needs to listen to something else.
    val int_wakeups      = Wire(Vec(num_int_wakeup_ports, Valid(new ExeUnitResp(xLen))))
@@ -639,9 +640,9 @@ class BoomCore(implicit p: Parameters, edge: freechips.rocketchip.tilelink.TLEdg
    rob.io.sb_full := sb.io.sb_full
    rob.io.sb_q_idx := sb.io.rob_q_idx
 
-   sb.io.rob_enq := rob.io.sb_enq
-   sb.io.rob_commit_uop := rob.io.sb_commit
-   sb.io.rob_commit_valid := rob.io.sb_commit_valid
+   sb.io.rob_enq <> rob.io.sb_enq
+   sb.io.rob_commit_uop <> rob.io.sb_commit_uop
+   sb.io.rob_commit_valid <> rob.io.sb_commit_valid
    
    //-------------------------------------------------------------
    //-------------------------------------------------------------

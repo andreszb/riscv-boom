@@ -21,7 +21,7 @@ import freechips.rocketchip.config.Parameters
 
 
 class ShadowBufferIo(
-  val machine_widt:Int,
+  val machine_width:Int,
   val num_wakeup_ports:Int
 )(implicit p: Parameters) extends BoomBundle()(p) {
   // From ROB
@@ -35,10 +35,7 @@ class ShadowBufferIo(
   val sb_tail = Output(UInt(SB_ADDR_SZ.W))
   val sb_head = Output(UInt(SB_ADDR_SZ.W))
 
-
-
   val sb_full = Output(Bool())
-  val sb_empty = Output(Bool())
 }
 
 
@@ -47,7 +44,7 @@ class ShadowBuffer(
   num_wakeup_ports: Int
 )(implicit p: Parameters) extends BoomModule()(p)
 {
-  val io = IO(new ShadowBufferIo(width))
+  val io = IO(new ShadowBufferIo(width, num_wakeup_ports))
 
 
   // Tail and head pointers are registers
@@ -59,7 +56,7 @@ class ShadowBuffer(
   val sb_data      = Mem(NUM_SB_ENTRIES, Bool())
 
   // We need 1 wire per port to do the calculation of index to send back
-  val rob_q_idx = Vec(width, Wire(UInt(SB_ADDR_SZ.W)))
+  val rob_q_idx = Wire(Vec(width, UInt(SB_ADDR_SZ.W)))
 
   // Handle dispatch
   for (w <- 0 until width)
@@ -68,7 +65,7 @@ class ShadowBuffer(
       rob_q_idx(w) := sb_tail
     } else {
       // Here we calculate the q idx to pass back to the ROB
-      rob_q_idx(w) := Mux(io.rob_enq(w-1), rob_q_idx+1,rob_q_idx)
+      rob_q_idx(w) := Mux(io.rob_enq(w-1), rob_q_idx(w-1)+1.U,rob_q_idx(w-1))
     }
     // Write to the SB buffer modulus ensures wrap-around
     when(io.rob_enq(w)) {
@@ -89,17 +86,17 @@ class ShadowBuffer(
 
   
   // Calculate next SB_TAIL
-  val sb_tail_next =(rob_q_idx(w) + 1) % SB_ADDR_SZ.U
-  
+  val sb_tail_next =(rob_q_idx(width-1) + 1.U) % SB_ADDR_SZ.U
+  val sb_head_next = sb_head
   // Calculate next SB_HEAD
   when(sb_data.read(sb_head) === false.B) 
   {
-    val sb_head_next = (sb_head - 1) % SB_ADDR_SZ.U
+    val sb_head_next = (sb_head - 1.U) % SB_ADDR_SZ.U
   }
 
   // Check if we are "full". This is sub-optimal but to reduce complexity
   // Also this is bugprone and needs to be safeguarded wrt SB_ADDR_SZ
-  when((sb_tail_next + width) % SB_ADDR_SZ.U >= sb_head_next)
+  when((sb_tail_next + width.U) % SB_ADDR_SZ.U >= sb_head_next)
   {
     sb_full := true.B
   }.otherwise
