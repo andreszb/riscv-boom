@@ -94,11 +94,18 @@ class RobIo(
    // TODO: Make this into a ShadowBufferInterface type
    val sb_tail = Input(UInt(SB_ADDR_SZ.W))
    val sb_head = Input(UInt(SB_ADDR_SZ.W))
-   val sb_enq = Output(Bool())
+
+   val sb_q_idx = Input(Vec(machine_width, UInt(SB_ADDR_SZ)))
+   val sb_q_val = Input(Vec(machine_width, Bool()))
+   
+   val sb_enq = Output(Vec(machine_width,Bool()))
+   val sb_commit = Output(Vec(machine_width, UInt(SB_ADDR_SZ.W)))
+   val sb_commit_valid = Output(Vec(machine_width, Bool()))
+   
+
    val sb_full = Input(Bool())
    val sb_empty = Input(Bool())
-   val sb_commit = Output(UInt(SB_ADDR_SZ.W))
-   val sb_commit_valid = Output(Bool())
+   
    /* end erlingrj 2/9*/
 
 
