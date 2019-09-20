@@ -5,6 +5,7 @@ import scala.math.ceil
 import chisel3._
 import chisel3.util._
 import chisel3.experimental.chiselName
+import chisel3.experimental.dontTouch
 import boom.common._
 import boom.util._
 
@@ -98,11 +99,11 @@ class RobIo(
    val sb_q_idx = Input(Vec(machine_width, UInt(SB_ADDR_SZ.W)))
    
    val sb_enq = Output(Vec(machine_width,Bool()))
-   val sb_commit_uop = Output(Vec(machine_width, Vec(num_wakeup_ports, UInt(SB_ADDR_SZ.W))))
-   val sb_commit_valid = Output(Vec(machine_width,Vec(num_wakeup_ports, Bool())))
+   val sb_commit_uop = Output(Vec(machine_width, Vec(num_wakeup_ports, Valid(UInt(SB_ADDR_SZ.W)))))
    
 
    val sb_full = Input(Bool())
+
    /* end erlingrj 17/9*/
 
 
@@ -313,10 +314,14 @@ class Rob(
       /* erlingrj 2/9: SB implementation*/
       val rob_sb_val    = Mem(NUM_ROB_ROWS, Bool())
       val rob_sb_idx    = Mem(NUM_ROB_ROWS, Bits(log2Ceil(NUM_SB_ENTRIES).W))
-      /* end erlingrj 2/9 */
+
+      dontTouch(io.sb_enq)
+      dontTouch(io.sb_commit_uop)
+      dontTouch(io.sb_q_idx)
+      /* end erlingrj 2/9
 
 
-
+       */
       //-----------------------------------------------
       // Dispatch: Add Entry to ROB
 
@@ -335,7 +340,7 @@ class Rob(
          assert ((io.enq_uops(w).rob_idx >> log2Ceil(width)) === rob_tail)
 
          /* erlingrj 17/9 */
-         when(io.enq_uops(w).is_br_or_jmp) {
+         when(io.enq_uops(w).unsafe) {
             io.sb_enq(w)         := true.B
             rob_sb_val(rob_tail) := true.B
             rob_sb_idx(rob_tail) := io.sb_q_idx(w)  
@@ -374,10 +379,10 @@ class Rob(
             /* erlingrj 2/9 */
             when (rob_sb_val(row_idx))
             {
-               io.sb_commit_uop(w)(i) := rob_sb_idx(row_idx)
-               io.sb_commit_valid(w)(i) := true.B
+               io.sb_commit_uop(w)(i).bits := rob_sb_idx(row_idx)
+               io.sb_commit_uop(w)(i).valid := true.B
             }.otherwise {
-               io.sb_commit_valid(w)(i) := false.B
+               io.sb_commit_uop(w)(i).valid := false.B
             }
          }
          // TODO check that fflags aren't overwritten

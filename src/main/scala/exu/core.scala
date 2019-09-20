@@ -635,14 +635,14 @@ class BoomCore(implicit p: Parameters, edge: freechips.rocketchip.tilelink.TLEdg
 
 
    /*erlingrj 2/9 Connect ShadowBuffer and ROB*/
-   rob.io.sb_tail := sb.io.sb_tail
-   rob.io.sb_head := sb.io.sb_head
-   rob.io.sb_full := sb.io.sb_full
-   rob.io.sb_q_idx := sb.io.rob_q_idx
+   rob.io.sb_tail := sb.io.tail
+   rob.io.sb_head := sb.io.head
+   rob.io.sb_full := sb.io.full
+   rob.io.sb_q_idx := sb.io.q_idx
 
-   sb.io.rob_enq <> rob.io.sb_enq
-   sb.io.rob_commit_uop <> rob.io.sb_commit_uop
-   sb.io.rob_commit_valid <> rob.io.sb_commit_valid
+   sb.io.enq_uop <> rob.io.sb_enq
+   sb.io.commit_uop <> rob.io.sb_commit_uop
+
    
    //-------------------------------------------------------------
    //-------------------------------------------------------------

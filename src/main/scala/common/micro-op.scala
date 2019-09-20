@@ -137,6 +137,13 @@ class MicroOp(implicit p: Parameters) extends BoomBundle()(p)
    val replay_if        = Bool()             // I$ wants us to replay our ifetch request
    val xcpt_ma_if       = Bool()             // Misaligned fetch (jal/brjumping to misaligned addr).
 
+   /* erlingrj 20 september */
+   // Shadow Buffer information
+   val sb_uop_idx       = UInt(SB_ADDR_SZ.W) //The instructions address in the Shadow Buffer. Only valid for shadow casting instructions like branches
+   val sb_caster_idx    = UInt(SB_ADDR_SZ.W) //The index into the SB to the youngest shadow-casting instruction we are under. Only valid for loads
+   val rq_idx        = UInt(SB_ADDR_SZ.W) //TODO: What is the size of the RQ?
+   //release queue index. Is this instructions index in the release queue. Only valid for loads.
+
    // purely debug information
    val debug_wdata      = UInt(xLen.W)
    val debug_events     = new DebugStageEvents
