@@ -27,6 +27,9 @@ case class BoomCoreParams(
   fetchWidth: Int = 1,
   decodeWidth: Int = 1,
   numRobEntries: Int = 64,
+  numSbEntries: Int = 16,
+  numRqEntries: Int = 16,
+  rqCommitWidth: Int = 2,
   issueParams: Seq[IssueParams] = Seq(
     IssueParams(issueWidth=1, numEntries=16, iqType=IQT_MEM.litValue, dispatchWidth=1),
     IssueParams(issueWidth=2, numEntries=16, iqType=IQT_INT.litValue, dispatchWidth=1),
@@ -148,6 +151,9 @@ trait HasBoomCoreParameters extends freechips.rocketchip.tile.HasCoreParameters
   //************************************
   // Data Structure Sizes
   val numRobEntries = boomParams.numRobEntries       // number of ROB entries (e.g., 32 entries for R10k)
+  val numSbEntries  = boomParams.numSbEntries
+  val numRqEntries  = boomParams.numRqEntries
+  val rqCommitWidth = boomParams.rqCommitWidth
   val numRxqEntries = boomParams.numRXQEntries       // number of RoCC execute queue entries. Keep small since this holds operands and instruction bits
   val numRcqEntries = boomParams.numRCQEntries       // number of RoCC commit queue entries. This can be large since it just keeps a pdst
   val numLdqEntries = boomParams.numLdqEntries       // number of LAQ entries
@@ -258,6 +264,8 @@ trait HasBoomCoreParameters extends freechips.rocketchip.tile.HasCoreParameters
   // Implicitly calculated constants
   val numRobRows      = numRobEntries/coreWidth
   val robAddrSz       = log2Ceil(numRobRows) + log2Ceil(coreWidth)
+  val sbAddrSz        = log2Ceil(numSbEntries)
+  val rqAddrSz        = log2Ceil(numRqEntries)
   // the f-registers are mapped into the space above the x-registers
   val logicalRegCount = if (usingFPU) 64 else 32
   val lregSz          = log2Ceil(logicalRegCount)
