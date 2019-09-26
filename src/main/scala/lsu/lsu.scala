@@ -1445,6 +1445,7 @@ class LoadStoreUnit(pl_width: Int)(implicit p: Parameters,
             BoolToChar(          laq_failure(i), 'F'),
             BoolToChar(   laq_is_uncacheable(i), 'U'),
             BoolToChar(laq_forwarded_std_val(i), 'X'),
+            BoolToChar(      laq_is_shadowed(i), 'Z'),
             laq_forwarded_stq_idx(i),
             laq_uop(i).stq_idx, // youngest dep-store
             laq_st_dep_mask(i),
