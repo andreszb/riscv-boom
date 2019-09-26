@@ -29,7 +29,7 @@ import scala.math.ceil
 
 import chisel3._
 import chisel3.util._
-import chisel3.experimental.chiselName
+import chisel3.experimental.{chiselName, dontTouch}
 
 import freechips.rocketchip.config.Parameters
 import freechips.rocketchip.util.Str
@@ -110,8 +110,23 @@ class RobIo(
 
   // pass out debug information to high-level printf
   val debug = Output(new DebugRobSignals())
-
   val debug_tsc = Input(UInt(xLen.W))
+
+  /* erlingrj 17/9: add support for a SB */
+  // TODO: Make this into a ShadowBufferInterface type
+  val sb_tail = Input(UInt(sbAddrSz.W)) //Probably not needed
+  val sb_head = Input(UInt(sbAddrSz.W)) //Probably not needed
+  val sb_q_idx = Input(Vec(coreWidth, UInt(sbAddrSz.W)))
+  
+  val sb_enq = Output(Vec(coreWidth,Valid(new MicroOp())))
+  val sb_commit_uop = Output(Vec(numWakeupPorts, Valid(UInt(sbAddrSz.W))))
+  val sb_full = Input(Bool())
+  val sb_empty = Input(Bool())
+
+  val rq_enq = Output(Vec(coreWidth, new RQEnqSignals()))
+   /* end erlingrj 17/9*/
+
+
 }
 
 /**
@@ -289,6 +304,12 @@ class Rob(
   // Contains all information the PNR needs to find the oldest instruction which can't be safely speculated past.
   val rob_unsafe_masked = WireInit(VecInit(Seq.fill(numRobRows << log2Ceil(coreWidth)){false.B}))
 
+  /* erlingrj: Make default commit signal to SB false */
+  for (i <- 0 until numWakeupPorts) 
+    {
+      io.sb_commit_uop(i).valid :=false.B
+    }
+
   for (w <- 0 until coreWidth) {
     def MatchBank(bank_idx: UInt): Bool = (bank_idx === w.U)
 
@@ -299,6 +320,13 @@ class Rob(
     val rob_uop       = Reg(Vec(numRobRows, new MicroOp()))
     val rob_exception = Mem(numRobRows, Bool())
     val rob_fflags    = Mem(numRobRows, Bits(freechips.rocketchip.tile.FPConstants.FLAGS_SZ.W))
+    /* erlingrj 2/9: SB implementation*/
+    val rob_sb_val    = RegInit(VecInit(Seq.fill(numRobRows){false.B}))
+    val rob_sb_idx    = Reg(Vec(numRobRows, UInt(sbAddrSz.W)))
+    dontTouch(io.sb_enq)
+    dontTouch(io.sb_commit_uop)
+    dontTouch(io.sb_q_idx)
+    /* end erlingrj 2/9 */
 
     //-----------------------------------------------
     // Dispatch: Add Entry to ROB
@@ -315,8 +343,35 @@ class Rob(
 
       assert (rob_val(rob_tail) === false.B, "[rob] overwriting a valid entry.")
       assert ((io.enq_uops(w).rob_idx >> log2Ceil(coreWidth)) === rob_tail)
+    
+      /* erlingrj 17/9 */
+      when(io.enq_uops(w).is_branch) {
+         io.sb_enq(w).valid   := true.B
+         io.sb_enq(w).bits    := io.enq_uops(w)
+         rob_sb_val(rob_tail) := true.B
+         rob_sb_idx(rob_tail) := io.sb_q_idx(w)
+      }.otherwise {
+        io.sb_enq(w).valid := false.B
+        rob_sb_val(rob_tail) := false.B
+      }
+
+      // default rq_ebq = false
+      io.rq_enq(w).valid := false.B
+      when(io.enq_uops(w).is_load) {
+         when(!io.sb_empty) {
+            io.rq_enq(w).valid := true.B
+            io.rq_enq(w).ldq_idx := io.enq_uops(w).ldq_idx
+          }
+      }
+      /* end erlingrj 17/9 */
+
     } .elsewhen (io.enq_valids.reduce(_|_) && !rob_val(rob_tail)) {
       rob_uop(rob_tail).debug_inst := BUBBLE // just for debug purposes
+    } .otherwise {
+      /*erlingrj 23/9 */
+      io.sb_enq(w).valid := false.B
+      io.rq_enq(w).valid := false.B
+
     }
 
     //-----------------------------------------------
@@ -333,6 +388,12 @@ class Rob(
           printf("%d; O3PipeView:complete:%d\n",
             rob_uop(row_idx).debug_events.fetch_seq,
             io.debug_tsc)
+        }
+        /* erlingrj 2/9 */
+        when(rob_sb_val(row_idx)) {
+           io.sb_commit_uop(i).bits := rob_sb_idx(row_idx)
+           io.sb_commit_uop(i).valid := true.B
+           rob_sb_val(row_idx) := false.B
         }
       }
       // TODO check that fflags aren't overwritten

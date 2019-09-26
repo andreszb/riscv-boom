@@ -182,6 +182,27 @@ object WrapSub
   }
 }
 
+/*
+* erlingrj: Object to subtract 2 chisel hardware types
+* copy-paste from object WrapSub
+*/
+object WrapSub2HW
+{
+  // "n" is the number of increments, so we wrap to n-1.
+  def apply(value: UInt, amt: UInt, n: Int): UInt = {
+    if (isPow2(n)) {
+      (value - amt)(log2Ceil(n)-1,0)
+    } else {
+      val v = Cat(0.U(1.W), value)
+      val b = Cat(0.U(1.W), amt)
+      Mux(value >= amt,
+        value - amt,
+        n.U - amt - value)
+    }
+  }
+}
+
+
 /**
  * Object to increment an input value, wrapping it if
  * necessary.

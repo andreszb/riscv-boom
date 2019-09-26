@@ -147,6 +147,9 @@ class MicroOp(implicit p: Parameters) extends BoomBundle
   // Is it possible for this uop to misspeculate, preventing the commit of subsequent uops?
   def unsafe           = is_load || is_store && !is_fence || is_br_or_jmp && !is_jal
 
+  // erlingrj: added for first iteration of ShadowBuffer to track branches
+  def is_branch: Bool       = is_br_or_jmp && !is_jump
+
   def fu_code_is(_fu: UInt) = (fu_code & _fu) =/= 0.U
 }
 

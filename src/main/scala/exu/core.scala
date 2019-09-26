@@ -142,6 +142,16 @@ class BoomCore(implicit p: Parameters, edge: freechips.rocketchip.tilelink.TLEdg
   val rob              = Module(new Rob(
                            numIrfWritePorts + 1 + numFpWakeupPorts, // +1 for ll writebacks
                            numFpWakeupPorts))
+
+  /*erlingrj 2/9 */
+  val sb               = Module(new ShadowBuffer(
+                                coreWidth,
+                                 numIrfWritePorts + 1 + numFpWakeupPorts)) //TODO: WHY THIS? erlingrj 17. september
+  val rq               = Module(new ReleaseQueue(
+                                coreWidth,
+  ))
+
+  
   // Used to wakeup registers in rename and issue. ROB needs to listen to something else.
   val int_iss_wakeups  = Wire(Vec(numIntIssueWakeupPorts, Valid(new ExeUnitResp(xLen))))
   val int_ren_wakeups  = Wire(Vec(numIntRenameWakeupPorts, Valid(new ExeUnitResp(xLen))))
@@ -599,6 +609,27 @@ class BoomCore(implicit p: Parameters, edge: freechips.rocketchip.tilelink.TLEdg
                                w.U(log2Ceil(coreWidth).W))
     }
   }
+
+  //-------------------------------------------------------------
+  // ShadowBuffer and ReleaseQueue
+  /*erlingrj 2/9 Connect ShadowBuffer and ROB*/
+  rob.io.sb_tail := sb.io.tail
+  rob.io.sb_head := sb.io.head
+  rob.io.sb_full := sb.io.full
+  rob.io.sb_q_idx := sb.io.q_idx
+  rob.io.sb_empty := sb.io.empty
+  
+  sb.io.enq_uop <> rob.io.sb_enq
+  sb.io.commit_uop <> rob.io.sb_commit_uop
+  sb.io.brinfo <> br_unit.brinfo
+  
+  rq.io.commit := sb.io.release
+  rq.io.sb_tail := sb.io.tail
+  rq.io.enq := rob.io.rq_enq
+
+
+  lsu.io.set_shadow_bit := rq.io.set_shadow_bit
+  lsu.io.unset_shadow_bit := rq.io.unset_shadow_bit
 
   //-------------------------------------------------------------
   // RoCC allocation logic
