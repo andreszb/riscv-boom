@@ -293,6 +293,8 @@ class Rob(
     val unsafe     = Bool()
     val uop        = new MicroOp()
     val exception  = Bool()
+    val sb_val   = Bool()
+    val sb_idx     = Bool()
   }
   val debug_entry = Wire(Vec(numRobEntries, new DebugRobBundle))
   debug_entry := DontCare // override in statements below
@@ -581,6 +583,7 @@ class Rob(
         debug_entry(w + i*coreWidth).unsafe    := rob_unsafe(i.U)
         debug_entry(w + i*coreWidth).uop       := rob_uop(i.U)
         debug_entry(w + i*coreWidth).exception := rob_exception(i.U)
+        debug_entry(w + i*coreWidth).sb_idx    := rob_sb_idx(i)
       }
     }
   } //for (w <- 0 until coreWidth)
@@ -976,13 +979,15 @@ class Rob(
         Mux(rob_pnr === row.U, Str("P"), Str(" ")))
 
       if (coreWidth == 1) {
-        printf("(%c)(%c)(%c) 0x%x [DASM(%x)] %c ",
+        printf("(%c)(%c)(%c) 0x%x [DASM(%x)] %c %c SB_0x%x",
           BoolToChar( debug_entry(r_idx+0).valid, 'V'),
           BoolToChar(  debug_entry(r_idx+0).busy, 'B'),
           BoolToChar(debug_entry(r_idx+0).unsafe, 'U'),
           debug_entry(r_idx+0).uop.debug_pc(31,0),
           debug_entry(r_idx+0).uop.debug_inst,
-          BoolToChar(debug_entry(r_idx+0).exception, 'E'))
+          BoolToChar(debug_entry(r_idx+0).exception, 'E'),
+          BoolToChar(debug_entry(r_idx+0).sb_val, 'S'),
+          debug_entry(r_idx+0).sb_idx)
       } else if (coreWidth == 2) {
         val row_is_val = debug_entry(r_idx+0).valid || debug_entry(r_idx+1).valid
         printf("(%c%c)(%c%c)(%c%c) 0x%x %x [DASM(%x)][DASM(%x)" + "] %c,%c %d,%d ",
