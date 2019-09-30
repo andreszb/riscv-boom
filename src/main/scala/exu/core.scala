@@ -618,9 +618,10 @@ class BoomCore(implicit p: Parameters, edge: freechips.rocketchip.tilelink.TLEdg
   rob.io.sb_full := sb.io.full
   rob.io.sb_q_idx := sb.io.q_idx
   rob.io.sb_empty := sb.io.empty
-  
+  rob.io.rq_full := rq.io.full
+
   sb.io.enq_uop <> rob.io.sb_enq
-  sb.io.commit_uop <> rob.io.sb_commit_uop
+  sb.io.wb_uop <> rob.io.sb_wb_uop
   sb.io.brinfo <> br_unit.brinfo
   
   rq.io.commit := sb.io.release

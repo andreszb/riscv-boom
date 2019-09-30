@@ -119,11 +119,12 @@ class RobIo(
   val sb_q_idx = Input(Vec(coreWidth, UInt(sbAddrSz.W)))
   
   val sb_enq = Output(Vec(coreWidth,Valid(new MicroOp())))
-  val sb_commit_uop = Output(Vec(numWakeupPorts, Valid(UInt(sbAddrSz.W))))
+  val sb_wb_uop = Output(Vec(numWakeupPorts, Valid(UInt(sbAddrSz.W))))
   val sb_full = Input(Bool())
   val sb_empty = Input(Bool())
 
   val rq_enq = Output(Vec(coreWidth, new RQEnqSignals()))
+  val rq_full = Input(Bool())
    /* end erlingrj 17/9*/
 
 
@@ -309,7 +310,7 @@ class Rob(
   /* erlingrj: Make default commit signal to SB false */
   for (i <- 0 until numWakeupPorts) 
     {
-      io.sb_commit_uop(i).valid :=false.B
+      io.sb_wb_uop(i).valid :=false.B
     }
 
   for (w <- 0 until coreWidth) {
@@ -326,7 +327,7 @@ class Rob(
     val rob_sb_val    = RegInit(VecInit(Seq.fill(numRobRows){false.B}))
     val rob_sb_idx    = Reg(Vec(numRobRows, UInt(sbAddrSz.W)))
     dontTouch(io.sb_enq)
-    dontTouch(io.sb_commit_uop)
+    dontTouch(io.sb_wb_uop)
     dontTouch(io.sb_q_idx)
     /* end erlingrj 2/9 */
 
@@ -393,8 +394,8 @@ class Rob(
         }
         /* erlingrj 2/9 */
         when(rob_sb_val(row_idx)) {
-           io.sb_commit_uop(i).bits := rob_sb_idx(row_idx)
-           io.sb_commit_uop(i).valid := true.B
+           io.sb_wb_uop(i).bits := rob_sb_idx(row_idx)
+           io.sb_wb_uop(i).valid := true.B
            rob_sb_val(row_idx) := false.B
         }
       }
@@ -866,7 +867,8 @@ class Rob(
   io.rob_tail_idx := rob_tail_idx
   io.rob_pnr_idx  := rob_pnr_idx
   io.empty        := empty
-  io.ready        := (rob_state === s_normal) && !full
+  /* erlingrj: pass the readiness of the ShadowBuffer and the ReleaseQueue through the ROBs interface to the Decoder */
+  io.ready        := (rob_state === s_normal) && !full && !io.rq_full && !io.sb_full
 
   //-----------------------------------------------
   //-----------------------------------------------

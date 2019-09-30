@@ -259,19 +259,21 @@ class LoadStoreUnit(pl_width: Int)(implicit p: Parameters,
                                                 live_store_mask)
 
     // TODO move this to bottom of file
-   /*erlingrj: Flip is_shadowed bits when Release Queue gives notice
-   for (w <- 0 until NUM_RQ_WRITEPORTS)
+   /*erlingrj: Flip is_shadowed bits when Release Queue gives notice  */
+   for (w <- 0 until rqCommitWidth)
    {
       when (io.unset_shadow_bit(w).valid)
       {
-         //val ldq_idx = io.unset_shadow_bit(w).bits
-         //laq_is_shadowed(ldq_idx) := false.B
+         val ldq_idx = io.unset_shadow_bit(w).bits
+         laq_is_shadowed(ldq_idx) := false.B
 
-         //assert(laq_allocated(ldq_idx) && !laq_executed(ldq_idx), "[lsu] RQ tries to unset an invalid/executed load")
+         assert(laq_allocated(ldq_idx), "[lsu] RQ tries to unset an invalid/executed load")
+         assert(laq_executed(ldq_idx), "[lsu] RQ tries to unset an executed load")
+
       }
 
    }
-   */
+
 
    //-------------------------------------------------------------
    //-------------------------------------------------------------
@@ -280,7 +282,7 @@ class LoadStoreUnit(pl_width: Int)(implicit p: Parameters,
    //-------------------------------------------------------------
 
    // put this earlier than Enqueue, since this is lower priority to laq_st_dep_mask
-   for (i <- 0 until NUM_LDQ_ENTRIES)
+   for (i <- 0 until numLdqEntries)
    {
       when (clear_store)
       {
@@ -320,7 +322,13 @@ class LoadStoreUnit(pl_width: Int)(implicit p: Parameters,
 
          /*erlingrj for now, just set it to false */
          // TODO interface to ReleaseQueue
-         laq_is_shadowed(ld_enq_idx) := false.B
+         when(io.set_shadow_bit(w).valid) {
+            laq_is_shadowed(ld_enq_idx) := true.B
+            assert(io.set_shadow_bit(w).bits === ld_enq_idx, "[lsu] mismatch between rq_set_shadow_bit and ldq_idx. ")
+         }.otherwise {
+            laq_is_shadowed(ld_enq_idx) := false.B
+         }
+
 
          assert (ld_enq_idx === io.dis_uops(w).ldq_idx, "[lsu] mismatch enq load tag.")
       }
@@ -1436,7 +1444,7 @@ class LoadStoreUnit(pl_width: Int)(implicit p: Parameters,
       for (i <- 0 until NUM_LDQ_ENTRIES)
       {
          val t_laddr = laq_addr(i)
-         printf("    LDQ[%d]: State:(%c%c%c%c%c%c%c%d) STDep:(StqIdx:%d,Msk:%x) Addr:0x%x H,T:(%c %c)\n",
+         printf("    LDQ[%d]: State:(%c%c%c%c%c%c%c%c%d) STDep:(StqIdx:%d,Msk:%x) Addr:0x%x H,T:(%c %c)\n",
             i.U(ldqAddrSz.W),
             BoolToChar(        laq_allocated(i), 'V'),
             BoolToChar(         laq_addr_val(i), 'A'),

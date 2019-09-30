@@ -44,6 +44,8 @@ class ReleaseQueueIo(
   // From ROB
   val enq = Input(Vec(machine_width, new RQEnqSignals()))
 
+  // To ROB
+  val full = Output(Bool())
 
   // From ShadowBuffer
   val commit = Input(new SBCommitSignals())
@@ -89,6 +91,7 @@ class ReleaseQueue(
       when(io.enq(w).valid) {
         valid(q_idx(w)) := true.B
         is_speculative(q_idx(w)) := true.B
+        was_killed(q_idx(w)) := false.B
         ldq_idx(q_idx(w)) := io.enq(w).ldq_idx
         sb_idx(q_idx(w)) := WrapDec(io.sb_tail, numSbEntries)
 
@@ -105,10 +108,10 @@ class ReleaseQueue(
   when(io.commit.valid) {
     for (i <- 0 until numRqEntries)
       {
-        when(sb_idx(i) === io.commit.sb_idx)
+        when(sb_idx(i) === io.commit.sb_idx && valid(i))
          {
-           is_speculative(i) := false.B
-           was_killed(i) := io.commit.killed
+             is_speculative(i) := false.B
+             was_killed(i) := io.commit.killed
          }
       }
   }
@@ -123,11 +126,14 @@ class ReleaseQueue(
         head_next := WrapInc(idx, numRqEntries)
         io.unset_shadow_bit(i).valid := true.B
         io.unset_shadow_bit(i).bits := ldq_idx(idx)
+        valid(idx) := false.B
+
       }.elsewhen(valid(idx) && was_killed(idx)) { //We are committing a killed shadow caster
                                                   // LSU already has killed this load
         head_next := WrapInc(idx, numRqEntries)
         io.unset_shadow_bit(i).valid := false.B // TODO do we wanna keep the write port idle?
-        }.otherwise {
+        valid(idx) := false.B
+      }.otherwise {
         io.unset_shadow_bit(i).valid := false.B
       }
     }
@@ -150,10 +156,12 @@ class ReleaseQueue(
     full := false.B
   }
 
-  // Route signals out
+
   tail := tail_next
   head := head_next
 
+  // Route signals out
+  io.full := full
 
   // DontTouch for debugs
   dontTouch(head)

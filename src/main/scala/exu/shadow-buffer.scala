@@ -36,7 +36,7 @@ class ShadowBufferIo(
   
   // From ROB
   val enq_uop = Input(Vec(machine_width, Flipped(Valid(new MicroOp()))))
-  val commit_uop = Input(Vec(num_wakeup_ports, Flipped(Valid(UInt(sbAddrSz.W)))))
+  val wb_uop = Input(Vec(num_wakeup_ports, Flipped(Valid(UInt(sbAddrSz.W)))))
 
   // To Rob
   val q_idx = Output(Vec(machine_width, UInt(sbAddrSz.W)))
@@ -102,9 +102,9 @@ class ShadowBuffer(
     // Handle commits
   for(i <- 0 until num_wakeup_ports)
   {
-    when(io.commit_uop(i).valid)
+    when(io.wb_uop(i).valid)
     {
-      sb_data(io.commit_uop(i).bits.asUInt()) := false.B
+      sb_data(io.wb_uop(i).bits.asUInt()) := false.B
     }
   }
 
@@ -184,7 +184,7 @@ class ShadowBuffer(
   dontTouch(head_next)
   dontTouch(full)
   dontTouch(io.enq_uop)
-  dontTouch(io.commit_uop)
+  dontTouch(io.wb_uop)
   dontTouch(io.q_idx)
   dontTouch(io.head)
   dontTouch(io.tail)
