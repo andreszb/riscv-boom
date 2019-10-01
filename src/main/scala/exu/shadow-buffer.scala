@@ -35,13 +35,13 @@ class ShadowBufferIo(
 )(implicit p: Parameters) extends BoomBundle()(p) {
   
   // From ROB
-  val enq_uop = Input(Vec(machine_width, Flipped(Valid(new MicroOp()))))
-  val wb_uop = Input(Vec(num_wakeup_ports, Flipped(Valid(UInt(sbAddrSz.W)))))
-  val kill = Flipped(Valid(UInt(sbAddrSz.W)))
+  val enq_uop = Input(Vec(machine_width, Flipped(Valid(new MicroOp())))) // ROB enqueues new Shadow Casting instrucntio
+  val wb_uop = Input(Vec(num_wakeup_ports, Flipped(Valid(UInt(sbAddrSz.W))))) // WB from ROB
+  val kill = Flipped(Valid(UInt(sbAddrSz.W)))                                 // ROB kills Shadow Caster during Rollback
 
 
   // To Rob
-  val q_idx = Output(Vec(machine_width, UInt(sbAddrSz.W)))
+  val q_idx = Output(Vec(machine_width, UInt(sbAddrSz.W)))                  // SB queue idx of the most recent enque
   
   val tail = Output(UInt(sbAddrSz.W)) // The latest instruction added
   val tail_spec = Output(UInt(sbAddrSz.W)) //The latest still speculative instruction. RQ needs this to store
@@ -50,10 +50,10 @@ class ShadowBufferIo(
   val full = Output(Bool())
 
   // From Branch Unit
-  val brinfo = Input(new BrResolutionInfo())
+  val brinfo = Input(new BrResolutionInfo()) // The actual writebacks for branches come through here
 
   // To Release Queue
-  val release = Output(new SBCommitSignals())
+  val release = Output(new SBCommitSignals()) //Update Release Queue
 }
 
 
@@ -186,7 +186,6 @@ class ShadowBuffer(
   // 2: Update the speculative tail. I.e. the most recent speculative instr.
   // The tail could be a killed branch and then it would be wrong to associate
   // new loads with that, already killed, instruction.
-
   empty := true.B
   for (i <- 0 until numSbEntries) {
     val idx = wrapIndex(i)
