@@ -623,10 +623,12 @@ class BoomCore(implicit p: Parameters, edge: freechips.rocketchip.tilelink.TLEdg
   sb.io.enq_uop <> rob.io.sb_enq
   sb.io.wb_uop <> rob.io.sb_wb_uop
   sb.io.brinfo <> br_unit.brinfo
+  sb.io.kill <> rob.io.sb_kill
   
   rq.io.commit := sb.io.release
-  rq.io.sb_tail := sb.io.tail
+  rq.io.sb_tail_spec := sb.io.tail_spec
   rq.io.enq := rob.io.rq_enq
+  rq.io.exception := rob.io.flush.valid
 
 
   lsu.io.set_shadow_bit := rq.io.set_shadow_bit

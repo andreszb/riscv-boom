@@ -43,13 +43,14 @@ class ReleaseQueueIo(
 {
   // From ROB
   val enq = Input(Vec(machine_width, new RQEnqSignals()))
+  val exception = Input(Bool()) //Flush => LDQ is reset so RQ also will be reset
 
   // To ROB
   val full = Output(Bool())
 
   // From ShadowBuffer
   val commit = Input(new SBCommitSignals())
-  val sb_tail = Input(UInt(sbAddrSz.W))
+  val sb_tail_spec = Input(UInt(sbAddrSz.W))
 
   // To LSU
   // TODO combine this to 1 single interface
@@ -86,14 +87,14 @@ class ReleaseQueue(
       if(w == 0) {
         q_idx(w) := tail
       } else {
-        q_idx(w) := Mux(io.enq(w-1).valid, WrapInc(q_idx(w-1), numRqEntries), q_idx(w - 1))
+        q_idx(w) := Mux(io.enq(w - 1).valid, WrapInc(q_idx(w - 1), numRqEntries), q_idx(w - 1))
       }
       when(io.enq(w).valid) {
         valid(q_idx(w)) := true.B
         is_speculative(q_idx(w)) := true.B
         was_killed(q_idx(w)) := false.B
         ldq_idx(q_idx(w)) := io.enq(w).ldq_idx
-        sb_idx(q_idx(w)) := WrapDec(io.sb_tail, numSbEntries)
+        sb_idx(q_idx(w)) := io.sb_tail_spec
 
         // Send info to Load Queue
         io.set_shadow_bit(w).valid := true.B
@@ -118,30 +119,63 @@ class ReleaseQueue(
 
   // Handle updates to LSU and update head
   // TODO code review. This could be done more elgant with scala var
+  // Current implementation dont allow committing to LSU out-of-order
+  // This is to simplify the head/tail logic.
   val head_next = WireInit(head)
+  var idx = Wire(Vec(rqCommitWidth, UInt(rqAddrSz.W)))
+  val stop = WireInit(VecInit(Seq.fill(rqCommitWidth){false.B}))
+  idx(0) := head
   for(i <- 0 until rqCommitWidth)
     {
-      val idx = WrapAdd(head, i.U, numRqEntries) //TODO solution using WrapInc and not Add
-      when(valid(idx) && !is_speculative(idx) && !was_killed(idx)){
-        head_next := WrapInc(idx, numRqEntries)
-        io.unset_shadow_bit(i).valid := true.B
-        io.unset_shadow_bit(i).bits := ldq_idx(idx)
-        valid(idx) := false.B
+      if(i == 0)
+        {
+          when(valid(idx(i)) && !is_speculative(idx(i)) && !was_killed(idx(i))){
+            head_next := WrapInc(idx(i), numRqEntries)
+            io.unset_shadow_bit(i).valid := true.B
+            io.unset_shadow_bit(i).bits := ldq_idx(idx(i))
+            valid(idx(i)) := false.B
+            stop(i)   := false.B
+          }.elsewhen(valid(idx(i)) && was_killed(idx(i))) { //We are committing a killed shadow caster
+            // LSU already has killed this load
+            head_next := WrapInc(idx(i), numRqEntries)
+            io.unset_shadow_bit(i).valid := false.B // TODO do we wanna keep the write port idle?
+            valid(idx(i)) := false.B
+            stop(i) := false.B
+          }.otherwise {
+            io.unset_shadow_bit(i).valid := false.B
+            stop(i) := true.B
+          }
+        } else
+        {
+          idx(i) := WrapInc(idx(i-1), numRqEntries)
 
-      }.elsewhen(valid(idx) && was_killed(idx)) { //We are committing a killed shadow caster
-                                                  // LSU already has killed this load
-        head_next := WrapInc(idx, numRqEntries)
-        io.unset_shadow_bit(i).valid := false.B // TODO do we wanna keep the write port idle?
-        valid(idx) := false.B
-      }.otherwise {
-        io.unset_shadow_bit(i).valid := false.B
-      }
+          when(valid(idx(i)) && !is_speculative(idx(i)) && !was_killed(idx(i)) && !stop(i-1)){
+            head_next := WrapInc(idx(i), numRqEntries)
+            io.unset_shadow_bit(i).valid := true.B
+            io.unset_shadow_bit(i).bits := ldq_idx(idx(i))
+            valid(idx(i)) := false.B
+            stop(i)   := false.B
+          }.elsewhen(valid(idx(i)) && was_killed(idx(i)) && !stop(i-1)) { //We are committing a killed shadow caster
+            // LSU already has killed this load
+            head_next := WrapInc(idx(i), numRqEntries)
+            io.unset_shadow_bit(i).valid := false.B // TODO do we wanna keep the write port idle?
+            valid(idx(i)) := false.B
+            stop(i) := false.B
+          }.otherwise {
+            io.unset_shadow_bit(i).valid := false.B
+            stop(i) := true.B
+          }
+
+        }
+
+
+
     }
 
 
   // Update tail
   val tail_next = WireInit(tail)
-  when(valid(q_idx(width-1))) {
+  when(io.enq(width-1).valid) {
     tail_next := WrapInc(q_idx(width-1), numRqEntries)
   }.otherwise {
     tail_next := q_idx(width-1)
@@ -160,6 +194,22 @@ class ReleaseQueue(
   tail := tail_next
   head := head_next
 
+
+  // Exception/flush
+  when(io.exception)
+  {
+    head := 0.U
+    tail := 0.U
+    full := false.B
+
+    for (i <- 0 until numRqEntries) {
+      sb_idx(i)         := 0.U
+      is_speculative(i) := false.B
+      was_killed(i)     := false.B
+      valid(i)          := false.B
+      ldq_idx(i)        := 0.U
+    }
+  }
   // Route signals out
   io.full := full
 
@@ -174,5 +224,10 @@ class ReleaseQueue(
   dontTouch(q_idx)
   dontTouch(tail_next)
   dontTouch(head_next)
+  dontTouch(stop)
+  dontTouch(idx)
+  dontTouch(was_killed)
+  dontTouch(is_speculative)
+  dontTouch(valid)
 
 }

@@ -267,8 +267,8 @@ class LoadStoreUnit(pl_width: Int)(implicit p: Parameters,
          val ldq_idx = io.unset_shadow_bit(w).bits
          laq_is_shadowed(ldq_idx) := false.B
 
-         assert(laq_allocated(ldq_idx), "[lsu] RQ tries to unset an invalid/executed load")
-         assert(laq_executed(ldq_idx), "[lsu] RQ tries to unset an executed load")
+         assert(laq_allocated(ldq_idx), "[lsu] RQ tries to unset an invalid load, ldq_idx=%d",ldq_idx)
+         assert(!laq_executed(ldq_idx), "[lsu] RQ tries to unset an executed load, ldq_idx=%d", ldq_idx)
 
       }
 
@@ -794,8 +794,8 @@ class LoadStoreUnit(pl_width: Int)(implicit p: Parameters,
    {
       mem_ld_killed := true.B && mem_fired_ld
    }
-
-   io.mem_ldSpecWakeup.valid := RegNext(will_fire_load_incoming
+   // erlingrj: I changed this. Speculative wakeup of load happens not only when will_fire_load_incoming
+   io.mem_ldSpecWakeup.valid := RegNext((will_fire_load_incoming || (will_fire_shadowed_load_incoming && will_fire_load_wakeup))
                                      && !io.exe_resp.bits.uop.fp_val
                                      && io.exe_resp.bits.uop.pdst =/= 0.U, init=false.B)
    io.mem_ldSpecWakeup.bits := mem_ld_uop.pdst

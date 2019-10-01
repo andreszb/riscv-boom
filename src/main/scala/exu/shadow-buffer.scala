@@ -37,11 +37,14 @@ class ShadowBufferIo(
   // From ROB
   val enq_uop = Input(Vec(machine_width, Flipped(Valid(new MicroOp()))))
   val wb_uop = Input(Vec(num_wakeup_ports, Flipped(Valid(UInt(sbAddrSz.W)))))
+  val kill = Flipped(Valid(UInt(sbAddrSz.W)))
+
 
   // To Rob
   val q_idx = Output(Vec(machine_width, UInt(sbAddrSz.W)))
   
-  val tail = Output(UInt(sbAddrSz.W))
+  val tail = Output(UInt(sbAddrSz.W)) // The latest instruction added
+  val tail_spec = Output(UInt(sbAddrSz.W)) //The latest still speculative instruction. RQ needs this to store
   val head = Output(UInt(sbAddrSz.W))
   val empty = Output(Bool())
   val full = Output(Bool())
@@ -66,7 +69,7 @@ class ShadowBuffer(
   val tail     = RegInit(0.U(sbAddrSz.W))
   val head     = RegInit(0.U(sbAddrSz.W))
   val full     = RegInit(false.B)
-  val empty    = RegInit(true.B)
+  val empty    = WireInit(true.B)
 
   // Actual buffer. Only need 2 bit per entry T/F and valid/not-valid
   // True/False is wether the instruction is still speculative
@@ -100,6 +103,8 @@ class ShadowBuffer(
   }
 
     // Handle commits
+    // TODO: Realize that the "branch wb" really is happening through the BRU. Should maybe not writeback here
+    // When we have a branch?
   for(i <- 0 until num_wakeup_ports)
   {
     when(io.wb_uop(i).valid)
@@ -109,19 +114,37 @@ class ShadowBuffer(
   }
 
   // Kill speculated entries on branch mispredict
+  // TODO: Work around for avoiding referencing rob_idx here as well? Could moving to  doing everything in ROB and
+  // writing a fixed number of kills per CC by a solution?
   for (i <- 0 until numSbEntries)
     {
       val br_mask = sb_uop(i).br_mask
-      val entry_match = sb_valid(i) && maskMatch(io.brinfo.mask, br_mask)
+      val entry_match = sb_valid(i) && maskMatch(io.brinfo.mask, br_mask) // Is this instr shadowed by the branch that has been setteld
+      val br_match = sb_valid(i) && (sb_uop(i).rob_idx === io.brinfo.rob_idx) // If it is this very branch that is settled
 
       //kill instruction if mispredict & br mask match
-      when (io.brinfo.valid && io.brinfo.mispredict && entry_match)
+      when (io.brinfo.valid && io.brinfo.mispredict && (entry_match || br_match))
       {
         sb_data(i) := false.B
         sb_uop(i.U).inst := BUBBLE
         sb_killed(i)    := true.B
+      }.elsewhen (io.brinfo.valid && !io.brinfo.mispredict && br_match) {
+        // clear speculation bit. It was this very branch that did speculate right
+        sb_data(i)    := false.B
+        sb_killed(i)  := false.B
+      }.elsewhen(io.brinfo.valid && !io.brinfo.mispredict && entry_match) {
+        // Clear up the br mask
+        sb_uop(i).br_mask := (br_mask & ~io.brinfo.mask)
       }
     }
+
+  // Kil entries on ROB branch except
+  when (io.kill.valid) {
+    val idx = io.kill.bits
+    sb_data(idx) := false.B
+    sb_uop(idx).inst := BUBBLE
+    sb_killed(idx)    := true.B
+  }
 
   // Update buffer pointers and full/empty
   // Calculate next tail. It only depends on if we have enqueued new instructions this CC
@@ -146,6 +169,28 @@ class ShadowBuffer(
   }.otherwise {
     io.release.valid := false.B
   }
+
+
+  // Calculate the speculative tail. That is, the latest speculative instruction in the buffer.
+  // Any newly arriving load will be shadowed by that instruction.
+  // TODO: Combine this with checking for empty?
+  val idx = Wire(Vec(numSbEntries, UInt(sbAddrSz.W)))
+  idx(0) := head
+  for(i <- 0 until numSbEntries)
+    {
+      if(i == 0)
+        {
+          when(sb_data(idx(i)) && sb_valid(idx(i))) {
+            io.tail_spec := idx(i)
+          }
+        } else
+        {
+          idx(i) := WrapInc(idx(i-1), numSbEntries)
+          when(sb_data(idx(i)) && sb_valid(idx(i))) {
+            io.tail_spec := idx(i)
+          }
+        }
+    }
 
   // Check if we are "full". This is sub-optimal but to reduce complexity
   // Also this is bugprone and needs to be safeguarded wrt sbAddrSz
@@ -191,6 +236,7 @@ class ShadowBuffer(
   dontTouch(io.full)
   dontTouch(empty)
   dontTouch(io.release)
+  dontTouch(io.kill)
 }
 
 

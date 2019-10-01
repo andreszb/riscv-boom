@@ -120,6 +120,7 @@ class RobIo(
   
   val sb_enq = Output(Vec(coreWidth,Valid(new MicroOp())))
   val sb_wb_uop = Output(Vec(numWakeupPorts, Valid(UInt(sbAddrSz.W))))
+  val sb_kill = Valid(UInt(sbAddrSz.W))
   val sb_full = Input(Bool())
   val sb_empty = Input(Bool())
 
@@ -312,6 +313,7 @@ class Rob(
     {
       io.sb_wb_uop(i).valid :=false.B
     }
+  io.sb_kill.valid := false.B
 
   for (w <- 0 until coreWidth) {
     def MatchBank(bank_idx: UInt): Bool = (bank_idx === w.U)
@@ -348,7 +350,7 @@ class Rob(
       assert ((io.enq_uops(w).rob_idx >> log2Ceil(coreWidth)) === rob_tail)
     
       /* erlingrj 17/9 */
-      when(io.enq_uops(w).is_branch) {
+      when(io.enq_uops(w).is_br_or_jmp) {
          io.sb_enq(w).valid   := true.B
          io.sb_enq(w).bits    := io.enq_uops(w)
          rob_sb_val(rob_tail) := true.B
@@ -461,6 +463,11 @@ class Rob(
       assert(rob_unsafe(GetRowIdx(io.bxcpt.bits.uop.rob_idx)),
         "An instruction marked as safe is causing an exception")
 
+      /* erlingrj: update shadowbuffer that we had a branch exception */
+      when(rob_sb_val(io.bxcpt.bits.uop.rob_idx)) {
+        io.sb_kill.valid := true.B
+        io.sb_kill.bits := rob_sb_idx(io.bxcpt.bits.uop.rob_idx)
+      }
     }
     can_throw_exception(w) := rob_val(rob_head) && rob_exception(rob_head)
 
@@ -491,6 +498,11 @@ class Rob(
       "com_valids and rbk_valids are mutually exclusive")
 
     when (rbk_row) {
+      /*erlingrj: when rolling back, also kill the associated ShadowBuffer entry */
+      when(rob_sb_val(com_idx)) {
+        io.sb_kill.valid := true.B
+        io.sb_kill.bits := rob_sb_idx(com_idx)
+      }
       rob_val(com_idx)       := false.B
       rob_exception(com_idx) := false.B
     }
