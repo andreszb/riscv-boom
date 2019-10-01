@@ -64,6 +64,16 @@ class ShadowBuffer(
 {
   val io = IO(new ShadowBufferIo(width, num_wakeup_ports))
 
+  def wrapIndex(i: Int): UInt = {
+    val out = Wire(UInt(sbAddrSz.W))
+    when((i.U + head) <= numSbEntries.U) {
+      out := i.U + head
+    }.otherwise {
+      out := (i.U + head) - numSbEntries.U
+    }
+    out
+  }
+
 
   // Tail and head pointers are registers
   val tail     = RegInit(0.U(sbAddrSz.W))
@@ -138,6 +148,7 @@ class ShadowBuffer(
       }
     }
 
+  // TODO: This is a per-core thing
   // Kil entries on ROB branch except
   when (io.kill.valid) {
     val idx = io.kill.bits
@@ -157,7 +168,7 @@ class ShadowBuffer(
   // When incrementing the head we also
   // Calculate next head and also dealing with committing to Release Queue.
 
-
+  //TODO: Multi-commit to RQ
   when(!sb_data(head) && sb_valid(head))
   {
     // Commit the current head
@@ -171,26 +182,19 @@ class ShadowBuffer(
   }
 
 
-  // Calculate the speculative tail. That is, the latest speculative instruction in the buffer.
-  // Any newly arriving load will be shadowed by that instruction.
-  // TODO: Combine this with checking for empty?
-  val idx = Wire(Vec(numSbEntries, UInt(sbAddrSz.W)))
-  idx(0) := head
-  for(i <- 0 until numSbEntries)
-    {
-      if(i == 0)
-        {
-          when(sb_data(idx(i)) && sb_valid(idx(i))) {
-            io.tail_spec := idx(i)
-          }
-        } else
-        {
-          idx(i) := WrapInc(idx(i-1), numSbEntries)
-          when(sb_data(idx(i)) && sb_valid(idx(i))) {
-            io.tail_spec := idx(i)
-          }
-        }
+  // 1: Check if we are empty
+  // 2: Update the speculative tail. I.e. the most recent speculative instr.
+  // The tail could be a killed branch and then it would be wrong to associate
+  // new loads with that, already killed, instruction.
+
+  empty := true.B
+  for (i <- 0 until numSbEntries) {
+    val idx = wrapIndex(i)
+    when(sb_data(idx) && sb_valid(idx)) {
+      io.tail_spec := idx
+      empty := false.B
     }
+  }
 
   // Check if we are "full". This is sub-optimal but to reduce complexity
   // Also this is bugprone and needs to be safeguarded wrt sbAddrSz
@@ -202,16 +206,6 @@ class ShadowBuffer(
   {
     full := false.B
   }
-
-  // Check if we are "empty" of shadowing instructions
-  empty := true.B
-  for (w <- 0 until numSbEntries)
-    {
-      when(sb_data(w) && sb_valid(w))
-      {
-        empty := false.B
-      }
-    }
 
   tail := tail_next
 
