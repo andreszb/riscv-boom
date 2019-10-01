@@ -65,6 +65,16 @@ class ReleaseQueue(
 {
   val io = IO(new ReleaseQueueIo(width))
 
+  def wrapIndex(i: Int): UInt = {
+    val out = Wire(UInt(rqAddrSz.W))
+    when((i.U + head) <= numRqEntries.U) {
+      out := i.U + head
+    }.otherwise {
+      out := (i.U + head) - numRqEntries.U
+    }
+    out
+  }
+
   //Head and Tail to the buffer
   val tail  = RegInit(0.U(rqAddrSz.W))
   val head  = RegInit(0.U(rqAddrSz.W))
@@ -105,6 +115,7 @@ class ReleaseQueue(
       }
     }
 
+  // TODO: Make this superscalar
   // Handle commits from the ShadowBuffer. Flip the is_speculative bits
   when(io.commit.valid) {
     for (i <- 0 until numRqEntries)
@@ -122,54 +133,32 @@ class ReleaseQueue(
   // Current implementation dont allow committing to LSU out-of-order
   // This is to simplify the head/tail logic.
   val head_next = WireInit(head)
-  var idx = Wire(Vec(rqCommitWidth, UInt(rqAddrSz.W)))
   val stop = WireInit(VecInit(Seq.fill(rqCommitWidth){false.B}))
-  idx(0) := head
   for(i <- 0 until rqCommitWidth)
     {
-      if(i == 0)
-        {
-          when(valid(idx(i)) && !is_speculative(idx(i)) && !was_killed(idx(i))){
-            head_next := WrapInc(idx(i), numRqEntries)
-            io.unset_shadow_bit(i).valid := true.B
-            io.unset_shadow_bit(i).bits := ldq_idx(idx(i))
-            valid(idx(i)) := false.B
-            stop(i)   := false.B
-          }.elsewhen(valid(idx(i)) && was_killed(idx(i))) { //We are committing a killed shadow caster
-            // LSU already has killed this load
-            head_next := WrapInc(idx(i), numRqEntries)
-            io.unset_shadow_bit(i).valid := false.B // TODO do we wanna keep the write port idle?
-            valid(idx(i)) := false.B
-            stop(i) := false.B
-          }.otherwise {
-            io.unset_shadow_bit(i).valid := false.B
-            stop(i) := true.B
-          }
-        } else
-        {
-          idx(i) := WrapInc(idx(i-1), numRqEntries)
+      val idx = wrapIndex(i)
+      val exit = if(i > 0) {
+                      stop(i-1)
+                    } else {
+                      false.B
+                    }
 
-          when(valid(idx(i)) && !is_speculative(idx(i)) && !was_killed(idx(i)) && !stop(i-1)){
-            head_next := WrapInc(idx(i), numRqEntries)
-            io.unset_shadow_bit(i).valid := true.B
-            io.unset_shadow_bit(i).bits := ldq_idx(idx(i))
-            valid(idx(i)) := false.B
-            stop(i)   := false.B
-          }.elsewhen(valid(idx(i)) && was_killed(idx(i)) && !stop(i-1)) { //We are committing a killed shadow caster
-            // LSU already has killed this load
-            head_next := WrapInc(idx(i), numRqEntries)
-            io.unset_shadow_bit(i).valid := false.B // TODO do we wanna keep the write port idle?
-            valid(idx(i)) := false.B
-            stop(i) := false.B
-          }.otherwise {
-            io.unset_shadow_bit(i).valid := false.B
-            stop(i) := true.B
-          }
-
+      when(valid(idx) && !is_speculative(idx) && !was_killed(idx) && !exit)
+        { // Commit this load to LSU
+          io.unset_shadow_bit(i).valid := true.B
+          io.unset_shadow_bit(i).bits := ldq_idx(idx)
+          valid(idx) := false.B
+          head_next := WrapInc(idx, numRqEntries)
+        }.elsewhen(valid(idx) && was_killed(idx) && !exit)
+        { // This load is misspeculated and LSU has already killed it
+          io.unset_shadow_bit(i).valid := false.B // TODO do we wanna keep the write port idle?
+          valid(idx) := false.B
+          head_next := WrapInc(idx, numRqEntries)
+        }.otherwise
+        { //The load at idx is still under speculation. Then we just stall the release towards the LSU
+          io.unset_shadow_bit(i).valid := false.B
+          stop(i) := true.B
         }
-
-
-
     }
 
 
@@ -225,7 +214,6 @@ class ReleaseQueue(
   dontTouch(tail_next)
   dontTouch(head_next)
   dontTouch(stop)
-  dontTouch(idx)
   dontTouch(was_killed)
   dontTouch(is_speculative)
   dontTouch(valid)
