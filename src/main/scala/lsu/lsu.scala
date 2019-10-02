@@ -221,6 +221,10 @@ class LoadStoreUnit(pl_width: Int)(implicit p: Parameters,
    /* erlingrj support shadowing of loads */                                                                                             // for this ID to wakeup
    val laq_is_shadowed        = Reg(Vec(NUM_LDQ_ENTRIES, Bool())) // load is shadowed and can NOT be fired to memory// can only be woken up when the ReleaseQueue has
                                                                   // unset this bit
+   val laq_value_prediction       =Reg(Vec(NUM_LDQ_ENTRIES, UInt(addrWidth.W))) // For tracking the value prediction in the D$
+
+
+
    dontTouch(io.set_shadow_bit)
    dontTouch(io.unset_shadow_bit)
    // Store-Address Queue
@@ -328,6 +332,8 @@ class LoadStoreUnit(pl_width: Int)(implicit p: Parameters,
          }.otherwise {
             laq_is_shadowed(ld_enq_idx) := false.B
          }
+
+         laq_value_prediction(ld_enq_idx) := 0.U
 
 
          assert (ld_enq_idx === io.dis_uops(w).ldq_idx, "[lsu] mismatch enq load tag.")
