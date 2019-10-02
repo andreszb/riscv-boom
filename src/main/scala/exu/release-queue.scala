@@ -49,7 +49,7 @@ class ReleaseQueueIo(
   val full = Output(Bool())
 
   // From ShadowBuffer
-  val commit = Input(new SBCommitSignals())
+  val commit = Input(Vec(sbRqCommitWidth, new SBCommitSignals()))
   val sb_tail_spec = Input(UInt(sbAddrSz.W))
 
   // To LSU
@@ -115,18 +115,19 @@ class ReleaseQueue(
       }
     }
 
-  // TODO: Make this superscalar
+
   // Handle commits from the ShadowBuffer. Flip the is_speculative bits
-  when(io.commit.valid) {
-    for (i <- 0 until numRqEntries)
-      {
-        when(sb_idx(i) === io.commit.sb_idx && valid(i))
-         {
-             is_speculative(i) := false.B
-             was_killed(i) := io.commit.killed
-         }
-      }
-  }
+  for(i <- 0 until sbRqCommitWidth)
+    {
+      for (j <- 0 until numRqEntries)
+        {
+          when(sb_idx(j) === io.commit(i).sb_idx && valid(j))
+          {
+            is_speculative(j) := false.B
+            was_killed(j)     := io.commit(i).killed
+          }
+        }
+    }
 
   // Handle updates to LSU and update head
   // TODO code review. This could be done more elgant with scala var

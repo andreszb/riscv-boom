@@ -30,6 +30,7 @@ case class BoomCoreParams(
   numSbEntries: Int = 16,
   numRqEntries: Int = 16,
   rqCommitWidth: Int = 2,
+  sbRqCommitWidth: Int = 2,
   issueParams: Seq[IssueParams] = Seq(
     IssueParams(issueWidth=1, numEntries=16, iqType=IQT_MEM.litValue, dispatchWidth=1),
     IssueParams(issueWidth=2, numEntries=16, iqType=IQT_INT.litValue, dispatchWidth=1),
@@ -151,9 +152,10 @@ trait HasBoomCoreParameters extends freechips.rocketchip.tile.HasCoreParameters
   //************************************
   // Data Structure Sizes
   val numRobEntries = boomParams.numRobEntries       // number of ROB entries (e.g., 32 entries for R10k)
-  val numSbEntries  = boomParams.numSbEntries
-  val numRqEntries  = boomParams.numRqEntries
-  val rqCommitWidth = boomParams.rqCommitWidth
+  val numSbEntries  = boomParams.numSbEntries        // number of ShadowBuffer Entries
+  val numRqEntries  = boomParams.numRqEntries        // number of Release Queue entries
+  val rqCommitWidth = boomParams.rqCommitWidth       // number of commit ports from Release Queue => Load Store Unit
+  val sbRqCommitWidth = boomParams.sbRqCommitWidth   // number of commit ports from Shadow Buffer to Release Queue
   val numRxqEntries = boomParams.numRXQEntries       // number of RoCC execute queue entries. Keep small since this holds operands and instruction bits
   val numRcqEntries = boomParams.numRCQEntries       // number of RoCC commit queue entries. This can be large since it just keeps a pdst
   val numLdqEntries = boomParams.numLdqEntries       // number of LAQ entries

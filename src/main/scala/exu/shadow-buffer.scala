@@ -53,7 +53,7 @@ class ShadowBufferIo(
   val brinfo = Input(new BrResolutionInfo()) // The actual writebacks for branches come through here
 
   // To Release Queue
-  val release = Output(new SBCommitSignals()) //Update Release Queue
+  val release = Output(Vec(sbRqCommitWidth, new SBCommitSignals())) //Update Release Queue
 }
 
 
@@ -160,26 +160,32 @@ class ShadowBuffer(
   // Update buffer pointers and full/empty
   // Calculate next tail. It only depends on if we have enqueued new instructions this CC
   val tail_next = Mux(io.enq_uop(width-1).valid, WrapInc(q_idx(width-1), numSbEntries), q_idx(width-1))
-  val head_next = Mux(!sb_data(head) && sb_valid(head), WrapInc(head, numSbEntries), head)
 
-  // The Head depends on multiple factors:
-  // 1. Have we committed some shadow-casters?
-  // 2. Have we killed som shadow-casters that were speculated under other instructions?
-  // When incrementing the head we also
-  // Calculate next head and also dealing with committing to Release Queue.
 
-  //TODO: Multi-commit to RQ
-  when(!sb_data(head) && sb_valid(head))
-  {
-    // Commit the current head
-    sb_valid(head) := false.B
-    head := WrapInc(head, numSbEntries)
-    io.release.valid := true.B
-    io.release.killed := sb_killed(head)
-    io.release.sb_idx := head
-  }.otherwise {
-    io.release.valid := false.B
-  }
+  // Commit from the head to Release Queue and update the head pointer
+  val head_next = WireInit(head)
+  val stop = WireInit(VecInit(Seq.fill(sbRqCommitWidth){false.B}))
+
+  for (i <- 0 until sbRqCommitWidth)
+    {
+      val idx = wrapIndex(i)
+      val exit = if (i > 0 ) stop(i - 1) else false.B
+
+      when(sb_valid(idx) && !sb_data(idx) && !exit)
+      {
+        // Commit this instruction to the Release Queue
+        io.release(i).valid := true.B
+        io.release(i).killed := sb_killed(idx) // If the shadow caster was killed the shadowed loads are also killed
+        io.release(i).sb_idx := idx
+
+        sb_valid(idx) := false.B // Invalidate this entry
+        head_next := WrapInc(idx, numSbEntries) // Increment header
+      }.otherwise
+      {
+        io.release(i).valid := false.B
+        stop(i) := true.B
+      }
+    }
 
 
   // 1: Check if we are empty
@@ -207,7 +213,7 @@ class ShadowBuffer(
   }
 
   tail := tail_next
-
+  head := head_next
 
   io.full := full
   io.tail := tail
