@@ -120,7 +120,7 @@ class RobIo(
   
   val sb_enq = Output(Vec(coreWidth,Valid(new MicroOp())))
   val sb_wb_uop = Output(Vec(numWakeupPorts, Valid(UInt(sbAddrSz.W))))
-  val sb_kill = Output(Vec(coreWidth, Valid(UInt(sbAddrSz.W))
+  val sb_kill = Output(Vec(coreWidth, Valid(UInt(sbAddrSz.W))))
   val sb_full = Input(Bool())
   val sb_empty = Input(Bool())
 
@@ -309,11 +309,9 @@ class Rob(
   val rob_unsafe_masked = WireInit(VecInit(Seq.fill(numRobRows << log2Ceil(coreWidth)){false.B}))
 
   /* erlingrj: Make default commit signal to SB false */
-  for (i <- 0 until numWakeupPorts) 
-    {
-      io.sb_wb_uop(i).valid :=false.B
-    }
-  io.sb_kill.valid := false.B
+  for (i <- 0 until numWakeupPorts){ io.sb_wb_uop(i).valid :=false.B}
+  for (i <- 0 until coreWidth) {io.sb_kill(i).valid := false.B}
+  val rob_bank_enq_sb = WireInit(VecInit(Seq.fill(coreWidth){false.B})) // for multi-core
 
   for (w <- 0 until coreWidth) {
     def MatchBank(bank_idx: UInt): Bool = (bank_idx === w.U)
@@ -328,6 +326,7 @@ class Rob(
     /* erlingrj 2/9: SB implementation*/
     val rob_sb_val    = RegInit(VecInit(Seq.fill(numRobRows){false.B}))
     val rob_sb_idx    = Reg(Vec(numRobRows, UInt(sbAddrSz.W)))
+
     dontTouch(io.sb_enq)
     dontTouch(io.sb_wb_uop)
     dontTouch(io.sb_q_idx)
@@ -335,6 +334,10 @@ class Rob(
 
     //-----------------------------------------------
     // Dispatch: Add Entry to ROB
+
+    /*erlingrj default false for enque to Shadow Buffer and Release Queue */
+    io.sb_enq(w).valid := false.B
+    io.rq_enq(w).valid := false.B
 
     when (io.enq_valids(w)) {
       rob_val(rob_tail)       := true.B
@@ -355,28 +358,45 @@ class Rob(
          io.sb_enq(w).bits    := io.enq_uops(w)
          rob_sb_val(rob_tail) := true.B
          rob_sb_idx(rob_tail) := io.sb_q_idx(w)
+         rob_bank_enq_sb(w)   := true.B
       }.otherwise {
         io.sb_enq(w).valid := false.B
         rob_sb_val(rob_tail) := false.B
       }
 
-      // default rq_ebq = false
-      io.rq_enq(w).valid := false.B
       when(io.enq_uops(w).is_load) {
-         when(!io.sb_empty) {
+        //Now we have to watch out. If we have core>0 then we need to check if
+        // the other cores enqueued something in this CC. Then the latest
+        // of those unsafe instr is the one shadowing this load
+        if (coreWidth == 1) {
+          when(!io.sb_empty) {
             io.rq_enq(w).valid := true.B
             io.rq_enq(w).ldq_idx := io.enq_uops(w).ldq_idx
+            io.rq_enq(w).sb_idx := io.sb_tail
           }
+        } else {
+          when(rob_bank_enq_sb.reduce(_ | _)) { //if we did enq something this CC
+            for (i <- w until coreWidth) {
+              when(rob_bank_enq_sb(i)) {
+                io.rq_enq(w).valid := true.B
+                io.rq_enq(w).ldq_idx := io.enq_uops(w).ldq_idx
+                io.rq_enq(w).sb_idx := io.sb_q_idx(i)
+              }
+            }
+          }.otherwise {
+            when(!io.sb_empty) {
+              io.rq_enq(w).valid := true.B
+              io.rq_enq(w).ldq_idx := io.enq_uops(w).ldq_idx
+              io.rq_enq(w).sb_idx := io.sb_tail
+            }
+
+          }
+        }
       }
       /* end erlingrj 17/9 */
 
     } .elsewhen (io.enq_valids.reduce(_|_) && !rob_val(rob_tail)) {
       rob_uop(rob_tail).debug_inst := BUBBLE // just for debug purposes
-    } .otherwise {
-      /*erlingrj 23/9 */
-      io.sb_enq(w).valid := false.B
-      io.rq_enq(w).valid := false.B
-
     }
 
     //-----------------------------------------------
@@ -494,8 +514,8 @@ class Rob(
     when (rbk_row) {
       /*erlingrj: when rolling back, also kill the associated ShadowBuffer entry */
       when(rob_sb_val(com_idx)) {
-        io.sb_kill(i).valid := true.B
-        io.sb_kill(i).bits := rob_sb_idx(com_idx)
+        io.sb_kill(w).valid := true.B
+        io.sb_kill(w).bits := rob_sb_idx(com_idx)
       }
       rob_val(com_idx)       := false.B
       rob_exception(com_idx) := false.B

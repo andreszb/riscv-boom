@@ -30,18 +30,17 @@ class SBCommitSignals(implicit p: Parameters) extends BoomBundle()(p)
 }
 
 class ShadowBufferIo(
-  val machine_width:Int,
   val num_wakeup_ports:Int
 )(implicit p: Parameters) extends BoomBundle()(p) {
   
   // From ROB
-  val enq_uop = Input(Vec(machine_width, Flipped(Valid(new MicroOp())))) // ROB enqueues new Shadow Casting instrucntio
+  val enq_uop = Input(Vec(coreWidth, Flipped(Valid(new MicroOp())))) // ROB enqueues new Shadow Casting instrucntio
   val wb_uop = Input(Vec(num_wakeup_ports, Flipped(Valid(UInt(sbAddrSz.W))))) // WB from ROB
-  val kill = Flipped(Valid(UInt(sbAddrSz.W)))                                 // ROB kills Shadow Caster during Rollback
+  val kill = Input(Vec(coreWidth, Flipped(Valid(UInt(sbAddrSz.W)))))    // ROB kills Shadow Caster during Rollback
 
 
   // To Rob
-  val q_idx = Output(Vec(machine_width, UInt(sbAddrSz.W)))                  // SB queue idx of the most recent enque
+  val q_idx = Output(Vec(coreWidth, UInt(sbAddrSz.W)))                  // SB queue idx of the most recent enque
   
   val tail = Output(UInt(sbAddrSz.W)) // The latest instruction added
   val tail_spec = Output(UInt(sbAddrSz.W)) //The latest still speculative instruction. RQ needs this to store
@@ -58,11 +57,10 @@ class ShadowBufferIo(
 
 
 class ShadowBuffer(
-  width: Int,
   num_wakeup_ports: Int
 )(implicit p: Parameters) extends BoomModule()(p)
 {
-  val io = IO(new ShadowBufferIo(width, num_wakeup_ports))
+  val io = IO(new ShadowBufferIo(num_wakeup_ports))
 
   def wrapIndex(i: Int): UInt = {
     val out = Wire(UInt(sbAddrSz.W))
@@ -81,20 +79,24 @@ class ShadowBuffer(
   val full     = RegInit(false.B)
   val empty    = WireInit(true.B)
 
+  // Speculative tail pointer is a wire
+  val tail_spec= WireInit(0.U(sbAddrSz.W))
+
   // Actual buffer. Only need 2 bit per entry T/F and valid/not-valid
   // True/False is wether the instruction is still speculative
   // valid/not-valid is wether it is dispatched and not committed yet
   // The first implementation only supports one committ port from the Shadow Buffer
+  // TODO: Construct a single object from this?
   val sb_data      = RegInit(VecInit(Seq.fill(numSbEntries){false.B}))
   val sb_valid     = RegInit(VecInit(Seq.fill(numSbEntries){false.B}))
   val sb_uop       = Reg(Vec(numSbEntries, new MicroOp()))
   val sb_killed    = RegInit(VecInit(Seq.fill(numSbEntries){false.B}))
 
   // We need 1 wire per port to do the calculation of index to send back
-  val q_idx = Wire(Vec(width, UInt(sbAddrSz.W)))
+  val q_idx = Wire(Vec(coreWidth, UInt(sbAddrSz.W)))
 
   // Handle dispatch
-  for (w <- 0 until width) {
+  for (w <- 0 until coreWidth) {
     if (w == 0) {
       q_idx(w) := tail
     } else {
@@ -148,18 +150,20 @@ class ShadowBuffer(
       }
     }
 
-  // TODO: This is a per-core thing
-  // Kil entries on ROB branch except
-  when (io.kill.valid) {
-    val idx = io.kill.bits
-    sb_data(idx) := false.B
-    sb_uop(idx).inst := BUBBLE
-    sb_killed(idx)    := true.B
-  }
+  // Kill entries on ROB rollback
+  for (w <- 0 until coreWidth)
+    {
+      when(io.kill(w).valid)
+      {
+        val idx = io.kill(w).bits
+        sb_data(idx) := false.B
+        sb_killed(idx) := true.B
+      }
+    }
 
   // Update buffer pointers and full/empty
   // Calculate next tail. It only depends on if we have enqueued new instructions this CC
-  val tail_next = Mux(io.enq_uop(width-1).valid, WrapInc(q_idx(width-1), numSbEntries), q_idx(width-1))
+  tail := Mux(io.enq_uop(coreWidth-1).valid, WrapInc(q_idx(coreWidth-1), numSbEntries), q_idx(coreWidth-1))
 
 
   // Commit from the head to Release Queue and update the head pointer
@@ -192,11 +196,10 @@ class ShadowBuffer(
   // 2: Update the speculative tail. I.e. the most recent speculative instr.
   // The tail could be a killed branch and then it would be wrong to associate
   // new loads with that, already killed, instruction.
-  empty := true.B
   for (i <- 0 until numSbEntries) {
     val idx = wrapIndex(i)
     when(sb_data(idx) && sb_valid(idx)) {
-      io.tail_spec := idx
+      tail_spec := idx
       empty := false.B
     }
   }
@@ -204,7 +207,7 @@ class ShadowBuffer(
   // Check if we are "full". This is sub-optimal but to reduce complexity
   // Also this is bugprone and needs to be safeguarded wrt sbAddrSz
 
-  when((WrapSub2HW(head_next, tail_next, numSbEntries) <= width.U) && sb_valid(head_next))
+  when((WrapSub2HW(head_next, tail, numSbEntries) <= coreWidth.U) && sb_valid(head_next))
   {
     full := true.B
   }.otherwise
@@ -212,19 +215,17 @@ class ShadowBuffer(
     full := false.B
   }
 
-  tail := tail_next
   head := head_next
-
-  io.full := full
-  io.tail := tail
-  io.head := head
-  io.empty := empty
+  io.empty      := empty
+  io.full       := full
+  io.tail       := tail
+  io.tail_spec  := tail_spec
+  io.head       := head
 
 
   // DONTTOUCH FOR DEBUGS
   dontTouch(head)
   dontTouch(tail)
-  dontTouch(tail_next)
   dontTouch(head_next)
   dontTouch(full)
   dontTouch(io.enq_uop)
@@ -232,6 +233,7 @@ class ShadowBuffer(
   dontTouch(io.q_idx)
   dontTouch(io.head)
   dontTouch(io.tail)
+  dontTouch(io.tail_spec)
   dontTouch(io.full)
   dontTouch(empty)
   dontTouch(io.release)

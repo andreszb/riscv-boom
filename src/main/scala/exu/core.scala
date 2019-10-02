@@ -145,7 +145,6 @@ class BoomCore(implicit p: Parameters, edge: freechips.rocketchip.tilelink.TLEdg
 
   /*erlingrj 2/9 */
   val sb               = Module(new ShadowBuffer(
-                                coreWidth,
                                  numIrfWritePorts + 1 + numFpWakeupPorts)) //TODO: WHY THIS? erlingrj 17. september
   val rq               = Module(new ReleaseQueue(
                                 coreWidth,
@@ -613,7 +612,7 @@ class BoomCore(implicit p: Parameters, edge: freechips.rocketchip.tilelink.TLEdg
   //-------------------------------------------------------------
   // ShadowBuffer and ReleaseQueue
   /*erlingrj 2/9 Connect ShadowBuffer and ROB*/
-  rob.io.sb_tail := sb.io.tail
+  rob.io.sb_tail := sb.io.tail_spec
   rob.io.sb_head := sb.io.head
   rob.io.sb_full := sb.io.full
   rob.io.sb_q_idx := sb.io.q_idx
@@ -626,7 +625,6 @@ class BoomCore(implicit p: Parameters, edge: freechips.rocketchip.tilelink.TLEdg
   sb.io.kill <> rob.io.sb_kill
   
   rq.io.commit := sb.io.release
-  rq.io.sb_tail_spec := sb.io.tail_spec
   rq.io.enq := rob.io.rq_enq
   rq.io.exception := rob.io.flush.valid
 

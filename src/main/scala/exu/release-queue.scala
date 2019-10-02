@@ -34,6 +34,7 @@ import freechips.rocketchip.config.Parameters
 class RQEnqSignals(implicit p: Parameters) extends BoomBundle()(p) {
   val valid = Bool()
   val ldq_idx = UInt(ldqAddrSz.W)
+  val sb_idx = UInt(sbAddrSz.W)
 }
 
 
@@ -50,7 +51,6 @@ class ReleaseQueueIo(
 
   // From ShadowBuffer
   val commit = Input(Vec(sbRqCommitWidth, new SBCommitSignals()))
-  val sb_tail_spec = Input(UInt(sbAddrSz.W))
 
   // To LSU
   // TODO combine this to 1 single interface
@@ -104,7 +104,7 @@ class ReleaseQueue(
         is_speculative(q_idx(w)) := true.B
         was_killed(q_idx(w)) := false.B
         ldq_idx(q_idx(w)) := io.enq(w).ldq_idx
-        sb_idx(q_idx(w)) := io.sb_tail_spec
+        sb_idx(q_idx(w)) := io.enq(w).sb_idx
 
         // Send info to Load Queue
         io.set_shadow_bit(w).valid := true.B
@@ -119,9 +119,11 @@ class ReleaseQueue(
   // Handle commits from the ShadowBuffer. Flip the is_speculative bits
   for(i <- 0 until sbRqCommitWidth)
     {
+      val is_valid = io.commit(i).valid
       for (j <- 0 until numRqEntries)
         {
-          when(sb_idx(j) === io.commit(i).sb_idx && valid(j))
+          val entryMatch = io.commit(i).sb_idx === sb_idx(j)
+          when(is_valid && entryMatch)
           {
             is_speculative(j) := false.B
             was_killed(j)     := io.commit(i).killed
