@@ -120,7 +120,7 @@ class RobIo(
   
   val sb_enq = Output(Vec(coreWidth,Valid(new MicroOp())))
   val sb_wb_uop = Output(Vec(numWakeupPorts, Valid(UInt(sbAddrSz.W))))
-  val sb_kill = Valid(UInt(sbAddrSz.W))
+  val sb_kill = Output(Vec(coreWidth, Valid(UInt(sbAddrSz.W))
   val sb_full = Input(Bool())
   val sb_empty = Input(Bool())
 
@@ -462,12 +462,6 @@ class Rob(
       rob_exception(GetRowIdx(io.bxcpt.bits.uop.rob_idx)) := true.B
       assert(rob_unsafe(GetRowIdx(io.bxcpt.bits.uop.rob_idx)),
         "An instruction marked as safe is causing an exception")
-
-      /* erlingrj: update shadowbuffer that we had a branch exception */
-      when(rob_sb_val(io.bxcpt.bits.uop.rob_idx)) {
-        io.sb_kill.valid := true.B
-        io.sb_kill.bits := rob_sb_idx(io.bxcpt.bits.uop.rob_idx)
-      }
     }
     can_throw_exception(w) := rob_val(rob_head) && rob_exception(rob_head)
 
@@ -500,8 +494,8 @@ class Rob(
     when (rbk_row) {
       /*erlingrj: when rolling back, also kill the associated ShadowBuffer entry */
       when(rob_sb_val(com_idx)) {
-        io.sb_kill.valid := true.B
-        io.sb_kill.bits := rob_sb_idx(com_idx)
+        io.sb_kill(i).valid := true.B
+        io.sb_kill(i).bits := rob_sb_idx(com_idx)
       }
       rob_val(com_idx)       := false.B
       rob_exception(com_idx) := false.B
