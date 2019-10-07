@@ -94,21 +94,25 @@ class ReleaseQueue(
   // Handle enques from ROB
   for (w <- 0 until width)
     {
-      if(w == 0) {
-        q_idx(w) := tail
-      } else {
+      if(w > 0) {
         q_idx(w) := Mux(io.enq(w - 1).valid, WrapInc(q_idx(w - 1), numRqEntries), q_idx(w - 1))
+      } else {
+        q_idx(w) := tail
       }
+
       when(io.enq(w).valid) {
-        valid(q_idx(w)) := true.B
-        is_speculative(q_idx(w)) := true.B
-        was_killed(q_idx(w)) := false.B
-        ldq_idx(q_idx(w)) := io.enq(w).ldq_idx
-        sb_idx(q_idx(w)) := io.enq(w).sb_idx
+        valid(q_idx(w))           := true.B
+        is_speculative(q_idx(w))  := true.B
+        was_killed(q_idx(w))      := false.B
+        ldq_idx(q_idx(w))         := io.enq(w).ldq_idx
+        sb_idx(q_idx(w))          := io.enq(w).sb_idx
 
         // Send info to Load Queue
         io.set_shadow_bit(w).valid := true.B
         io.set_shadow_bit(w).bits := io.enq(w).ldq_idx
+
+        // Make sure we are not overwriting an existing entry
+        assert(!valid(q_idx(w)), "[rq] overwriting valid entry=%d. ", q_idx(w))
       }.otherwise
       {
         io.set_shadow_bit(w).valid := false.B
@@ -123,7 +127,7 @@ class ReleaseQueue(
       for (j <- 0 until numRqEntries)
         {
           val entryMatch = io.commit(i).sb_idx === sb_idx(j)
-          when(is_valid && entryMatch)
+          when(is_valid && entryMatch && valid(j))
           {
             is_speculative(j) := false.B
             was_killed(j)     := io.commit(i).killed
