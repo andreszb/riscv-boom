@@ -84,6 +84,7 @@ class LoadStoreUnitIO(val pl_width: Int)(implicit p: Parameters) extends BoomBun
    val memreq_addr        = Output(UInt(corePAddrBits.W))
    val memreq_wdata       = Output(UInt(xLen.W))
    val memreq_uop         = Output(new MicroOp())
+   val memreq_shadowed    = Output(Bool()) //erlingrj: is the load speculative
 
    // Memory Stage
    val memreq_kill        = Output(Bool()) // kill request sent out last cycle
@@ -96,6 +97,10 @@ class LoadStoreUnitIO(val pl_width: Int)(implicit p: Parameters) extends BoomBun
    val forward_uop        = Output(new MicroOp()) // the load microop (for its pdst)
 
    // Receive Memory Response
+   val memresp_val        = Input(Bool())
+   val memresp_uop        = Input(new MicroOp())
+   val memresp_value_predicted = Input(Bool())
+   
    val memresp            = Flipped(new ValidIO(new MicroOp()))
 
    // Commit Stage
@@ -221,7 +226,7 @@ class LoadStoreUnit(pl_width: Int)(implicit p: Parameters,
    /* erlingrj support shadowing of loads */                                                                                             // for this ID to wakeup
    val laq_is_shadowed        = Reg(Vec(NUM_LDQ_ENTRIES, Bool())) // load is shadowed and can NOT be fired to memory// can only be woken up when the ReleaseQueue has
                                                                   // unset this bit
-   val laq_value_prediction       =Reg(Vec(NUM_LDQ_ENTRIES, UInt(addrWidth.W))) // For tracking the value prediction in the D$
+   val laq_value_prediction       =Reg(Vec(NUM_LDQ_ENTRIES, UInt(coreDataBits.W))) // For tracking the value prediction in the D$
 
 
 
@@ -648,10 +653,11 @@ class LoadStoreUnit(pl_width: Int)(implicit p: Parameters,
    val exe_ld_uop  = Mux(will_fire_load_incoming || will_fire_load_retry, exe_tlb_uop,   laq_uop(exe_ld_idx_wakeup))
 
    // defaults
-   io.memreq_val     := false.B
-   io.memreq_addr    := exe_ld_addr
-   io.memreq_wdata   := sdq_data(stq_execute_head)
-   io.memreq_uop     := exe_ld_uop
+   io.memreq_val      := false.B
+   io.memreq_addr     := exe_ld_addr
+   io.memreq_wdata    := sdq_data(stq_execute_head)
+   io.memreq_uop      := exe_ld_uop
+   io.memreq_shadowed := false.B
 
    val mem_fired_st = RegInit(false.B)
    mem_fired_st := false.B
@@ -1011,20 +1017,20 @@ class LoadStoreUnit(pl_width: Int)(implicit p: Parameters,
    // Handle Memory Responses
    //------------------------
 
-   when (io.memresp.valid)
+   when (io.memresp_val)
    {
-      when (io.memresp.bits.is_load)
+      when (io.memresp_uop.is_load)
       {
-         laq_succeeded(io.memresp.bits.ldq_idx) := true.B
+         laq_succeeded(io.memresp_uop.ldq_idx) := true.B
       }
       .otherwise
       {
-         stq_succeeded(io.memresp.bits.stq_idx) := true.B
+         stq_succeeded(io.memresp_uop.stq_idx) := true.B
 
          if (O3PIPEVIEW_PRINTF)
          {
             // TODO supress printing out a store-comp for lr instructions.
-            printf("%d; store-comp: %d\n", io.memresp.bits.debug_events.fetch_seq, io.debug_tsc)
+            printf("%d; store-comp: %d\n", io.memresp_uop.debug_events.fetch_seq, io.debug_tsc)
          }
       }
    }

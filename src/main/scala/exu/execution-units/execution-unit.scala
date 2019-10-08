@@ -411,6 +411,9 @@ class ALUExeUnit(
     io.dmem.req.bits.uop    := io.lsu_io.memreq_uop
     io.dmem.req.bits.kill   := io.lsu_io.memreq_kill // load kill request sent to memory
 
+    // erlingrj: forward shadow bit from LSU to dcache_shim
+    io.dmem.req.bits.shadowed := io.lsu_io.memreq_shadowed
+
     // I should be timing forwarding to coincide with dmem resps, so I'm not clobbering
     //anything....
     val memresp_val    = Mux(io.com_exception && io.dmem.resp.bits.uop.is_load,
@@ -424,8 +427,10 @@ class ALUExeUnit(
     val memresp_data   = Mux(io.lsu_io.forward_val, io.lsu_io.forward_data,
                                                     io.dmem.resp.bits.data_subword)
 
-    io.lsu_io.memresp.valid := memresp_val
-    io.lsu_io.memresp.bits  := memresp_uop
+    io.lsu_io.memresp_val := memresp_val
+    io.lsu_io.memresp_uop  := memresp_uop
+    io.lsu_io.memresp_value_predicted := false.B //erlingrj always assume it was NOT value predicted
+
 
     // Hook up loads to the response
     io.ll_iresp.valid                := RegNext(memresp_val

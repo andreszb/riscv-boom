@@ -135,6 +135,7 @@ class DCacheReq(implicit p: Parameters) extends BoomBundle()(p)
    val uop     = new MicroOp()
    val data    = Bits(coreDataBits.W)
    val kill    = Bool()    // e.g., LSU detects load misspeculation
+   val shadowed = Bool() //erlingrj: is the load speculative (and we cannot allow L1 miss)
 }
 
 /**
@@ -159,6 +160,7 @@ class DCacheResp(implicit p: Parameters) extends BoomBundle()(p)
    val data_subword = Bits(coreDataBits.W)
    val uop          = new MicroOp
    val size         = UInt(2.W)
+   val value_predicted = Bool() //erlingrj: is this value predicted because we got a L1 miss under speculation
 }
 
 /**
