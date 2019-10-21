@@ -52,6 +52,37 @@ class BoomRocketSystem(implicit p: Parameters) extends BoomRocketSubsystem
   }
 }
 
+// Added by erlingrj to create a dummy synthesizable verilog output for timing and area analysis
+class BoomRocketFPGASystem(implicit p: Parameters) extends BoomRocketSubsystem
+with HasAsyncExtInterrupts
+with CanHaveMasterAXI4MemPort
+//with CanHaveMasterAXI4MMIOPort
+//with CanHaveSlaveAXI4Port
+with HasPeripheryBootROM
+{
+override lazy val module = new BoomRocketFPGASystemModule(this)
+
+// The sbus masters the cbus; here we convert TL-UH -> TL-UL
+sbus.crossToBus(cbus, NoCrossing)
+
+// The cbus masters the pbus; which might be clocked slower
+cbus.crossToBus(pbus, SynchronousCrossing())
+
+// The fbus masters the sbus; both are TL-UH or TL-C
+FlipRendering { implicit p =>
+sbus.crossFromBus(fbus, SynchronousCrossing())
+}
+
+// The sbus masters the mbus; here we convert TL-C -> TL-UH
+private val BankedL2Params(nBanks, coherenceManager) = p(BankedL2Key)
+private val (in, out, halt) = coherenceManager(this)
+if (nBanks != 0) {
+sbus.coupleTo("coherence_manager") { in :*= _ }
+mbus.coupleFrom("coherence_manager") { _ :=* BankBinder(mbus.blockBytes * (nBanks-1)) :*= out }
+}
+}
+
+
 /**
  * Base top module implementation with periphery devices and ports, and a BOOM + Rocket subsystem
  */
@@ -61,5 +92,15 @@ class BoomRocketSystemModule[+L <: BoomRocketSystem](_outer: L) extends BoomRock
   with CanHaveMasterAXI4MemPortModuleImp
   with CanHaveMasterAXI4MMIOPortModuleImp
   with CanHaveSlaveAXI4PortModuleImp
+  with HasPeripheryBootROMModuleImp
+  with DontTouch
+
+// Added by erlingrj to create a dummy synthesizable verilog output for timing and area analysis
+class BoomRocketFPGASystemModule[+L <: BoomRocketFPGASystem](_outer: L) extends BoomRocketSubsystemModuleImp(_outer)
+  with HasRTCModuleImp
+  with HasExtInterruptsModuleImp
+  with CanHaveMasterAXI4MemPortModuleImp
+  //with CanHaveMasterAXI4MMIOPortModuleImp
+  //with CanHaveSlaveAXI4PortModuleImp
   with HasPeripheryBootROMModuleImp
   with DontTouch
