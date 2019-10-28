@@ -47,12 +47,22 @@ import freechips.rocketchip.util._
 // Main configs. SmallBoomConfig and MediumBoomConfig are best-maintained
 //   MediumBoomConfig is typically described in documentation
 //   All RV64IMAFDC
+
+class SmallBoomCustomConfig extends Config(
+  new WithRVC ++
+  new WithSmallCustomBooms ++
+  new BaseBoomConfig ++
+  new WithNBoomCores(1) ++
+  new freechips.rocketchip.system.BaseConfig) {
+}
+
 class SmallBoomConfig extends Config(
   new WithRVC ++
   new WithSmallBooms ++
   new BaseBoomConfig ++
   new WithNBoomCores(1) ++
-  new freechips.rocketchip.system.BaseConfig)
+  new freechips.rocketchip.system.BaseConfig){
+}
 
 class MediumBoomConfig extends Config(
   new WithRVC ++
