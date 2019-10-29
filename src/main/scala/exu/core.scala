@@ -289,7 +289,11 @@ class BoomCore(implicit p: Parameters, edge: freechips.rocketchip.tilelink.TLEdg
         "Load/Store Unit Size  : " + NUM_LDQ_ENTRIES + "/" + NUM_STQ_ENTRIES,
         "Num Int Phys Registers: " + numIntPhysRegs,
         "Num FP  Phys Registers: " + numFpPhysRegs,
-        "Max Branch Count      : " + maxBrCount)
+        "Max Branch Count      : " + maxBrCount,
+        "Shadow Buffer Size    : " + numSbEntries,
+        "Release Queue Size    : " + numRqEntries,
+        "SB->RQ Width          : " + sbRqCommitWidth,
+        "RQ->LSU width         : " + rqCommitWidth)
     + BoomCoreStringPrefix(
         "RAS Size              : " + (if (enableBTB) boomParams.btb.nRAS else 0),
         "Rename Stage Latency  : " + renameLatency) + "\n"
