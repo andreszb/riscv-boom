@@ -112,7 +112,8 @@ class RobIo(
   val debug = Output(new DebugRobSignals())
   val debug_tsc = Input(UInt(xLen.W))
 
-  /* erlingrj 17/9: add support for a SB */
+  // --------------------------------------------------------------------
+  // Begin: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
   // TODO: Make this into a ShadowBufferInterface type
   val sb_tail = Input(UInt(sbAddrSz.W)) //Probably not needed
   val sb_head = Input(UInt(sbAddrSz.W)) //Probably not needed
@@ -120,13 +121,14 @@ class RobIo(
   
   val sb_enq = Output(Vec(coreWidth,Valid(new MicroOp())))
   val sb_wb_uop = Output(Vec(numWakeupPorts, Valid(UInt(sbAddrSz.W))))
-  val sb_kill = Output(Vec(coreWidth, Valid(UInt(sbAddrSz.W))))
+  val sb_rbk = Output(Vec(coreWidth, Valid(UInt(sbAddrSz.W))))
   val sb_full = Input(Bool())
   val sb_empty = Input(Bool())
 
   val rq_enq = Output(Vec(coreWidth, new RQEnqSignals()))
   val rq_full = Input(Bool())
-   /* end erlingrj 17/9*/
+  // End: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
+  //----------------------------------------------------------------------
 
 
 }
@@ -308,10 +310,13 @@ class Rob(
   // Contains all information the PNR needs to find the oldest instruction which can't be safely speculated past.
   val rob_unsafe_masked = WireInit(VecInit(Seq.fill(numRobRows << log2Ceil(coreWidth)){false.B}))
 
-  /* erlingrj: Make default commit signal to SB false */
+  // --------------------------------------------------------------------
+  // Begin: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
   for (i <- 0 until numWakeupPorts){ io.sb_wb_uop(i).valid :=false.B}
-  for (i <- 0 until coreWidth) {io.sb_kill(i).valid := false.B}
+  for (i <- 0 until coreWidth) {io.sb_rbk(i).valid := false.B}
   val rob_bank_enq_sb = WireInit(VecInit(Seq.fill(coreWidth){false.B})) // for multi-core
+  // End: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
+  //----------------------------------------------------------------------
 
   for (w <- 0 until coreWidth) {
     def MatchBank(bank_idx: UInt): Bool = (bank_idx === w.U)
@@ -323,14 +328,14 @@ class Rob(
     val rob_uop       = Reg(Vec(numRobRows, new MicroOp()))
     val rob_exception = Mem(numRobRows, Bool())
     val rob_fflags    = Mem(numRobRows, Bits(freechips.rocketchip.tile.FPConstants.FLAGS_SZ.W))
-    /* erlingrj 2/9: SB implementation*/
+    // --------------------------------------------------------------------
+    // Begin: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
     val rob_sb_val    = RegInit(VecInit(Seq.fill(numRobRows){false.B}))
     val rob_sb_idx    = Reg(Vec(numRobRows, UInt(sbAddrSz.W)))
 
     dontTouch(io.sb_enq)
     dontTouch(io.sb_wb_uop)
     dontTouch(io.sb_q_idx)
-    /* end erlingrj 2/9 */
 
     //-----------------------------------------------
     // Dispatch: Add Entry to ROB
@@ -338,6 +343,8 @@ class Rob(
     /*erlingrj default false for enque to Shadow Buffer and Release Queue */
     io.sb_enq(w).valid := false.B
     io.rq_enq(w).valid := false.B
+    // End: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
+    //----------------------------------------------------------------------
 
     when (io.enq_valids(w)) {
       rob_val(rob_tail)       := true.B
@@ -351,7 +358,9 @@ class Rob(
 
       assert (rob_val(rob_tail) === false.B, "[rob] overwriting a valid entry.")
       assert ((io.enq_uops(w).rob_idx >> log2Ceil(coreWidth)) === rob_tail)
-    
+
+      // --------------------------------------------------------------------
+      // Begin: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
       /* erlingrj 17/9 */
       when(io.enq_uops(w).is_br_or_jmp) {
          io.sb_enq(w).valid   := true.B
@@ -393,7 +402,8 @@ class Rob(
           }
         }
       }
-      /* end erlingrj 17/9 */
+      // End: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
+      //----------------------------------------------------------------------
 
     } .elsewhen (io.enq_valids.reduce(_|_) && !rob_val(rob_tail)) {
       rob_uop(rob_tail).debug_inst := BUBBLE // just for debug purposes
@@ -415,11 +425,16 @@ class Rob(
             io.debug_tsc)
         }
         /* erlingrj 2/9 */
+        // --------------------------------------------------------------------
+        // Begin: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
         when(rob_sb_val(row_idx)) {
            io.sb_wb_uop(i).bits := rob_sb_idx(row_idx)
            io.sb_wb_uop(i).valid := true.B
            rob_sb_val(row_idx) := false.B
         }
+
+        // End: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
+        //----------------------------------------------------------------------
       }
       // TODO check that fflags aren't overwritten
       // TODO check that the wb is to a valid ROB entry, give it a time stamp
@@ -512,11 +527,15 @@ class Rob(
       "com_valids and rbk_valids are mutually exclusive")
 
     when (rbk_row) {
+      // --------------------------------------------------------------------
+      // Begin: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
       /*erlingrj: when rolling back, also kill the associated ShadowBuffer entry */
       when(rob_sb_val(com_idx)) {
-        io.sb_kill(w).valid := true.B
-        io.sb_kill(w).bits := rob_sb_idx(com_idx)
+        io.sb_rbk(w).valid := true.B
+        io.sb_rbk(w).bits := rob_sb_idx(com_idx)
       }
+      // End: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
+      //----------------------------------------------------------------------
       rob_val(com_idx)       := false.B
       rob_exception(com_idx) := false.B
     }

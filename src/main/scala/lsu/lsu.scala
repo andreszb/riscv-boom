@@ -155,10 +155,13 @@ class LoadStoreUnitIO(val pl_width: Int)(implicit p: Parameters) extends BoomBun
    }
 
    val debug_tsc = Input(UInt(xLen.W))     // time stamp counter
-
+   // ---------------------------------------------------------------------------------------
+   // Begin: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
    /* erlingrj Add support for ShadowBuffer */
    val set_shadow_bit = Input(Vec(pl_width, Flipped(Valid(UInt(ldqAddrSz.W)))))
    val unset_shadow_bit = Input(Vec(rqCommitWidth, Flipped(Valid(UInt(ldqAddrSz.W)))))
+   // End: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
+   //----------------------------------------------------------------------------------------
 
 }
 
@@ -217,12 +220,16 @@ class LoadStoreUnit(pl_width: Int)(implicit p: Parameters,
    //val laq_block_id     = Vec.fill(NUM_LDQ_ENTRIES) { Reg() { UInt(width = MEM_ADDR_SZ) } }    // TODO something is
                                                                                                 // blocking us from
                                                                                                 // executing, listen
-   
+   // ---------------------------------------------------------------------------------------
+   // Begin: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
    /* erlingrj support shadowing of loads */                                                                                             // for this ID to wakeup
    val laq_is_shadowed        = Reg(Vec(NUM_LDQ_ENTRIES, Bool())) // load is shadowed and can NOT be fired to memory// can only be woken up when the ReleaseQueue has
                                                                   // unset this bit
    dontTouch(io.set_shadow_bit)
    dontTouch(io.unset_shadow_bit)
+   // End: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
+   //----------------------------------------------------------------------------------------
+
    // Store-Address Queue
    val saq_val       = Reg(Vec(NUM_STQ_ENTRIES, Bool()))
    val saq_is_virtual= Reg(Vec(NUM_STQ_ENTRIES, Bool())) // address in SAQ is a virtual address.
@@ -259,6 +266,8 @@ class LoadStoreUnit(pl_width: Int)(implicit p: Parameters,
                                                 live_store_mask)
 
     // TODO move this to bottom of file
+   // ---------------------------------------------------------------------------------------
+   // Begin: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
    /*erlingrj: Flip is_shadowed bits when Release Queue gives notice  */
    for (w <- 0 until rqCommitWidth)
    {
@@ -273,6 +282,8 @@ class LoadStoreUnit(pl_width: Int)(implicit p: Parameters,
       }
 
    }
+   // End: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
+   //----------------------------------------------------------------------------------------
 
 
    //-------------------------------------------------------------
@@ -319,7 +330,8 @@ class LoadStoreUnit(pl_width: Int)(implicit p: Parameters,
          laq_failure  (ld_enq_idx)    := false.B
          laq_forwarded_std_val(ld_enq_idx)  := false.B
          debug_laq_put_to_sleep(ld_enq_idx) := false.B
-
+         // ---------------------------------------------------------------------------------------
+         // Begin: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
          /*erlingrj for now, just set it to false */
          // TODO interface to ReleaseQueue
          when(io.set_shadow_bit(w).valid) {
@@ -328,6 +340,8 @@ class LoadStoreUnit(pl_width: Int)(implicit p: Parameters,
          }.otherwise {
             laq_is_shadowed(ld_enq_idx) := false.B
          }
+         // End: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
+         //----------------------------------------------------------------------------------------
 
 
          assert (ld_enq_idx === io.dis_uops(w).ldq_idx, "[lsu] mismatch enq load tag.")
@@ -387,11 +401,15 @@ class LoadStoreUnit(pl_width: Int)(implicit p: Parameters,
    val will_fire_store_commit  = WireInit(false.B) // uses      D$
    val will_fire_load_wakeup   = WireInit(false.B) // uses      D$, SAQ-search, LAQ-search
    val will_fire_sfence        = WireInit(false.B) // uses TLB                            , ROB
+   // ---------------------------------------------------------------------------------------
+   // Begin: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
     /* erlingrj for shadowed loads
    If we receive the calculated address for a shadowed load, we wish to do the address translation
    but then just put the load to sleep. This will allow a load_wakeup to happen simultaneously
     */
    val will_fire_shadowed_load_incoming   = WireInit(false.B) // uses TLB
+   // End: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
+   //----------------------------------------------------------------------------------------
 
    val can_fire_sta_retry      = WireInit(false.B)
    val can_fire_load_retry     = WireInit(false.B)
@@ -695,7 +713,8 @@ class LoadStoreUnit(pl_width: Int)(implicit p: Parameters,
       assert(!(will_fire_load_incoming && laq_addr_val(exe_tlb_uop.ldq_idx)),
          "[lsu] incoming load is overwriting a valid address.")
    }
-
+   // ---------------------------------------------------------------------------------------
+   // Begin: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
    /* erlingrj: Write the shadowed load into the LAQ*/
    // TODO move this together with will_fire_load and retry
    when(will_fire_shadowed_load_incoming)
@@ -707,6 +726,8 @@ class LoadStoreUnit(pl_width: Int)(implicit p: Parameters,
       laq_is_uncacheable(exe_tlb_uop.ldq_idx)      := tlb_addr_uncacheable && !tlb_miss
       assert(laq_is_shadowed(exe_tlb_uop.ldq_idx), "[lsu] incoming load put to sleep after TLB but is not shadowed (anymore?)")
    }
+   // End: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
+   //----------------------------------------------------------------------------------------
 
    when (will_fire_sta_incoming || will_fire_sta_retry)
    {
@@ -794,11 +815,15 @@ class LoadStoreUnit(pl_width: Int)(implicit p: Parameters,
    {
       mem_ld_killed := true.B && mem_fired_ld
    }
+   // ---------------------------------------------------------------------------------------
+   // Begin: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
    // erlingrj: I changed this. Speculative wakeup of load happens not only when will_fire_load_incoming
    io.mem_ldSpecWakeup.valid := RegNext((will_fire_load_incoming || (will_fire_shadowed_load_incoming && will_fire_load_wakeup))
                                      && !io.exe_resp.bits.uop.fp_val
                                      && io.exe_resp.bits.uop.pdst =/= 0.U, init=false.B)
    io.mem_ldSpecWakeup.bits := mem_ld_uop.pdst
+   // End: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
+   //----------------------------------------------------------------------------------------
 
    // tell the ROB to clear the busy bit on the incoming store
    val clr_bsy_valid = RegInit(false.B)

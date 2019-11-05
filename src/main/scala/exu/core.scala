@@ -142,14 +142,16 @@ class BoomCore(implicit p: Parameters, edge: freechips.rocketchip.tilelink.TLEdg
   val rob              = Module(new Rob(
                            numIrfWritePorts + 1 + numFpWakeupPorts, // +1 for ll writebacks
                            numFpWakeupPorts))
-
+  // ---------------------------------------------------------------------------------------
+  // Begin: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
   /*erlingrj 2/9 */
   val sb               = Module(new ShadowBuffer(
                                  numIrfWritePorts + 1 + numFpWakeupPorts)) //TODO: WHY THIS? erlingrj 17. september
   val rq               = Module(new ReleaseQueue(
                                 coreWidth,
   ))
-
+  // End: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
+  //----------------------------------------------------------------------------------------
   
   // Used to wakeup registers in rename and issue. ROB needs to listen to something else.
   val int_iss_wakeups  = Wire(Vec(numIntIssueWakeupPorts, Valid(new ExeUnitResp(xLen))))
@@ -612,7 +614,9 @@ class BoomCore(implicit p: Parameters, edge: freechips.rocketchip.tilelink.TLEdg
                                w.U(log2Ceil(coreWidth).W))
     }
   }
-
+  // ---------------------------------------------------------------------------------------
+  // Begin: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
+  
   //-------------------------------------------------------------
   // ShadowBuffer and ReleaseQueue
   /*erlingrj 2/9 Connect ShadowBuffer and ROB*/
@@ -626,7 +630,7 @@ class BoomCore(implicit p: Parameters, edge: freechips.rocketchip.tilelink.TLEdg
   sb.io.enq_uop <> rob.io.sb_enq
   sb.io.wb_uop <> rob.io.sb_wb_uop
   sb.io.brinfo <> br_unit.brinfo
-  sb.io.kill <> rob.io.sb_kill
+  sb.io.rollback <> rob.io.sb_rbk
   
   rq.io.commit := sb.io.release
   rq.io.enq := rob.io.rq_enq
@@ -635,6 +639,9 @@ class BoomCore(implicit p: Parameters, edge: freechips.rocketchip.tilelink.TLEdg
 
   lsu.io.set_shadow_bit := rq.io.set_shadow_bit
   lsu.io.unset_shadow_bit := rq.io.unset_shadow_bit
+
+  // End: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
+  //----------------------------------------------------------------------------------------
 
   //-------------------------------------------------------------
   // RoCC allocation logic
