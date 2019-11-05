@@ -22,10 +22,12 @@ import chisel3.experimental.dontTouch
 import freechips.rocketchip.config.Parameters
 
 
+/* SBCommitSignals are the interface from ShadowBuffer to Release Queue.
+*/
 class SBCommitSignals(implicit p: Parameters) extends BoomBundle()(p)
 {
-  val sb_idx = UInt(sbAddrSz.W)
-  val killed = Bool()
+  val sb_idx = UInt(sbAddrSz.W) //Index of the committed instruction
+  val killed = Bool() //Wether it was killed
   val valid = Bool()
 }
 
@@ -62,6 +64,9 @@ class ShadowBuffer(
 {
   val io = IO(new ShadowBufferIo(num_wakeup_ports))
 
+  /*
+  wrapIndex maps an integer i to the index of the circular buffer.
+   */
   def wrapIndex(i: Int): UInt = {
     val out = Wire(UInt(sbAddrSz.W))
     when((i.U + head) <= numSbEntries.U) {
@@ -82,10 +87,7 @@ class ShadowBuffer(
   // Speculative tail pointer is a wire
   val tail_spec= WireInit(0.U(sbAddrSz.W))
 
-  // Actual buffer. Only need 2 bit per entry T/F and valid/not-valid
-  // True/False is wether the instruction is still speculative
-  // valid/not-valid is wether it is dispatched and not committed yet
-  // The first implementation only supports one committ port from the Shadow Buffer
+  // Actual buffer
   // TODO: Construct a single object from this?
   val sb_data      = RegInit(VecInit(Seq.fill(numSbEntries){false.B}))
   val sb_valid     = RegInit(VecInit(Seq.fill(numSbEntries){false.B}))
