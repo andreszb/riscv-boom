@@ -817,10 +817,14 @@ class LoadStoreUnit(pl_width: Int)(implicit p: Parameters,
    }
    // ---------------------------------------------------------------------------------------
    // Begin: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
-   // erlingrj: I changed this. Speculative wakeup of load happens not only when will_fire_load_incoming
-   io.mem_ldSpecWakeup.valid := RegNext((will_fire_load_incoming || (will_fire_shadowed_load_incoming && will_fire_load_wakeup))
+   // This was changed. It seems to be used primarily for assertions.
+   io.mem_ldSpecWakeup.valid := RegNext((will_fire_load_incoming
                                      && !io.exe_resp.bits.uop.fp_val
-                                     && io.exe_resp.bits.uop.pdst =/= 0.U, init=false.B)
+                                     && io.exe_resp.bits.uop.pdst =/= 0.U) ||
+                                       (will_fire_shadowed_load_incoming && will_fire_load_wakeup
+                                         && !laq_uop(exe_ld_idx_wakeup).fp_val
+                                         && laq_uop(exe_ld_idx_wakeup).pdst =/= 0.U)
+                                         , init=false.B)
    io.mem_ldSpecWakeup.bits := mem_ld_uop.pdst
    // End: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
    //----------------------------------------------------------------------------------------
