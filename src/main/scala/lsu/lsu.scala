@@ -157,9 +157,10 @@ class LoadStoreUnitIO(val pl_width: Int)(implicit p: Parameters) extends BoomBun
    val debug_tsc = Input(UInt(xLen.W))     // time stamp counter
    // ---------------------------------------------------------------------------------------
    // Begin: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
-   /* erlingrj Add support for ShadowBuffer */
+   // TODO: Write description
    val set_shadow_bit = Input(Vec(pl_width, Flipped(Valid(UInt(ldqAddrSz.W)))))
    val unset_shadow_bit = Input(Vec(rqCommitWidth, Flipped(Valid(UInt(ldqAddrSz.W)))))
+   val incoming_load_was_shadowed_and_no_wakeup = Output(Bool()) // If incoming load in prev CC was shadowed == cache nack
    // End: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
    //----------------------------------------------------------------------------------------
 
@@ -817,15 +818,20 @@ class LoadStoreUnit(pl_width: Int)(implicit p: Parameters,
    }
    // ---------------------------------------------------------------------------------------
    // Begin: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
-   // This was changed. It seems to be used primarily for assertions.
+   // Here we need to accomodate some BOOM quirks. The Issue Unit speculates that all loads will
+   // return in 4 CC with a result. mem_ldS
+
    io.mem_ldSpecWakeup.valid := RegNext((will_fire_load_incoming
-                                     && !io.exe_resp.bits.uop.fp_val
-                                     && io.exe_resp.bits.uop.pdst =/= 0.U) ||
-                                       (will_fire_shadowed_load_incoming && will_fire_load_wakeup
-                                         && !laq_uop(exe_ld_idx_wakeup).fp_val
-                                         && laq_uop(exe_ld_idx_wakeup).pdst =/= 0.U)
-                                         , init=false.B)
+     && !io.exe_resp.bits.uop.fp_val
+     && io.exe_resp.bits.uop.pdst =/= 0.U) ||
+     (will_fire_shadowed_load_incoming && will_fire_load_wakeup
+       && !exe_ld_uop.fp_val
+       && exe_ld_uop.pdst =/= 0.U)
+       ,init=false.B)
+
+
    io.mem_ldSpecWakeup.bits := mem_ld_uop.pdst
+   io.incoming_load_was_shadowed_and_no_wakeup := RegNext(RegNext((will_fire_shadowed_load_incoming && !will_fire_load_wakeup)))
    // End: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
    //----------------------------------------------------------------------------------------
 
