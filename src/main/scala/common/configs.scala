@@ -56,6 +56,14 @@ class SmallBoomCustomConfig extends Config(
   new freechips.rocketchip.system.BaseConfig) {
 }
 
+class LargeBoomCustomConfig extends Config(
+new WithRVC ++
+new WithLargeCustomBooms ++
+new BaseBoomConfig ++
+new WithNBoomCores(1) ++
+new freechips.rocketchip.system.BaseConfig) {
+}
+
 class SmallBoomConfig extends Config(
   new WithRVC ++
   new WithSmallBooms ++

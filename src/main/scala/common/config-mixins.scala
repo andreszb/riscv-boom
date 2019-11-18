@@ -358,6 +358,7 @@ class WithSmallCustomBooms extends Config((site, here, up) => {
       rqCommitWidth = CustomParams.RQ_COMMIT_WIDTH,
       sbRqCommitWidth = CustomParams.SB_RQ_COMMIT_WIDTH,
       numRobEntries = CustomParams.NUM_ROB_ENTRIES,
+      numLdqEntries = CustomParams.NUM_LDQ_ENTRIES,
       fetchWidth = 2,
       decodeWidth = 1,
       issueParams = Seq(
@@ -366,7 +367,42 @@ class WithSmallCustomBooms extends Config((site, here, up) => {
         IssueParams(issueWidth=1, numEntries=8, iqType=IQT_FP.litValue , dispatchWidth=1)),
       numIntPhysRegisters = 52,
       numFpPhysRegisters = 48,
+      numStqEntries = 8,
+      maxBrCount = 4,
+      numFetchBufferEntries = 8,
+      ftq = FtqParameters(nEntries=16),
+      btb = BoomBTBParameters(btbsa=true, densebtb=false, nSets=64, nWays=2,
+        nRAS=8, tagSz=20, bypassCalls=false, rasCheckForEmpty=false),
+      bpdBaseOnly = None,
+      gshare = Some(GShareParameters(historyLength=11, numSets=2048)),
+      tage = None,
+      bpdRandom = None,
+      nPerfCounters = 2),
+    dcache = Some(DCacheParams(rowBits = site(SystemBusKey).beatBits,
+      nSets=64, nWays=4, nMSHRs=2, nTLBEntries=8)),
+    icache = Some(ICacheParams(rowBits = site(SystemBusKey).beatBits, nSets=64, nWays=4, fetchBytes=2*4))
+  )}
+  case SystemBusKey => up(SystemBusKey, site).copy(beatBytes = 8)
+})
+
+
+class WithLargeCustomBooms extends Config((site, here, up) => {
+  case BoomTilesKey => up(BoomTilesKey, site) map { b => b.copy(
+    core = b.core.copy(
+      numRqEntries = CustomParams.NUM_RQ_ENTRIES,
+      numSbEntries = CustomParams.NUM_SB_ENTRIES,
+      rqCommitWidth = CustomParams.RQ_COMMIT_WIDTH,
+      sbRqCommitWidth = CustomParams.SB_RQ_COMMIT_WIDTH,
+      numRobEntries = CustomParams.NUM_ROB_ENTRIES,
       numLdqEntries = CustomParams.NUM_LDQ_ENTRIES,
+      fetchWidth = 4,
+      decodeWidth = 3,
+      issueParams = Seq(
+        IssueParams(issueWidth=1, numEntries=8, iqType=IQT_MEM.litValue, dispatchWidth=1),
+        IssueParams(issueWidth=1, numEntries=8, iqType=IQT_INT.litValue, dispatchWidth=1),
+        IssueParams(issueWidth=1, numEntries=8, iqType=IQT_FP.litValue , dispatchWidth=1)),
+      numIntPhysRegisters = 52,
+      numFpPhysRegisters = 48,
       numStqEntries = 8,
       maxBrCount = 4,
       numFetchBufferEntries = 8,
