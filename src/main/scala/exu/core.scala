@@ -238,7 +238,19 @@ class BoomCore(implicit p: Parameters, edge: freechips.rocketchip.tilelink.TLEdg
       ("D$ release",  () => io.dmem.perf.release),
       ("ITLB miss",   () => io.ifu.perf.tlbMiss),
       ("DTLB miss",   () => io.dmem.perf.tlbMiss),
-      ("L2 TLB miss", () => io.ptw.perf.l2miss)))))
+      ("L2 TLB miss", () => io.ptw.perf.l2miss)))
+  // --------------------------------------------------------------------
+  // Begin: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
+  new freechips.rocketchip.rocket.EventSet((mask, hits) => (mask & hits).orR, Seq(
+    ("Shadowed load stalled",     () => lsu.io.perf_shadow_stall),
+    ("loads sent to D$",          () => lsu.io.perf_n_loads_sent_to_dmem),
+    ("Shadow Buffer stalls",      () => sb.io.full),
+    ("Release Queue stalls",      () => rq.io.full),
+    ("LSU stalls",                () => lsu.io.full),
+    ("ROB stalls",                () => rob.io.full)
+    // End: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
+  //----------------------------------------------------------------------
+  ))
 
   val csr = Module(new freechips.rocketchip.rocket.CSRFile(perfEvents, boomParams.customCSRs.decls))
   csr.io.inst foreach { c => c := DontCare }
