@@ -161,6 +161,8 @@ class LoadStoreUnitIO(val pl_width: Int)(implicit p: Parameters) extends BoomBun
    val set_shadow_bit = Input(Vec(pl_width, Flipped(Valid(UInt(ldqAddrSz.W)))))
    val unset_shadow_bit = Input(Vec(rqCommitWidth, Flipped(Valid(UInt(ldqAddrSz.W)))))
    val incoming_load_was_shadowed_and_no_spec_wakeup = Output(Bool()) // If incoming load in prev CC was shadowed == cache nack
+   val perf_shadow_stall = Output(Bool()) // For performance counter
+   val perf_n_loads_sent_to_dmem = Output(Bool()) // How many loads are sent to D$
    // End: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
    //----------------------------------------------------------------------------------------
 
@@ -827,11 +829,11 @@ class LoadStoreUnit(pl_width: Int)(implicit p: Parameters,
      (will_fire_shadowed_load_incoming && will_fire_load_wakeup
        && !exe_ld_uop.fp_val
        && exe_ld_uop.pdst =/= 0.U)
-       ,init=false.B)
+      ,init=false.B)
 
 
    io.mem_ldSpecWakeup.bits := mem_ld_uop.pdst
-   io.incoming_load_was_shadowed_and_no_spec_wakeup := RegNext(RegNext(((will_fire_shadowed_load_incoming && !will_fire_load_wakeup) || (will_fire_shadowed_load_incoming && will_fire_load_wakeup && (exe_ld_uop.fp_val || exe_ld_uop.pdst === 0.U)))))
+   io.incoming_load_was_shadowed_and_no_spec_wakeup := RegNext(RegNext((will_fire_shadowed_load_incoming && !will_fire_load_wakeup)))
    // End: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
    //----------------------------------------------------------------------------------------
 
@@ -1459,6 +1461,16 @@ class LoadStoreUnit(pl_width: Int)(implicit p: Parameters,
    live_store_mask := next_live_store_mask &
                         ~(st_brkilled_mask.asUInt) &
                         ~(st_exc_killed_mask.asUInt)
+
+
+
+   // Begin: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
+   // Performance counters
+   io.perf_shadow_stall := will_fire_shadowed_load_incoming
+   io.perf_n_loads_sent_to_dmem := io.memreq_val && io.memreq_uop.is_load
+
+   // End: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
+   //----------------------------------------------------------------------------------------
 
    //-------------------------------------------------------------
    // Debug & Counter outputs
