@@ -290,28 +290,26 @@ class WithLargeBooms extends Config((site, here, up) => {
       decodeWidth = 3,
       numRobEntries = 96,
       issueParams = Seq(
-        IssueParams(issueWidth=1, numEntries=8, iqType=IQT_MEM.litValue, dispatchWidth=1),
-        IssueParams(issueWidth=1, numEntries=8, iqType=IQT_INT.litValue, dispatchWidth=1),
-        IssueParams(issueWidth=1, numEntries=8, iqType=IQT_FP.litValue , dispatchWidth=1)),
-      numIntPhysRegisters = 52,
-      numFpPhysRegisters = 48,
-      numLdqEntries = 8,
-      numStqEntries = 8,
-      maxBrCount = 4,
-      numFetchBufferEntries = 8,
-      ftq = FtqParameters(nEntries=16),
-      btb = BoomBTBParameters(btbsa=true, densebtb=false, nSets=64, nWays=2,
-        nRAS=8, tagSz=20, bypassCalls=false, rasCheckForEmpty=false),
+        IssueParams(issueWidth=1, numEntries=24, iqType=IQT_MEM.litValue, dispatchWidth=3),
+        IssueParams(issueWidth=2, numEntries=24, iqType=IQT_INT.litValue, dispatchWidth=3),
+        IssueParams(issueWidth=1, numEntries=24, iqType=IQT_FP.litValue , dispatchWidth=3)),
+      numIntPhysRegisters = 100,
+      numFpPhysRegisters = 96,
+      numLdqEntries = 24,
+      numStqEntries = 24,
+      maxBrCount = 12,
+      numFetchBufferEntries = 24,
+      ftq = FtqParameters(nEntries=32),
+      btb = BoomBTBParameters(btbsa=true, densebtb=false, nSets=512, nWays=4, nRAS=16, tagSz=20),
       bpdBaseOnly = None,
-      gshare = Some(GShareParameters(historyLength=11, numSets=2048)),
+      gshare = Some(GShareParameters(historyLength=23, numSets=4096)),
       tage = None,
-      bpdRandom = None,
-      nPerfCounters = 2),
-    dcache = Some(DCacheParams(rowBits = site(SystemBusKey).beatBits,
-      nSets=64, nWays=4, nMSHRs=2, nTLBEntries=8)),
-    icache = Some(ICacheParams(rowBits = site(SystemBusKey).beatBits, nSets=64, nWays=4, fetchBytes=2*4))
+      bpdRandom = None),
+    dcache = Some(DCacheParams(rowBits = site(SystemBusKey).beatBytes*8,
+      nSets=64, nWays=8, nMSHRs=4, nTLBEntries=16)),
+    icache = Some(ICacheParams(fetchBytes = 4*4, rowBits = site(SystemBusKey).beatBytes*8, nSets=64, nWays=8))
   )}
-  case SystemBusKey => up(SystemBusKey, site).copy(beatBytes = 8)
+  case SystemBusKey => up(SystemBusKey, site).copy(beatBytes = 16)
 })
 
 /**
@@ -385,7 +383,6 @@ class WithSmallCustomBooms extends Config((site, here, up) => {
   case SystemBusKey => up(SystemBusKey, site).copy(beatBytes = 8)
 })
 
-
 class WithLargeCustomBooms extends Config((site, here, up) => {
   case BoomTilesKey => up(BoomTilesKey, site) map { b => b.copy(
     core = b.core.copy(
@@ -398,25 +395,24 @@ class WithLargeCustomBooms extends Config((site, here, up) => {
       fetchWidth = 4,
       decodeWidth = 3,
       issueParams = Seq(
-        IssueParams(issueWidth=1, numEntries=8, iqType=IQT_MEM.litValue, dispatchWidth=1),
-        IssueParams(issueWidth=1, numEntries=8, iqType=IQT_INT.litValue, dispatchWidth=1),
-        IssueParams(issueWidth=1, numEntries=8, iqType=IQT_FP.litValue , dispatchWidth=1)),
-      numIntPhysRegisters = 52,
-      numFpPhysRegisters = 48,
-      numStqEntries = 8,
-      maxBrCount = 4,
-      numFetchBufferEntries = 8,
-      ftq = FtqParameters(nEntries=16),
-      btb = BoomBTBParameters(btbsa=true, densebtb=false, nSets=64, nWays=2,
-        nRAS=8, tagSz=20, bypassCalls=false, rasCheckForEmpty=false),
+        IssueParams(issueWidth=1, numEntries=24, iqType=IQT_MEM.litValue, dispatchWidth=3),
+        IssueParams(issueWidth=2, numEntries=24, iqType=IQT_INT.litValue, dispatchWidth=3),
+        IssueParams(issueWidth=1, numEntries=24, iqType=IQT_FP.litValue , dispatchWidth=3)),
+      numIntPhysRegisters = 100,
+      numFpPhysRegisters = 96,
+      numStqEntries = 24,
+      maxBrCount = 12,
+      numFetchBufferEntries = 24,
+      ftq = FtqParameters(nEntries=32),
+      btb = BoomBTBParameters(btbsa=true, densebtb=false, nSets=512, nWays=4, nRAS=16, tagSz=20),
       bpdBaseOnly = None,
-      gshare = Some(GShareParameters(historyLength=11, numSets=2048)),
+      gshare = Some(GShareParameters(historyLength=23, numSets=4096)),
       tage = None,
-      bpdRandom = None,
-      nPerfCounters = 2),
-    dcache = Some(DCacheParams(rowBits = site(SystemBusKey).beatBits,
-      nSets=64, nWays=4, nMSHRs=2, nTLBEntries=8)),
-    icache = Some(ICacheParams(rowBits = site(SystemBusKey).beatBits, nSets=64, nWays=4, fetchBytes=2*4))
+      bpdRandom = None),
+    dcache = Some(DCacheParams(rowBits = site(SystemBusKey).beatBytes*8,
+      nSets=64, nWays=8, nMSHRs=4, nTLBEntries=16)),
+    icache = Some(ICacheParams(fetchBytes = 4*4, rowBits = site(SystemBusKey).beatBytes*8, nSets=64, nWays=8))
   )}
-  case SystemBusKey => up(SystemBusKey, site).copy(beatBytes = 8)
+  case SystemBusKey => up(SystemBusKey, site).copy(beatBytes = 16)
 })
+

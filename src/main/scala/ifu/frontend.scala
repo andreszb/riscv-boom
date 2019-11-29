@@ -165,7 +165,6 @@ class BoomFrontendModule(outer: BoomFrontend) extends LazyModuleImp(outer)
 {
   val io = IO(new BoomFrontendBundle(outer))
   implicit val edge = outer.masterNode.edges.out(0)
-  println(s"fetchwidth=$fetchWidth conreInstBytes=$coreInstBytes fethBytes=${outer.icacheParams.fetchBytes}\n")
   require(fetchWidth*coreInstBytes == outer.icacheParams.fetchBytes)
 
   val icache = outer.icache.module
