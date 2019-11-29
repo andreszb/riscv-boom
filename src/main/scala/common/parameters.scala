@@ -216,6 +216,8 @@ trait HasBoomCoreParameters extends freechips.rocketchip.tile.HasCoreParameters
 
   require(icacheParams.nSets <= 64, "Handling aliases in the ICache is buggy.")
 
+
+
   //************************************
   // Branch Prediction
 

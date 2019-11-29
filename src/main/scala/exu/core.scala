@@ -338,6 +338,7 @@ class BoomCore(implicit p: Parameters, edge: freechips.rocketchip.tilelink.TLEdg
   // **** Fetch Stage/Frontend ****
   //-------------------------------------------------------------
   //-------------------------------------------------------------
+  println(s"fetchwidth=$fetchWidth conreInstBytes=$coreInstBytes fethBytes=${icacheParams.fetchBytes}\n")
 
   io.ifu.br_unit := br_unit
   io.ifu.tsc_reg := debug_tsc_reg
