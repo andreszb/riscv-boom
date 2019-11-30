@@ -362,7 +362,7 @@ class Rob(
       // --------------------------------------------------------------------
       // Begin: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
       /* erlingrj 17/9 */
-      when(io.enq_uops(w).is_br_or_jmp) {
+      when(io.enq_uops(w).has_c_shadow) {
          io.sb_enq(w).valid   := true.B
          io.sb_enq(w).bits    := io.enq_uops(w)
          rob_sb_val(rob_tail) := true.B
@@ -384,7 +384,10 @@ class Rob(
             io.rq_enq(w).sb_idx := io.sb_tail
           }
         } else {
-          when(rob_bank_enq_sb.reduce(_ | _)) { //if we did enq something this CC
+          when(rob_bank_enq_sb.zipWithIndex.map({ case (value, idx) =>
+                                                  if (idx < w) value
+                                                  else false.B}).reduce((a,b) => (a|b)))
+          { // If a new instruction was queued to SB this CC that was BEFORE this load in program order
             for (i <- w until coreWidth) {
               when(rob_bank_enq_sb(i)) {
                 io.rq_enq(w).valid := true.B
@@ -393,7 +396,7 @@ class Rob(
               }
             }
           }.otherwise {
-            when(!io.sb_empty) {
+            when(!io.sb_empty) { //TODO: What if the only entry is a "killed" one?
               io.rq_enq(w).valid := true.B
               io.rq_enq(w).ldq_idx := io.enq_uops(w).ldq_idx
               io.rq_enq(w).sb_idx := io.sb_tail
