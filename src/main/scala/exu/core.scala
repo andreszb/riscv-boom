@@ -820,7 +820,10 @@ class BoomCore(implicit p: Parameters, edge: freechips.rocketchip.tilelink.TLEdg
     !(sxt_ldMiss && (mem_iq.io.iss_uops(0).iw_p1_poisoned || mem_iq.io.iss_uops(0).iw_p2_poisoned))
   sxt_ldMiss :=
     ((lsu.io.nack.valid && lsu.io.nack.isload) || dc_shim.io.core.load_miss) &&
-    Pipe(true.B, iss_loadIssued, 4).bits && !lsu.io.incoming_load_was_shadowed_and_no_spec_wakeup
+      (Pipe(true.B, iss_loadIssued, 4).bits &&
+      !lsu.io.incoming_load_was_shadowed_and_no_spec_wakeup &&
+      !lsu.io.incoming_load_was_shadowed_and_nonspec_wakeup) ||
+      RegNext(lsu.io.mem_ldSpecWakeup.valid) //Add this
 
   issue_units.map(_.io.sxt_ldMiss := sxt_ldMiss)
   // End: Eager Delay for speculative loads by erlingrj@stud.ntnu.no

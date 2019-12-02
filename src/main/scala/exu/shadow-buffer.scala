@@ -150,23 +150,22 @@ class ShadowBuffer(
   for (i <- 0 until numSbEntries)
     {
       val br_mask = sb_uop(i).br_mask
-      val entry_match = sb_val(i) && maskMatch(io.brinfo.mask, br_mask) // Is this instr shadowed by the branch that has been setteld
-      val br_match = sb_val(i) && (sb_uop(i).rob_idx === io.brinfo.rob_idx) // If it is this very branch that is settled
+      val entry_match = io.brinfo.valid && sb_val(i) && maskMatch(io.brinfo.mask, br_mask) // Is this instr shadowed by the branch that has been setteld
+      val br_match = io.brinfo.valid && sb_val(i) && (sb_uop(i).rob_idx === io.brinfo.rob_idx) // If it is this very branch that is settled
 
 
-      when (io.brinfo.valid && io.brinfo.mispredict && (entry_match || br_match)) {
+      when (io.brinfo.mispredict && (entry_match || br_match)) {
         // This entry was speculated under the resolved branch, and it was a mispredict
         //  Or. this entry was the mispredicted branch,
         //  Squash it and record that it was killed
         sb_spec(i) := false.B
         sb_uop(i.U).inst := BUBBLE
         sb_killed(i)    := true.B
-      }.elsewhen (io.brinfo.valid && !io.brinfo.mispredict && br_match) {
+      }.elsewhen (!io.brinfo.mispredict && br_match) {
         // The resolved branch is THIS entry and it was predicted correctly
         // => Clear the speculation bit
         sb_spec(i)    := false.B
-        sb_killed(i)  := false.B
-      }.elsewhen(io.brinfo.valid && !io.brinfo.mispredict && entry_match) {
+      }.elsewhen(!io.brinfo.mispredict && entry_match) {
         // This entry was speculated under the resolved branch and it was a correct prediction
         // => Update the branch mask
         sb_uop(i).br_mask := (br_mask & ~io.brinfo.mask)

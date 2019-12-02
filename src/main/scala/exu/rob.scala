@@ -388,7 +388,8 @@ class Rob(
                                                   if (idx < w) value
                                                   else false.B}).reduce((a,b) => (a|b)))
           { // If a new instruction was queued to SB this CC that was BEFORE this load in program order
-            for (i <- w until coreWidth) {
+
+            for (i <- 0 until w) {
               when(rob_bank_enq_sb(i)) {
                 io.rq_enq(w).valid := true.B
                 io.rq_enq(w).ldq_idx := io.enq_uops(w).ldq_idx

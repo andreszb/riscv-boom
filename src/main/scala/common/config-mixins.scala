@@ -311,7 +311,6 @@ class WithLargeBooms extends Config((site, here, up) => {
   )}
   case SystemBusKey => up(SystemBusKey, site).copy(beatBytes = 16)
 })
-
 /**
  * 4-wide BOOM.
  */
@@ -358,7 +357,7 @@ class WithSmallCustomBooms extends Config((site, here, up) => {
       numRobEntries = CustomParams.NUM_ROB_ENTRIES,
       numLdqEntries = CustomParams.NUM_LDQ_ENTRIES,
       fetchWidth = 2,
-      decodeWidth = 1,
+      decodeWidth = 2,
       issueParams = Seq(
         IssueParams(issueWidth=1, numEntries=8, iqType=IQT_MEM.litValue, dispatchWidth=1),
         IssueParams(issueWidth=1, numEntries=8, iqType=IQT_INT.litValue, dispatchWidth=1),
@@ -392,8 +391,8 @@ class WithLargeCustomBooms extends Config((site, here, up) => {
       sbRqCommitWidth = CustomParams.SB_RQ_COMMIT_WIDTH,
       numRobEntries = CustomParams.NUM_ROB_ENTRIES,
       numLdqEntries = CustomParams.NUM_LDQ_ENTRIES,
-      fetchWidth = 4,
-      decodeWidth = 3,
+      fetchWidth = 2,
+      decodeWidth = 2,
       issueParams = Seq(
         IssueParams(issueWidth=1, numEntries=24, iqType=IQT_MEM.litValue, dispatchWidth=3),
         IssueParams(issueWidth=2, numEntries=24, iqType=IQT_INT.litValue, dispatchWidth=3),

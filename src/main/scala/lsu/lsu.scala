@@ -160,6 +160,7 @@ class LoadStoreUnitIO(val pl_width: Int)(implicit p: Parameters) extends BoomBun
    // TODO: Write description
    val set_shadow_bit = Input(Vec(pl_width, Flipped(Valid(UInt(ldqAddrSz.W)))))
    val unset_shadow_bit = Input(Vec(rqCommitWidth, Flipped(Valid(UInt(ldqAddrSz.W)))))
+   val incoming_load_was_shadowed_and_nonspec_wakeup = Output(Bool())
    val incoming_load_was_shadowed_and_no_spec_wakeup = Output(Bool()) // If incoming load in prev CC was shadowed == cache nack
    val perf_shadow_stall = Output(Bool()) // For performance counter
    val perf_n_loads_sent_to_dmem = Output(Bool()) // How many loads are sent to D$
@@ -831,9 +832,16 @@ class LoadStoreUnit(pl_width: Int)(implicit p: Parameters,
        && exe_ld_uop.pdst =/= 0.U)
       ,init=false.B)
 
-
    io.mem_ldSpecWakeup.bits := mem_ld_uop.pdst
+   // We also have to accomodate 2 corner cases. The Issue Unit will speculatively dispatch
+   //    instructions depending on loads assuming the loads fire straight of the mem
+   //    When this instructions are shadowed
+   //    blabla to complicated to describe here
    io.incoming_load_was_shadowed_and_no_spec_wakeup := RegNext(RegNext((will_fire_shadowed_load_incoming && !will_fire_load_wakeup)))
+   io.incoming_load_was_shadowed_and_nonspec_wakeup := RegNext(RegNext(will_fire_shadowed_load_incoming
+     && will_fire_load_wakeup
+     && (exe_ld_uop.fp_val || exe_ld_uop.pdst === 0.U)))
+
    // End: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
    //----------------------------------------------------------------------------------------
 
