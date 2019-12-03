@@ -249,7 +249,15 @@ class BoomCore(implicit p: Parameters, edge: freechips.rocketchip.tilelink.TLEdg
     ("LSU stalls",                () => lsu.io.laq_full(0)), //TODO: Fix the laq_full. Whats up with pl_width
     ("ROB stalls",                () => !rob.io.ready),
     ("LSU kills",                 () => lsu.io.counters.ld_killed),
-    ("LSU ld-ld order fail",      () => lsu.io.counters.ldld_order_fail)))
+    ("LSU ld-ld order fail",      () => lsu.io.counters.ldld_order_fail))),
+
+    new freechips.rocketchip.rocket.EventSet((mask, hits) => (mask & hits).orR, Seq(
+      ("LSU kills",                 () => lsu.io.counters.ld_killed),
+      ("LSU ld-ld order fail",      () => lsu.io.counters.ldld_order_fail),
+      ("D$ miss",                   () => io.dmem.perf.acquire),
+      ("branch misprediction",      () => br_unit.brinfo.mispredict),
+      ("branch resolved",           () => br_unit.brinfo.valid),
+      ("flush",                             () => rob.io.flush.valid)))
     // End: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
   //----------------------------------------------------------------------
   ))
