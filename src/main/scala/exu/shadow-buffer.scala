@@ -217,8 +217,7 @@ class ShadowBuffer(
     }
 
   // Calculate next tail. It only depends on if we have enqueued new instructions this CC
-  tail := Mux(io.enq_uop(coreWidth-1).valid, WrapInc(q_idx(coreWidth-1), numSbEntries), q_idx(coreWidth-1))
-
+  val tail_next = Mux(io.enq_uop(coreWidth-1).valid, WrapInc(q_idx(coreWidth-1), numSbEntries), q_idx(coreWidth-1))
 
   //--------------------------------------------------------------------
   // Check full/empty
@@ -234,8 +233,8 @@ class ShadowBuffer(
   }
 
   // We are "full" (more like pseudo-full) if we have less available entries than
-  //  there are enq ports from the ROB.
-  when((WrapSub2HW(head_next, tail, numSbEntries) <= coreWidth.U) && sb_val(head_next))
+  //  there are enq ports from the ROB in the next CC.
+  when((WrapSub2HW(head_next, tail_next, numSbEntries) <= coreWidth.U) && sb_val(head_next))
   {
     full := true.B
   }.otherwise
@@ -244,6 +243,7 @@ class ShadowBuffer(
   }
 
   head := head_next
+  tail := tail_next
   io.empty      := empty
   io.full       := full
   io.tail       := tail

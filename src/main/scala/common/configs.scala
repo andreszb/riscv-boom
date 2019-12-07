@@ -66,7 +66,7 @@ new freechips.rocketchip.system.BaseConfig) {
 
 class MediumBoomCustomConfig extends Config(
   new WithRVC ++
-    new WithMediumBooms ++
+    new WithMediumCustomBooms ++
     new BaseBoomConfig ++
     new WithNBoomCores(1) ++
     new freechips.rocketchip.system.BaseConfig)
