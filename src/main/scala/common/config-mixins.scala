@@ -251,22 +251,26 @@ class WithSmallBooms extends Config((site, here, up) => {
 class WithMediumBooms extends Config((site, here, up) => {
   case BoomTilesKey => up(BoomTilesKey, site) map { b => b.copy(
     core = b.core.copy(
+      numRqEntries = 8,
+      numSbEntries = 8,
+      rqCommitWidth = 1,
+      sbRqCommitWidth = 1,
+      numRobEntries = 64,
+      numLdqEntries = 16,
       fetchWidth = 2,
       decodeWidth = 2,
-      numRobEntries = 64,
       issueParams = Seq(
         IssueParams(issueWidth=1, numEntries=16, iqType=IQT_MEM.litValue, dispatchWidth=2),
         IssueParams(issueWidth=2, numEntries=16, iqType=IQT_INT.litValue, dispatchWidth=2),
         IssueParams(issueWidth=1, numEntries=16, iqType=IQT_FP.litValue , dispatchWidth=2)),
       numIntPhysRegisters = 80,
       numFpPhysRegisters = 64,
-      numLdqEntries = 16,
       numStqEntries = 16,
       maxBrCount = 8,
       numFetchBufferEntries = 16,
       ftq = FtqParameters(nEntries=32),
       btb = BoomBTBParameters(btbsa=true, densebtb=false, nSets=64, nWays=2,
-                              nRAS=8, tagSz=20, bypassCalls=false, rasCheckForEmpty=false),
+        nRAS=8, tagSz=20, bypassCalls=false, rasCheckForEmpty=false),
       bpdBaseOnly = None,
       gshare = Some(GShareParameters(historyLength=23, numSets=4096)),
       tage = None,
@@ -274,9 +278,9 @@ class WithMediumBooms extends Config((site, here, up) => {
       nPerfCounters = 16,
       fpu = Some(freechips.rocketchip.tile.FPUParams(sfmaLatency=4, dfmaLatency=4, divSqrt=true))),
     dcache = Some(DCacheParams(rowBits = site(SystemBusKey).beatBits,
-                                 nSets=64, nWays=4, nMSHRs=2, nTLBEntries=8)),
+      nSets=64, nWays=4, nMSHRs=2, nTLBEntries=8)),
     icache = Some(ICacheParams(rowBits = site(SystemBusKey).beatBits, nSets=64, nWays=4, fetchBytes=2*4))
-    )}
+  )}
   case SystemBusKey => up(SystemBusKey, site).copy(beatBytes = 8)
 })
 
@@ -433,7 +437,7 @@ class WithMediumCustomBooms extends Config((site, here, up) => {
       numIntPhysRegisters = 80,
       numFpPhysRegisters = 64,
       numStqEntries = 16,
-      maxBrCount = 8,
+      maxBrCount = CustomParams.NUM_SB_ENTRIES,
       numFetchBufferEntries = 16,
       ftq = FtqParameters(nEntries=32),
       btb = BoomBTBParameters(btbsa=true, densebtb=false, nSets=64, nWays=2,

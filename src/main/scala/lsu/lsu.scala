@@ -1490,6 +1490,7 @@ class LoadStoreUnit(pl_width: Int)(implicit p: Parameters,
    io.counters.stld_order_fail := RegNext(stld_order_fail)
    io.counters.ldld_order_fail := RegNext(ldld_order_fail)
 
+
    if (DEBUG_PRINTF_LSU)
    {
       printf("LSU:\n")

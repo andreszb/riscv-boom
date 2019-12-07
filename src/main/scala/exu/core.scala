@@ -152,7 +152,7 @@ class BoomCore(implicit p: Parameters, edge: freechips.rocketchip.tilelink.TLEdg
   ))
   // End: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
   //----------------------------------------------------------------------------------------
-  
+
   // Used to wakeup registers in rename and issue. ROB needs to listen to something else.
   val int_iss_wakeups  = Wire(Vec(numIntIssueWakeupPorts, Valid(new ExeUnitResp(xLen))))
   val int_ren_wakeups  = Wire(Vec(numIntRenameWakeupPorts, Valid(new ExeUnitResp(xLen))))
@@ -247,14 +247,12 @@ class BoomCore(implicit p: Parameters, edge: freechips.rocketchip.tilelink.TLEdg
     ("Shadow Buffer stalls",      () => sb.io.full),
     ("Release Queue stalls",      () => rq.io.full),
     ("LSU stalls",                () => lsu.io.laq_full(0)), //TODO: Fix the laq_full. Whats up with pl_width
-    ("ROB stalls",                () => !rob.io.ready),
-    ("LSU kills",                 () => lsu.io.counters.ld_killed),
-    ("LSU ld-ld order fail",      () => lsu.io.counters.ldld_order_fail))),
+    ("ROB stalls",                () => !rob.io.ready))),
 
     new freechips.rocketchip.rocket.EventSet((mask, hits) => (mask & hits).orR, Seq(
       ("LSU kills",                 () => lsu.io.xcpt.valid),
-      ("LSU ld-ld order fail",      () => lsu.io.counters.ldld_order_fail),
-      ("D$ miss",                   () => io.dmem.perf.acquire),
+      ("LSU ld-ld order fail",      () => lsu.io.counters.ld_killed),
+      ("D$ miss",                   () => !lsu.io.memreq_val),
       ("branch misprediction",      () => br_unit.brinfo.mispredict),
       ("branch resolved",           () => br_unit.brinfo.valid),
       ("flush",                     () => rob.io.commit.rollback)))
@@ -639,7 +637,7 @@ class BoomCore(implicit p: Parameters, edge: freechips.rocketchip.tilelink.TLEdg
   }
   // ---------------------------------------------------------------------------------------
   // Begin: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
-  
+
   //-------------------------------------------------------------
   // ShadowBuffer and ReleaseQueue
   /*erlingrj 2/9 Connect ShadowBuffer and ROB*/
@@ -654,7 +652,7 @@ class BoomCore(implicit p: Parameters, edge: freechips.rocketchip.tilelink.TLEdg
   sb.io.wb_uop <> rob.io.sb_wb_uop
   sb.io.brinfo <> br_unit.brinfo
   sb.io.rollback <> rob.io.sb_rbk
-  
+
   rq.io.commit := sb.io.release
   rq.io.enq := rob.io.rq_enq
   rq.io.exception := rob.io.flush.valid
