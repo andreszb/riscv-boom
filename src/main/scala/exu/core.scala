@@ -252,12 +252,12 @@ class BoomCore(implicit p: Parameters, edge: freechips.rocketchip.tilelink.TLEdg
     ("LSU ld-ld order fail",      () => lsu.io.counters.ldld_order_fail))),
 
     new freechips.rocketchip.rocket.EventSet((mask, hits) => (mask & hits).orR, Seq(
-      ("LSU kills",                 () => lsu.io.counters.ld_killed),
+      ("LSU kills",                 () => lsu.io.xcpt.valid),
       ("LSU ld-ld order fail",      () => lsu.io.counters.ldld_order_fail),
       ("D$ miss",                   () => io.dmem.perf.acquire),
       ("branch misprediction",      () => br_unit.brinfo.mispredict),
       ("branch resolved",           () => br_unit.brinfo.valid),
-      ("flush",                             () => rob.io.flush.valid)))
+      ("flush",                     () => rob.io.commit.rollback)))
     // End: Eager Delay for speculative loads by erlingrj@stud.ntnu.no
   //----------------------------------------------------------------------
   ))
