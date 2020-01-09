@@ -187,7 +187,7 @@ class WithSmallBooms extends Config((site, here, up) => {
 
 
 /**
- * 1-wide BOOM.
+ * In order slice BOOM.
  */
 class WithSliceBooms extends Config((site, here, up) => {
   case BoomTilesKey => up(BoomTilesKey, site) map { b => b.copy(
