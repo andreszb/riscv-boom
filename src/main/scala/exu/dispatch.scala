@@ -279,7 +279,7 @@ class SliceDispatchQueue(
   // Update tail
   //  We have already incremented the tail pointer in the previous loop.
   //  Only needs a last increment if the last enq port also fired
-  tail_next := Mux(io.enq_uops(coreWidth).fire, WrapInc(enq_idx(coreWidth), numEntries), enq_idx(coreWidth))
+  tail_next := Mux(io.enq_uops(coreWidth - 1).fire, WrapInc(enq_idx(coreWidth - 1), numEntries), enq_idx(coreWidth - 1))
 
   // Handle dequeues
   //  Simply increment the head
