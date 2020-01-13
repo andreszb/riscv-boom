@@ -629,6 +629,8 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   if(boomParams.loadSliceMode){
     rename_stage.io.slice_busy_req_uops.get := dispatcher.io.slice_busy_req_uops.get
     dispatcher.io.slice_busy_resps.get := rename_stage.io.slice_busy_resps.get
+    dispatcher.io.slice_brinfo.get := br_unit.brinfo
+    dispatcher.io.slice_flush.get := rob.io.flush.valid
   }
 
   var iu_idx = 0
