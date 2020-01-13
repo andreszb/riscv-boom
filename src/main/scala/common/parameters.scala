@@ -86,8 +86,9 @@ case class BoomCoreParams(
   useSCIE: Boolean = false,
   useRVE: Boolean = false,
   useBPWatch: Boolean = false,
-  clockGate: Boolean = false
-// DOC include end: BOOM Parameters
+  clockGate: Boolean = false,
+  loadSliceMode: Boolean = false
+
 ) extends freechips.rocketchip.tile.CoreParams
 {
   val haveFSDirty = true
@@ -193,6 +194,7 @@ trait HasBoomCoreParameters extends freechips.rocketchip.tile.HasCoreParameters
 
   val intWidth = intIssueParam.issueWidth
   val memWidth = memIssueParam.issueWidth
+
 
   issueParams.map(x => require(x.dispatchWidth <= coreWidth && x.dispatchWidth > 0))
 

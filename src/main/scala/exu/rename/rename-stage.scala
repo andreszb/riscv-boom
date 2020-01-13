@@ -68,6 +68,10 @@ class RenameStageIO(
 
   val debug_rob_empty = Input(Bool())
   val debug = Output(new DebugRenameStageIO(numPhysRegs))
+
+  require(coreWidth == plWidth) // make sure we can use coreWidth and plWidth interchangeably
+  val slice_busy_req_uops = if(boomParams.loadSliceMode) Some(Input(Vec(coreWidth, new MicroOp))) else None
+  val slice_busy_resps = if(boomParams.loadSliceMode) Some(Output(Vec(coreWidth, new BusyResp))) else None
 }
 
 /**
@@ -279,25 +283,34 @@ class RenameStage(
 
   //-------------------------------------------------------------
   // Busy Table
+  assert (!(io.wakeups.map(x => x.valid && x.bits.uop.dst_rtype =/= rtype).reduce(_||_)),
+    "[rename] Wakeup has wrong rtype.")
 
+  // newly allocated physical registers - to be marked as busy
   busytable.io.ren_uops := ren2_uops  // expects pdst to be set up.
   busytable.io.rebusy_reqs := ren2_alloc_reqs
+  // write back information - to be removed from busy
   busytable.io.wb_valids := io.wakeups.map(_.valid)
   busytable.io.wb_pdsts := io.wakeups.map(_.bits.uop.pdst)
 
-  assert (!(io.wakeups.map(x => x.valid && x.bits.uop.dst_rtype =/= rtype).reduce(_||_)),
-   "[rename] Wakeup has wrong rtype.")
+  if(boomParams.loadSliceMode) {
+    busytable.io.req_uops := io.slice_busy_req_uops.get
+    io.slice_busy_resps.get := busytable.io.busy_resps
+  } else {
+    // uops to be annotated
+    busytable.io.req_uops := ren2_uops
+    // annotate uops with busy information
+    for ((uop, w) <- ren2_uops.zipWithIndex) {
+      val busy = busytable.io.busy_resps(w)
 
-  for ((uop, w) <- ren2_uops.zipWithIndex) {
-    val busy = busytable.io.busy_resps(w)
+      uop.prs1_busy := uop.lrs1_rtype === rtype && busy.prs1_busy
+      uop.prs2_busy := uop.lrs2_rtype === rtype && busy.prs2_busy
+      uop.prs3_busy := uop.frs3_en && busy.prs3_busy
 
-    uop.prs1_busy := uop.lrs1_rtype === rtype && busy.prs1_busy
-    uop.prs2_busy := uop.lrs2_rtype === rtype && busy.prs2_busy
-    uop.prs3_busy := uop.frs3_en && busy.prs3_busy
-
-    val valid = ren2_valids(w)
-    assert (!(valid && busy.prs1_busy && rtype === RT_FIX && uop.lrs1 === 0.U), "[rename] x0 is busy??")
-    assert (!(valid && busy.prs2_busy && rtype === RT_FIX && uop.lrs2 === 0.U), "[rename] x0 is busy??")
+      val valid = ren2_valids(w)
+      assert(!(valid && busy.prs1_busy && rtype === RT_FIX && uop.lrs1 === 0.U), "[rename] x0 is busy??")
+      assert(!(valid && busy.prs2_busy && rtype === RT_FIX && uop.lrs2 === 0.U), "[rename] x0 is busy??")
+    }
   }
 
   //-------------------------------------------------------------

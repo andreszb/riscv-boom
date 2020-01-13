@@ -198,8 +198,8 @@ class WithSliceBooms extends Config((site, here, up) => {
       numRobEntries = 32,
       issueParams = Seq(
         IssueParams(issueWidth=1, numEntries=1, iqType=IQT_MEM.litValue, dispatchWidth=1),
-        IssueParams(issueWidth=1, numEntries=1, iqType=IQT_INT.litValue, dispatchWidth=1),
-        IssueParams(issueWidth=1, numEntries=1, iqType=IQT_FP.litValue , dispatchWidth=1)),
+        IssueParams(issueWidth=1, numEntries=1, iqType=IQT_INT.litValue, dispatchWidth=1)
+      ),
       numIntPhysRegisters = 52,
       numFpPhysRegisters = 48,
       numLdqEntries = 8,
@@ -214,7 +214,11 @@ class WithSliceBooms extends Config((site, here, up) => {
       tage = None,
       bpdRandom = None,
       nPerfCounters = 2,
-      fpu = Some(freechips.rocketchip.tile.FPUParams(sfmaLatency=4, dfmaLatency=4, divSqrt=true))),
+      fpu = None,
+      useAtomics = false,
+      usingFPU = false,
+      loadSliceMode = true,
+    ),
     dcache = Some(DCacheParams(rowBits = site(SystemBusKey).beatBits,
                                nSets=64, nWays=4, nMSHRs=2, nTLBEntries=8)),
     icache = Some(ICacheParams(rowBits = site(SystemBusKey).beatBits, nSets=64, nWays=4, fetchBytes=2*4))
