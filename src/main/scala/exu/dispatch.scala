@@ -227,7 +227,7 @@ class SliceDispatchQueue(
                         )(implicit p: Parameters) extends BoomModule
 {
   val io = IO(new Bundle {
-    val enq_uops = Input(Vec(coreWidth, Flipped(DecoupledIO(new MicroOp))))
+    val enq_uops = Vec(coreWidth, Flipped(DecoupledIO(new MicroOp)))
     val deq_uop = Input(Bool())
     val head = Valid(new MicroOp())
 
@@ -293,22 +293,21 @@ class SliceDispatchQueue(
   //  On mispredict, find oldest that is killed and kill everyone younger than that
   //  On resolved. Update all branch masks in paralell. Updates also invalid entries, for simplicity.
   when(io.brinfo.valid) {
-    val loop_cond = true.B // Used to stop loop when we reach the head
+    val is_valid =  WireInit(VecInit(Seq.fill(numEntries){true.B}))// Used to stop loop when we reach the head
     for (i <- 0 until numEntries) {
-      when(loop_cond) {
-        val idx = wrapIndex(tail - i.U)
-        when(idx === head) { // Head reached. Stop loop
-          loop_cond := false.B
-        }
-        val br_mask = q_uop(idx).br_mask
-        val entry_match = maskMatch(io.brinfo.mask, br_mask)
+      val idx = wrapIndex(tail - i.U) // Calculate idx from tail->head
+      if (i == 0) {
+        is_valid(i) := !empty // Only case when the tail is invalid is if the queue is empty
+      } else { // Else: we check if the previous entry was the head OR the previous entry was invalid
+        is_valid(i) := is_valid(i - 1) && !(WrapInc(idx, numEntries) === head)
+      }
+      val br_mask = q_uop(idx).br_mask
+      val entry_match = is_valid(i) && maskMatch(io.brinfo.mask, br_mask)
 
-        when (entry_match && io.brinfo.mispredict) { // Mispredict
-          tail_next := idx
-        }.elsewhen(entry_match && !io.brinfo.mispredict) { // Resolved
-          q_uop(idx).br_mask := (br_mask & ~io.brinfo.mask)
-        }
-
+      when (entry_match && io.brinfo.mispredict) { // Mispredict
+        tail_next := idx
+      }.elsewhen(entry_match && !io.brinfo.mispredict) { // Resolved
+        q_uop(idx).br_mask := (br_mask & ~io.brinfo.mask)
       }
     }
   }
