@@ -71,12 +71,12 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
   // todo: don't hardcode issue order
   require(issueParams(0).iqType==IQT_INT.litValue()) // A
   require(issueParams(1).iqType==IQT_MEM.litValue()) // MEM
-  require(issueParams(2).iqType==IQT_INT.litValue()) // B
+//  require(issueParams(2).iqType==IQT_INT.litValue()) // B
 
   issueParams.map(ip => require(ip.dispatchWidth == 1)) // for now we support only one instruction per queue to preserve in order
   val a_dispatch = io.dis_uops(0).head
   val mem_dispatch = io.dis_uops(1).head
-  val b_dispatch = io.dis_uops(2).head
+//  val b_dispatch = io.dis_uops(2).head
 
 
   // state that remembers if instruction in MEM issue slot belongs to A or B queue
@@ -85,7 +85,7 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
   val a_blocked_mem = !mem_issue_is_b && !mem_dispatch.ready
   val b_blocked_mem = mem_issue_is_b && !mem_dispatch.ready
   val a_blocked = a_blocked_mem || !a_dispatch.ready
-  val b_blocked = b_blocked_mem || !b_dispatch.ready
+  val b_blocked = b_blocked_mem //|| !b_dispatch.ready
 
   val a_queue = Module(new SliceDispatchQueue())
   val b_queue = Module(new SliceDispatchQueue())
@@ -177,8 +177,8 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
         mem_dispatch.valid := true.B
         mem_issue_is_b := true.B
       } .otherwise{
-        b_dispatch.bits := b_head
-        b_dispatch.valid := true.B
+//        b_dispatch.bits := b_head
+//        b_dispatch.valid := true.B
       }
     }
   }
