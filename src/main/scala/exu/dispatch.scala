@@ -14,10 +14,8 @@ package boom.exu
 
 import chisel3._
 import chisel3.util._
-
 import freechips.rocketchip.config.Parameters
-
-import boom.common._
+import boom.common.{MicroOp, uopLD, _}
 import boom.util._
 
 class DispatchIO(implicit p: Parameters) extends BoomBundle
@@ -60,6 +58,122 @@ class BasicDispatcher(implicit p: Parameters) extends Dispatcher
 
     dis(w).valid := io.ren_uops(w).valid && ((io.ren_uops(w).bits.iq_type & issueParam.iqType.U) =/= 0.U)
     dis(w).bits  := io.ren_uops(w).bits
+  }
+}
+/**
+ * LSC Dispatcher - contains both A and B queues and accesses the busy table at their end.
+ */
+class SliceDispatcher(implicit p: Parameters) extends Dispatcher
+{
+  // todo: don't hardcode issue order
+  require(issueParams(0).iqType==IQT_INT.litValue()) // A
+  require(issueParams(1).iqType==IQT_MEM.litValue()) // MEM
+  require(issueParams(2).iqType==IQT_INT.litValue()) // B
+
+  issueParams.map(ip => require(ip.dispatchWidth == 1)) // for now we support only one instruction per queue to preserve in order
+  val a_dispatch = io.dis_uops(0).head
+  val mem_dispatch = io.dis_uops(1).head
+  val b_dispatch = io.dis_uops(2).head
+
+
+  // state that remembers if instruction in MEM issue slot belongs to A or B queue
+  val mem_issue_is_b = WireInit(false.B)
+
+  val a_blocked_mem = !mem_issue_is_b && !mem_dispatch.ready
+  val b_blocked_mem = mem_issue_is_b && !mem_dispatch.ready
+  val a_blocked = a_blocked_mem || !a_dispatch.ready
+  val b_blocked = b_blocked_mem || !b_dispatch.ready
+
+  val a_queue = Module(new SliceDispatchQueue())
+  val b_queue = Module(new SliceDispatchQueue())
+  val a_head = a_queue.io.head.bits
+  val b_head = b_queue.io.head.bits
+  val a_valid = a_queue.io.head.valid
+  val b_valid = b_queue.io.head.valid
+  val a_head_mem = a_head.iq_type === IQT_MEM
+  val b_head_mem = b_head.iq_type === IQT_MEM
+  val a_ready = a_queue.io.enq_uops.map(_.ready).reduce(_ && _)
+  val b_ready = b_queue.io.enq_uops.map(_.ready).reduce(_ && _)
+
+  
+  val queues_ready =  a_ready && b_ready
+  for (w <- 0 until coreWidth) {
+    // TODO: check if it is possible to use only some of the ren_uops
+    // only accept uops from rename if both queues are ready
+    io.ren_uops(w).ready := queues_ready
+    val uop = io.ren_uops(w).bits
+    // use b que if uop is load for now
+    val use_b_queue = uop.uopc === uopLD
+    // enqueue logic
+    a_queue.io.enq_uops(w).valid := io.ren_uops(w).fire() && !use_b_queue
+    b_queue.io.enq_uops(w).valid := io.ren_uops(w).fire() && use_b_queue
+    a_queue.io.enq_uops(w).bits := uop
+    b_queue.io.enq_uops(w).bits := uop
+  }
+  // dispatch nothing by default
+  for {i <- 0 until issueParams.size
+       w <- 0 until coreWidth} {
+    io.dis_uops(i)(w).valid := false.B
+    io.dis_uops(i)(w).bits  := DontCare
+  }
+
+  // annotate heads with busy information
+  io.slice_busy_req_uops.get(0) := a_head
+  io.slice_busy_req_uops.get(1) := b_head
+  val a_busy_resp = io.slice_busy_resps.get(0) 
+  val b_busy_resp = io.slice_busy_resps.get(1) 
+
+  a_head.prs1_busy := a_head.lrs1_rtype === RT_FIX && a_busy_resp.prs1_busy
+  a_head.prs2_busy := a_head.lrs2_rtype === RT_FIX && a_busy_resp.prs2_busy
+  a_head.prs3_busy := a_head.frs3_en && a_busy_resp.prs3_busy
+
+  b_head.prs1_busy := b_head.lrs1_rtype === RT_FIX && b_busy_resp.prs1_busy
+  b_head.prs2_busy := b_head.lrs2_rtype === RT_FIX && b_busy_resp.prs2_busy
+  b_head.prs3_busy := b_head.frs3_en && b_busy_resp.prs3_busy
+
+  assert(!(a_valid && a_busy_resp.prs1_busy && a_head.lrs1 === 0.U), "[rename] x0 is busy??")
+  assert(!(a_valid && a_busy_resp.prs2_busy && a_head.lrs2 === 0.U), "[rename] x0 is busy??")
+  assert(!(b_valid && b_busy_resp.prs1_busy && b_head.lrs1 === 0.U), "[rename] x0 is busy??")
+  assert(!(b_valid && b_busy_resp.prs2_busy && b_head.lrs2 === 0.U), "[rename] x0 is busy??")
+  
+  // put uops into issue queues
+  when((a_valid && a_head_mem && !a_blocked) && (b_valid && b_head_mem && !b_blocked)) {
+    // both are mem and could be dispatched
+    // figure out if a or b come first if we have two possible mem operations - take the one that was not last
+    when(mem_issue_is_b){
+      // issue from a
+      mem_dispatch.bits := a_head
+      mem_dispatch.valid := true.B
+      mem_issue_is_b := false.B
+    } .otherwise{
+      // issue from b
+      mem_dispatch.bits := b_head
+      mem_dispatch.valid := true.B
+      mem_issue_is_b := true.B
+    }
+  } .otherwise { // not two potential memory operations => can issue both
+    when(a_valid && !a_blocked){
+      a_queue.io.deq_uop := true.B
+      when(a_head_mem){
+        mem_dispatch.bits := a_head
+        mem_dispatch.valid := true.B
+        mem_issue_is_b := false.B
+      } .otherwise{
+        a_dispatch.bits := a_head
+        a_dispatch.valid := true.B
+      }
+    }
+    when(b_valid && !b_blocked){
+      b_queue.io.deq_uop := true.B
+      when(b_head_mem){
+        mem_dispatch.bits := b_head
+        mem_dispatch.valid := true.B
+        mem_issue_is_b := true.B
+      } .otherwise{
+        b_dispatch.bits := b_head
+        b_dispatch.valid := true.B
+      }
+    }
   }
 }
 

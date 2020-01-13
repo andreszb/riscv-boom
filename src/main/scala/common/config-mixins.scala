@@ -194,11 +194,12 @@ class WithSliceBooms extends Config((site, here, up) => {
     core = b.core.copy(
       fetchWidth = 4,
       useCompressed = true,
-      decodeWidth = 1,
+      decodeWidth = 2,
       numRobEntries = 32,
       issueParams = Seq(
-        IssueParams(issueWidth=1, numEntries=1, iqType=IQT_MEM.litValue, dispatchWidth=1),
-        IssueParams(issueWidth=1, numEntries=1, iqType=IQT_INT.litValue, dispatchWidth=1)
+        IssueParams(issueWidth=1, numEntries=1, iqType=IQT_INT.litValue, dispatchWidth=1), // A
+        IssueParams(issueWidth=1, numEntries=1, iqType=IQT_MEM.litValue, dispatchWidth=1), // MEM
+        IssueParams(issueWidth=1, numEntries=1, iqType=IQT_INT.litValue, dispatchWidth=1), // B
       ),
       numIntPhysRegisters = 52,
       numFpPhysRegisters = 48,
