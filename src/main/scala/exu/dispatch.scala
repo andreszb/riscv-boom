@@ -93,8 +93,8 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
   b_queue.io.flush := io.slice_flush.get
   a_queue.io.brinfo := io.slice_brinfo.get
   b_queue.io.brinfo := io.slice_brinfo.get
-  val a_head = a_queue.io.head.bits
-  val b_head = b_queue.io.head.bits
+  val a_head = WireInit(a_queue.io.head.bits)
+  val b_head = WireInit(b_queue.io.head.bits)
   val a_valid = a_queue.io.head.valid
   val b_valid = b_queue.io.head.valid
   val a_head_mem = a_head.iq_type === IQT_MEM
@@ -119,7 +119,7 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
   }
   // dispatch nothing by default
   for {i <- 0 until issueParams.size
-       w <- 0 until coreWidth} {
+       w <- 0 until 1} {
     io.dis_uops(i)(w).valid := false.B
     io.dis_uops(i)(w).bits  := DontCare
   }
