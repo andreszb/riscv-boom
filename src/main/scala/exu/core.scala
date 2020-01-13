@@ -107,7 +107,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   val rename_stages    = if (usingFPU) Seq(rename_stage, fp_rename_stage) else Seq(rename_stage)
 
   val issue_units      = new boom.exu.IssueUnits(numIntIssueWakeupPorts)
-  val dispatcher       = if(boomParams.loadSliceMode) Module(new SliceDispatcher)) else Module(new BasicDispatcher)
+  val dispatcher       = if(boomParams.loadSliceMode) Module(new SliceDispatcher) else Module(new BasicDispatcher)
 
   val iregfile         = Module(new RegisterFileSynthesizable(
                              numIntPhysRegs,
@@ -620,6 +620,8 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   if(boomParams.loadSliceMode){
     rename_stage.io.slice_busy_req_uops.get := dispatcher.io.slice_busy_req_uops.get
     dispatcher.io.slice_busy_resps.get := rename_stage.io.slice_busy_resps.get
+    dispatcher.io.slice_brinfo.get := br_unit.brinfo
+    dispatcher.io.slice_flush.get := rob.io.flush.valid
   }
 
   var iu_idx = 0

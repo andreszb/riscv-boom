@@ -30,6 +30,9 @@ class DispatchIO(implicit p: Parameters) extends BoomBundle
   // io for busy table - used only for LSC
   val slice_busy_req_uops = if(boomParams.loadSliceMode) Some(Output(Vec(coreWidth, new MicroOp))) else None
   val slice_busy_resps = if(boomParams.loadSliceMode) Some(Input(Vec(coreWidth, new BusyResp))) else None
+  // brinfo & flush for LSC
+  val slice_brinfo = if(boomParams.loadSliceMode) Some(Input(new BrResolutionInfo())) else None
+  val slice_flush = if(boomParams.loadSliceMode) Some(Input(Bool())) else None
 }
 
 abstract class Dispatcher(implicit p: Parameters) extends BoomModule
@@ -86,6 +89,10 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
 
   val a_queue = Module(new SliceDispatchQueue())
   val b_queue = Module(new SliceDispatchQueue())
+  a_queue.io.flush := io.slice_flush.get
+  b_queue.io.flush := io.slice_flush.get
+  a_queue.io.brinfo := io.slice_brinfo.get
+  b_queue.io.brinfo := io.slice_brinfo.get
   val a_head = a_queue.io.head.bits
   val b_head = b_queue.io.head.bits
   val a_valid = a_queue.io.head.valid
