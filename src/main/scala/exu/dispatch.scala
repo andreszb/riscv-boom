@@ -104,6 +104,8 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
 
   
   val queues_ready =  a_ready && b_ready
+  a_queue.io.deq_uop := false.B
+  b_queue.io.deq_uop := false.B
   for (w <- 0 until coreWidth) {
     // TODO: check if it is possible to use only some of the ren_uops
     // only accept uops from rename if both queues are ready
