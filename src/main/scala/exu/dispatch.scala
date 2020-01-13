@@ -80,7 +80,7 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
 
 
   // state that remembers if instruction in MEM issue slot belongs to A or B queue
-  val mem_issue_is_b = WireInit(false.B)
+  val mem_issue_is_b = RegInit(false.B)
 
   val a_blocked_mem = !mem_issue_is_b && !mem_dispatch.ready
   val b_blocked_mem = mem_issue_is_b && !mem_dispatch.ready
