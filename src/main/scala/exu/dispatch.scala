@@ -286,7 +286,9 @@ class SliceDispatchQueue(
   when(io.deq_uop)
   {
     head_next := WrapInc(head, numEntries)
-  }
+  }.otherwise(
+    head_next := head
+  )
 
 
   // Handle branch resolution
@@ -315,7 +317,6 @@ class SliceDispatchQueue(
 // Pipeline flushs
   when(io.flush)
   {
-    empty_next := true.B
     head_next := 0.U
     tail_next := 0.U
     ready_next := true.B
@@ -326,7 +327,9 @@ class SliceDispatchQueue(
   // Empty
   //  Little hack: If an element was dequeued it is currently impossible that the queue will be full
   when(head_next === tail_next && head_next =/= head) {
-    empty := true.B
+    empty_next := true.B
+  }.otherwise {
+    empty_next := false.B
   }
 
   // Ready?
