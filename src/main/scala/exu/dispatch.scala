@@ -326,7 +326,7 @@ class SliceDispatchQueue(
 
   // Empty
   //  Little hack: If an element was dequeued it is currently impossible that the queue will be full
-  when(head_next === tail_next && head_next != head) {
+  when(head_next === tail_next && head_next =/= head) {
     empty := true.B
   }
 
