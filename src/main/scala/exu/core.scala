@@ -107,7 +107,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   val rename_stages    = if (usingFPU) Seq(rename_stage, fp_rename_stage) else Seq(rename_stage)
 
   val issue_units      = new boom.exu.IssueUnits(numIntIssueWakeupPorts)
-  val dispatcher       = Module(new BasicDispatcher)
+  val dispatcher       = if(boomParams.loadSliceMode) Module(new SliceDispatcher)) else Module(new BasicDispatcher)
 
   val iregfile         = Module(new RegisterFileSynthesizable(
                              numIntPhysRegs,
