@@ -29,6 +29,9 @@ class DispatchIO(implicit p: Parameters) extends BoomBundle
   // N issues each accept up to dispatchWidth uops
   // dispatchWidth may vary between issue queues
   val dis_uops = MixedVec(issueParams.map(ip=>Vec(ip.dispatchWidth, DecoupledIO(new MicroOp))))
+  // io for busy table - used only for LSC
+  val slice_busy_req_uops = if(boomParams.loadSliceMode) Some(Output(Vec(coreWidth, new MicroOp))) else None
+  val slice_busy_resps = if(boomParams.loadSliceMode) Some(Input(Vec(coreWidth, new BusyResp))) else None
 }
 
 abstract class Dispatcher(implicit p: Parameters) extends BoomModule

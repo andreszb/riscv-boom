@@ -82,7 +82,8 @@ case class BoomCoreParams(
   useSCIE: Boolean = false,
   useRVE: Boolean = false,
   useBPWatch: Boolean = false,
-  clockGate: Boolean = false
+  clockGate: Boolean = false,
+  loadSliceMode: Boolean = false
 ) extends freechips.rocketchip.tile.CoreParams
 {
   val haveFSDirty = false
@@ -184,7 +185,7 @@ trait HasBoomCoreParameters extends freechips.rocketchip.tile.HasCoreParameters
   require (issueParams.count(_.iqType == IQT_INT.litValue) == 1)
 
   val intWidth = issueParams.find(_.iqType == IQT_INT.litValue).get.issueWidth
-  val memWidth = issueParams.find(_.iqType == IQT_MEM.litValue).get.issueWidth
+  val memWidth = issueParams.find(_.iqType == IQT_MEM.litValue).get.issueWidth //TODO: change calculation to allow seperate mem queues
 
   issueParams.map(x => require(x.dispatchWidth <= coreWidth && x.dispatchWidth > 0))
 

@@ -616,6 +616,11 @@ class BoomCore(implicit p: Parameters) extends BoomModule
     dispatcher.io.ren_uops(w).valid := dis_fire(w)
     dispatcher.io.ren_uops(w).bits  := dis_uops(w)
   }
+  // connect dispatch to busy table in LSC mode
+  if(boomParams.loadSliceMode){
+    rename_stage.io.slice_busy_req_uops.get := dispatcher.io.slice_busy_req_uops.get
+    dispatcher.io.slice_busy_resps.get := rename_stage.io.slice_busy_resps.get
+  }
 
   var iu_idx = 0
   // Send dispatched uops to correct issue queues
