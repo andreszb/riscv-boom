@@ -160,7 +160,7 @@ class WithSmallBooms extends Config((site, here, up) => {
       issueParams = Seq(
         IssueParams(issueWidth=1, numEntries=8, iqType=IQT_MEM.litValue, dispatchWidth=1),
         IssueParams(issueWidth=1, numEntries=8, iqType=IQT_INT.litValue, dispatchWidth=1),
-//        IssueParams(issueWidth=1, numEntries=8, iqType=IQT_FP.litValue , dispatchWidth=1)
+        IssueParams(issueWidth=1, numEntries=8, iqType=IQT_FP.litValue , dispatchWidth=1)
       ),
       numIntPhysRegisters = 52,
       numFpPhysRegisters = 48,
