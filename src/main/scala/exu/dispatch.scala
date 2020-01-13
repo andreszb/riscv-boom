@@ -133,7 +133,7 @@ class SliceDispatchQueue(
   val ready = RegInit(true.B)
 
 
-
+  // Wires for calculating state in next CC
   val head_next = Wire(UInt(qAddrSz.W))
   val tail_next = Wire(UInt(qAddrSz.W))
   val empty_next = Wire(Bool())
