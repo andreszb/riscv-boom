@@ -82,9 +82,10 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
   // state that remembers if instruction in MEM issue slot belongs to A or B queue
   val mem_issue_is_b = RegInit(false.B)
 
-  val a_blocked_mem = !mem_issue_is_b && !mem_dispatch.ready
-  val b_blocked_mem = mem_issue_is_b && !mem_dispatch.ready
-  val a_blocked = a_blocked_mem || !a_dispatch.ready
+  val mem_issue_blocked = !mem_dispatch.ready
+  val a_blocked_mem = !mem_issue_is_b && mem_issue_blocked
+  val b_blocked_mem = mem_issue_is_b && mem_issue_blocked
+  val a_blocked = a_blocked_mem || !a_dispatch.ready // something from a is in a issue slot
   val b_blocked = b_blocked_mem //|| !b_dispatch.ready
 
   val a_queue = Module(new SliceDispatchQueue())
@@ -151,17 +152,19 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
     // figure out if a or b come first if we have two possible mem operations - take the one that was not last
     when(mem_issue_is_b){
       // issue from a
+      a_queue.io.deq_uop := true.B
       mem_dispatch.bits := a_head
       mem_dispatch.valid := true.B
       mem_issue_is_b := false.B
     } .otherwise{
       // issue from b
+      b_queue.io.deq_uop := true.B
       mem_dispatch.bits := b_head
       mem_dispatch.valid := true.B
       mem_issue_is_b := true.B
     }
   } .otherwise { // not two potential memory operations => can issue both
-    when(a_valid && !a_blocked){
+    when(a_valid && !a_blocked && !(a_head_mem && mem_issue_blocked)){
       a_queue.io.deq_uop := true.B
       when(a_head_mem){
         mem_dispatch.bits := a_head
@@ -172,7 +175,7 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
         a_dispatch.valid := true.B
       }
     }
-    when(b_valid && !b_blocked){
+    when(b_valid && !b_blocked && !(b_head_mem && mem_issue_blocked)){
       b_queue.io.deq_uop := true.B
       when(b_head_mem){
         mem_dispatch.bits := b_head
@@ -316,22 +319,28 @@ class SliceDispatchQueue(
     }
   }
 
-// Pipeline flushs
-  when(io.flush)
-  {
-    head_next := 0.U
-    tail_next := 0.U
-    ready_next := true.B
-  }
 
 
 
   // Empty
   //  Little hack: If an element was dequeued it is currently impossible that the queue will be full
-  when(head_next === tail_next && head_next =/= head) {
-    empty_next := true.B
+  when(head_next === tail_next) {
+    when(head_next =/= head) { // TODO: revisit this logic and make it more better
+      empty_next := true.B
+    }.otherwise {
+      empty_next := empty
+    }
   }.otherwise {
     empty_next := false.B
+  }
+
+  // Pipeline flushs
+  when(io.flush)
+  {
+    head_next := 0.U
+    tail_next := 0.U
+    ready_next := true.B
+    empty_next := true.B
   }
 
   // Ready?
@@ -345,16 +354,17 @@ class SliceDispatchQueue(
     } else {
       check_capacity(w) := WrapInc(check_capacity(w-1), numEntries)
     }
-    when(check_capacity(w) === head_next) {
+    when(check_capacity(w) === head_next && !empty) {//TODO: little hack with !empty
       ready_next := false.B
     }
   }
 
+  require(numEntries>2*coreWidth)
 
 
   // Route out IO
   io.head.bits := q_uop(head)
-  io.head.valid := !empty
+  io.head.valid := !empty// TODO: handle flush?
   for (w <- 0 until coreWidth)
   {
     io.enq_uops(w).ready := ready
