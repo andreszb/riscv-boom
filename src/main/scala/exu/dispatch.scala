@@ -94,6 +94,7 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
   b_queue.io.flush := io.slice_flush.get
   a_queue.io.brinfo := io.slice_brinfo.get
   b_queue.io.brinfo := io.slice_brinfo.get
+
   val a_head = WireInit(a_queue.io.head.bits)
   val b_head = WireInit(b_queue.io.head.bits)
   val a_valid = a_queue.io.head.valid
@@ -145,7 +146,23 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
   assert(!(a_valid && a_busy_resp.prs2_busy && a_head.lrs2 === 0.U), "[rename] x0 is busy??")
   assert(!(b_valid && b_busy_resp.prs1_busy && b_head.lrs1 === 0.U), "[rename] x0 is busy??")
   assert(!(b_valid && b_busy_resp.prs2_busy && b_head.lrs2 === 0.U), "[rename] x0 is busy??")
-  
+
+  // this is handling the ready valid interface stricter than necessary to prevent errors
+  // dispatch valid implies dispatch ready
+  assert(!a_dispatch.valid || a_dispatch.ready)
+//  assert(!b_dispatch.valid || b_dispatch.ready)
+  assert(!mem_dispatch.valid || mem_dispatch.ready)
+
+  // dispatch implies dequeue
+  assert(!a_dispatch.valid || a_queue.io.deq_uop)
+//  assert(!b_dispatch.valid || b_queue.io.deq_uop)
+  assert(!mem_dispatch.valid || (a_queue.io.deq_uop || b_queue.io.deq_uop))
+
+  // dequeue implies dispatch
+  assert(!a_queue.io.deq_uop || (a_dispatch.valid || mem_dispatch.valid))
+  assert(!b_queue.io.deq_uop || (/*b_dispatch.valid ||*/ mem_dispatch.valid))
+
+
   // put uops into issue queues
   when((a_valid && a_head_mem && !a_blocked) && (b_valid && b_head_mem && !b_blocked)) {
     // both are mem and could be dispatched
@@ -376,4 +393,12 @@ class SliceDispatchQueue(
   ready := ready_next
   empty := empty_next
 
+  // dequeue implies queue valid (not empty)
+  assert(!io.deq_uop || !empty)
+
+  // empty implies ready
+  assert(!empty || ready)
+
+  // enqueue implies ready
+  assert(!io.enq_uops.map(_.valid).reduce(_||_) || ready)
 }
