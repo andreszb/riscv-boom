@@ -114,7 +114,7 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
     io.ren_uops(w).ready := queues_ready
     val uop = io.ren_uops(w).bits
     // use b que if uop is load for now
-    val use_b_queue = uop.uopc === uopLD
+    val use_b_queue = (uop.uopc === uopLD) || (uop.uopc === uopSTA)
     // enqueue logic
     a_queue.io.enq_uops(w).valid := io.ren_uops(w).fire() && !use_b_queue
     b_queue.io.enq_uops(w).valid := io.ren_uops(w).fire() && use_b_queue
@@ -321,7 +321,7 @@ class SliceDispatchQueue(
   when(io.brinfo.valid) {
     val is_valid =  WireInit(VecInit(Seq.fill(numEntries){true.B}))// Used to stop loop when we reach the head
     for (i <- 0 until numEntries) {
-      val idx = wrapIndex(tail - i.U) // Calculate idx from tail->head
+      val idx = wrapIndex(tail - 1.U - i.U) // Calculate idx from tail->head
       if (i == 0) {
         is_valid(i) := !empty // Only case when the tail is invalid is if the queue is empty
       } else { // Else: we check if the previous entry was the head OR the previous entry was invalid
