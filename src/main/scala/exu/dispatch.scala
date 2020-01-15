@@ -108,13 +108,12 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
     io.ren_uops(w).ready := queues_ready
     val uop = io.ren_uops(w).bits
     // use b que if uop is load for now
-    val use_b_queue = (uop.uopc === uopLD)
-    // Split instructions to both queues if it's a store.
-    val split_instruction = uop.uopc === uopSTA
+    val use_b_queue = (uop.uopc === uopLD) || uop.uopc === uopSTA // TODO: uopST should be the opcode in Decode stage
+    val use_a_queue = (uop.uopc =/= uopLD)
 
     // enqueue logic
-    a_queue.io.enq_uops(w).valid := io.ren_uops(w).fire() && (!use_b_queue || split_instruction)
-    b_queue.io.enq_uops(w).valid := io.ren_uops(w).fire() && (use_b_queue || split_instruction)
+    a_queue.io.enq_uops(w).valid := io.ren_uops(w).fire() && use_a_queue
+    b_queue.io.enq_uops(w).valid := io.ren_uops(w).fire() && use_b_queue
     val uop_a = WireInit(uop)
     val uop_b = WireInit(uop)
 
