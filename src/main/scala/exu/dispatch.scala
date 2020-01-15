@@ -108,7 +108,7 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
     io.ren_uops(w).ready := queues_ready
     val uop = io.ren_uops(w).bits
     // use b que if uop is load for now
-    val use_b_queue = uop.uopc === uopLD
+    val use_b_queue = (uop.uopc === uopLD) || (uop.uopc === uopSTA)
     // enqueue logic
     a_queue.io.enq_uops(w).valid := io.ren_uops(w).fire() && !use_b_queue
     b_queue.io.enq_uops(w).valid := io.ren_uops(w).fire() && use_b_queue
@@ -300,10 +300,12 @@ class SliceDispatchQueue(
   // Handle branch resolution
   //  On mispredict, find oldest that is killed and kill everyone younger than that
   //  On resolved. Update all branch masks in paralell. Updates also invalid entries, for simplicity.
+  val head_update_brmask = WireInit(false.B) //This wire decides if we should block the deque from head because of a branch resolution
+  val head_killed = WireInit(false.B)
   when(io.brinfo.valid) {
     val is_valid =  WireInit(VecInit(Seq.fill(numEntries){true.B}))// Used to stop loop when we reach the head
     for (i <- 0 until numEntries) {
-      val idx = wrapIndex(tail - i.U) // Calculate idx from tail->head
+      val idx = wrapIndex(tail - 1.U - i.U) // Calculate idx from tail->head
       if (i == 0) {
         is_valid(i) := !empty // Only case when the tail is invalid is if the queue is empty
       } else { // Else: we check if the previous entry was the head OR the previous entry was invalid
@@ -314,8 +316,14 @@ class SliceDispatchQueue(
 
       when (entry_match && io.brinfo.mispredict) { // Mispredict
         tail_next := idx
+        when (idx === head) {
+          head_killed := true.B
+        }
       }.elsewhen(entry_match && !io.brinfo.mispredict) { // Resolved
         q_uop(idx).br_mask := (br_mask & ~io.brinfo.mask)
+        when (idx === head) {
+          head_update_brmask := true.B
+        }
       }
     }
   }
@@ -326,7 +334,7 @@ class SliceDispatchQueue(
   // Empty
   //  Little hack: If an element was dequeued it is currently impossible that the queue will be full
   when(head_next === tail_next) {
-    when(head_next =/= head) { // TODO: revisit this logic and make it more better
+    when(head_next =/= head || head_killed) { // TODO: revisit this logic and make it more better
       empty_next := true.B
     }.otherwise {
       empty_next := empty
@@ -355,7 +363,7 @@ class SliceDispatchQueue(
     } else {
       check_capacity(w) := WrapInc(check_capacity(w-1), numEntries)
     }
-    when(check_capacity(w) === head_next && !empty) {//TODO: little hack with !empty
+    when(check_capacity(w) === head_next && !empty_next && !empty) {//TODO: little hack with !empty
       ready_next := false.B
     }
   }
@@ -365,7 +373,11 @@ class SliceDispatchQueue(
 
   // Route out IO
   io.head.bits := q_uop(head)
-  io.head.valid := !empty// TODO: handle flush?
+  io.head.valid :=  !empty &&
+                    !head_update_brmask &&
+                    !head_killed &&
+                    !io.flush // TODO: handle flush?
+
   for (w <- 0 until coreWidth)
   {
     io.enq_uops(w).ready := ready
@@ -385,4 +397,9 @@ class SliceDispatchQueue(
 
   // enqueue implies ready
   assert(!io.enq_uops.map(_.valid).reduce(_||_) || ready)
+
+  // No deques on flush
+  assert(!(io.deq_uop && io.flush))
+
+
 }
