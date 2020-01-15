@@ -198,8 +198,8 @@ class WithSliceBooms extends Config((site, here, up) => {
       decodeWidth = 2,
       numRobEntries = 32,
       issueParams = Seq(
-        IssueParams(issueWidth=1, numEntries=1, iqType=IQT_INT.litValue, dispatchWidth=1), // A
-        IssueParams(issueWidth=1, numEntries=1, iqType=IQT_MEM.litValue, dispatchWidth=1), // MEM
+        IssueParams(issueWidth=2, numEntries=2, iqType=IQT_INT.litValue, dispatchWidth=2), // A
+        IssueParams(issueWidth=1, numEntries=2, iqType=IQT_MEM.litValue, dispatchWidth=2), // MEM
 //        IssueParams(issueWidth=1, numEntries=1, iqType=IQT_INT.litValue, dispatchWidth=1), // B
       ),
       numIntPhysRegisters = 52,
