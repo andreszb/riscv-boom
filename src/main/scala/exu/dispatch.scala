@@ -69,24 +69,20 @@ class BasicDispatcher(implicit p: Parameters) extends Dispatcher
 class SliceDispatcher(implicit p: Parameters) extends Dispatcher
 {
   // todo: don't hardcode issue order
-  require(issueParams(0).iqType==IQT_INT.litValue()) // A
+  require(issueParams(0).iqType==IQT_INT.litValue()) // INT
   require(issueParams(1).iqType==IQT_MEM.litValue()) // MEM
-//  require(issueParams(2).iqType==IQT_INT.litValue()) // B
 
-  issueParams.map(ip => require(ip.dispatchWidth == 1)) // for now we support only one instruction per queue to preserve in order
-  val a_dispatch = io.dis_uops(0).head
-  val mem_dispatch = io.dis_uops(1).head
-//  val b_dispatch = io.dis_uops(2).head
+  issueParams.map(ip => require(ip.dispatchWidth == 2)) // for now we support only one instruction per queue to preserve in order
+  val a_int_dispatch = io.dis_uops(0)(0)
+  val a_mem_dispatch = io.dis_uops(1)(0)
+  val b_int_dispatch = io.dis_uops(0)(1)
+  val b_mem_dispatch = io.dis_uops(1)(1)
 
 
   // state that remembers if instruction in MEM issue slot belongs to A or B queue
-  val mem_issue_is_b = RegInit(false.B)
 
-  val mem_issue_blocked = !mem_dispatch.ready
-  val a_blocked_mem = !mem_issue_is_b && mem_issue_blocked
-  val b_blocked_mem = mem_issue_is_b && mem_issue_blocked
-  val a_blocked = a_blocked_mem || !a_dispatch.ready // something from a is in a issue slot
-  val b_blocked = b_blocked_mem //|| !b_dispatch.ready
+  val a_issue_blocked = !a_mem_dispatch.ready || !a_int_dispatch.ready // something from a is in a issue slot
+  val b_issue_blocked = !b_mem_dispatch.ready || !b_int_dispatch.ready
 
   val a_queue = Module(new SliceDispatchQueue())
   val b_queue = Module(new SliceDispatchQueue())
@@ -104,10 +100,8 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
   val a_ready = a_queue.io.enq_uops.map(_.ready).reduce(_ && _)
   val b_ready = b_queue.io.enq_uops.map(_.ready).reduce(_ && _)
 
-  
+
   val queues_ready =  a_ready && b_ready
-  a_queue.io.deq_uop := false.B
-  b_queue.io.deq_uop := false.B
   for (w <- 0 until coreWidth) {
     // TODO: check if it is possible to use only some of the ren_uops
     // only accept uops from rename if both queues are ready
@@ -131,8 +125,8 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
   // annotate heads with busy information
   io.slice_busy_req_uops.get(0) := a_head
   io.slice_busy_req_uops.get(1) := b_head
-  val a_busy_resp = io.slice_busy_resps.get(0) 
-  val b_busy_resp = io.slice_busy_resps.get(1) 
+  val a_busy_resp = io.slice_busy_resps.get(0)
+  val b_busy_resp = io.slice_busy_resps.get(1)
 
   a_head.prs1_busy := a_head.lrs1_rtype === RT_FIX && a_busy_resp.prs1_busy
   a_head.prs2_busy := a_head.lrs2_rtype === RT_FIX && a_busy_resp.prs2_busy
@@ -149,59 +143,49 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
 
   // this is handling the ready valid interface stricter than necessary to prevent errors
   // dispatch valid implies dispatch ready
-  assert(!a_dispatch.valid || a_dispatch.ready)
-//  assert(!b_dispatch.valid || b_dispatch.ready)
-  assert(!mem_dispatch.valid || mem_dispatch.ready)
+  assert(!a_int_dispatch.valid || a_int_dispatch.ready)
+  assert(!b_int_dispatch.valid || b_int_dispatch.ready)
+  assert(!a_mem_dispatch.valid || a_mem_dispatch.ready)
+  assert(!b_mem_dispatch.valid || b_mem_dispatch.ready)
 
   // dispatch implies dequeue
-  assert(!a_dispatch.valid || a_queue.io.deq_uop)
-//  assert(!b_dispatch.valid || b_queue.io.deq_uop)
-  assert(!mem_dispatch.valid || (a_queue.io.deq_uop || b_queue.io.deq_uop))
+  assert(!a_int_dispatch.valid || a_queue.io.deq_uop)
+  assert(!b_int_dispatch.valid || b_queue.io.deq_uop)
+  assert(!a_mem_dispatch.valid || a_queue.io.deq_uop)
+  assert(!b_mem_dispatch.valid || b_queue.io.deq_uop)
 
   // dequeue implies dispatch
-  assert(!a_queue.io.deq_uop || (a_dispatch.valid || mem_dispatch.valid))
-  assert(!b_queue.io.deq_uop || (/*b_dispatch.valid ||*/ mem_dispatch.valid))
+  assert(!a_queue.io.deq_uop || (a_int_dispatch.valid || a_mem_dispatch.valid))
+  assert(!b_queue.io.deq_uop || (b_int_dispatch.valid || b_mem_dispatch.valid))
 
+  a_queue.io.deq_uop := false.B
+  b_queue.io.deq_uop := false.B
+
+  a_mem_dispatch.valid := false.B
+  a_int_dispatch.valid := false.B
+  b_mem_dispatch.valid := false.B
+  b_int_dispatch.valid := false.B
+
+  a_mem_dispatch.bits := a_head
+  a_int_dispatch.bits := a_head
+  b_mem_dispatch.bits := b_head
+  b_int_dispatch.bits := b_head
 
   // put uops into issue queues
-  when((a_valid && a_head_mem && !a_blocked) && (b_valid && b_head_mem && !b_blocked)) {
-    // both are mem and could be dispatched
-    // figure out if a or b come first if we have two possible mem operations - take the one that was not last
-    when(mem_issue_is_b){
-      // issue from a
-      a_queue.io.deq_uop := true.B
-      mem_dispatch.bits := a_head
-      mem_dispatch.valid := true.B
-      mem_issue_is_b := false.B
+  when(a_valid && !a_issue_blocked){
+    a_queue.io.deq_uop := true.B
+    when(a_head_mem){
+      a_mem_dispatch.valid := true.B
     } .otherwise{
-      // issue from b
-      b_queue.io.deq_uop := true.B
-      mem_dispatch.bits := b_head
-      mem_dispatch.valid := true.B
-      mem_issue_is_b := true.B
+      a_int_dispatch.valid := true.B
     }
-  } .otherwise { // not two potential memory operations => can issue both
-    when(a_valid && !a_blocked && !(a_head_mem && mem_issue_blocked)){
-      a_queue.io.deq_uop := true.B
-      when(a_head_mem){
-        mem_dispatch.bits := a_head
-        mem_dispatch.valid := true.B
-        mem_issue_is_b := false.B
-      } .otherwise{
-        a_dispatch.bits := a_head
-        a_dispatch.valid := true.B
-      }
-    }
-    when(b_valid && !b_blocked && !(b_head_mem && mem_issue_blocked)){
-      b_queue.io.deq_uop := true.B
-      when(b_head_mem){
-        mem_dispatch.bits := b_head
-        mem_dispatch.valid := true.B
-        mem_issue_is_b := true.B
-      } .otherwise{
-//        b_dispatch.bits := b_head
-//        b_dispatch.valid := true.B
-      }
+  }
+  when(b_valid && !b_issue_blocked){
+    b_queue.io.deq_uop := true.B
+    when(b_head_mem){
+      b_mem_dispatch.valid := true.B
+    } .otherwise{
+      b_int_dispatch.valid := true.B
     }
   }
 }
