@@ -174,7 +174,7 @@ abstract class IssueUnit(
       printf("    Slot[%d]: " +
         "V:%c Req:%c Wen:%c P:(%c,%c,%c) PRegs:Dst:(Typ:%c #:%d) Srcs:(%d,%d,%d) " +
         "[PC:0x%x Inst:DASM(%x) UOPCode:%d] RobIdx:%d BMsk:0x%x Imm:0x%x\n",
-        i.U(log2Ceil(numIssueSlots).W),
+        i.U(log2Ceil(numIssueSlots+1).W),
         BoolToChar(       issue_slots(i).valid, 'V'),
         BoolToChar(     issue_slots(i).request, 'R'),
         BoolToChar(issue_slots(i).in_uop.valid, 'W'),
