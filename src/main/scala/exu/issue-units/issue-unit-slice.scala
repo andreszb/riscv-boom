@@ -52,10 +52,8 @@ class IssueUnitSlice(
   // Dispatch/Entry Logic
   // did we find a spot to slide the new dispatched uops into?
 
-  val will_be_available = (0 until numIssueSlots).map(i =>
-    (!issue_slots(i).will_be_valid || issue_slots(i).clear) && !(issue_slots(i).in_uop.valid))
   for (w <- 0 until dispatchWidth) {
-    io.dis_uops(w).ready := RegNext(will_be_available(w))
+    io.dis_uops(w).ready := !issue_slots(w).will_be_valid
   }
 
   //-------------------------------------------------------------
