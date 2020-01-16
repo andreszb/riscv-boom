@@ -120,12 +120,27 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
     io.ren_uops(w).ready := queues_ready
     val uop = io.ren_uops(w).bits
     // use b que if uop is load for now
-    val use_b_queue = (uop.uopc === uopLD) || (uop.uopc === uopSTA)
+    val use_b_queue = (uop.uopc === uopLD) || uop.uopc === uopSTA // TODO: uopST should be the opcode in Decode stage
+    val use_a_queue = (uop.uopc =/= uopLD)
+
     // enqueue logic
-    a_queue.io.enq_uops(w).valid := io.ren_uops(w).fire() && !use_b_queue
+    a_queue.io.enq_uops(w).valid := io.ren_uops(w).fire() && use_a_queue
     b_queue.io.enq_uops(w).valid := io.ren_uops(w).fire() && use_b_queue
-    a_queue.io.enq_uops(w).bits := uop
-    b_queue.io.enq_uops(w).bits := uop
+    val uop_a = WireInit(uop)
+    val uop_b = WireInit(uop)
+
+    when(uop.uopc === uopSTA) {
+      // In case of splitting stores. We need to put data generation in A (uopSTD) and
+      //  address generation (uopSTA) in B. We X out the opposite lrs by assigning RT_X to the rtype
+      uop_a.uopc := uopSTD
+      uop_a.lrs1_rtype := RT_X
+
+      uop_b.uopc := uopSTA
+      uop_b.lrs2_rtype := RT_X
+    }
+    a_queue.io.enq_uops(w).bits := uop_a
+    b_queue.io.enq_uops(w).bits := uop_b
+
   }
   // dispatch nothing by default
   for {i <- 0 until issueParams.size
