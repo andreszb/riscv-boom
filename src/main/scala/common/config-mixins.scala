@@ -217,7 +217,7 @@ class WithSliceBooms extends Config((site, here, up) => {
       bpdRandom = None,
       nPerfCounters = 2,
       fpu = None,
-      useAtomics = false,
+      useAtomics = true,
       usingFPU = false,
       loadSliceMode = true,
     ),
