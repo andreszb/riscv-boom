@@ -623,6 +623,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
     dispatcher.io.slice_brinfo.get := br_unit.brinfo
     dispatcher.io.slice_flush.get := rob.io.flush.valid
   }
+  dispatcher.io.tsc_reg := debug_tsc_reg // needed for pipeview
 
   var iu_idx = 0
   // Send dispatched uops to correct issue queues
@@ -1320,8 +1321,10 @@ class BoomCore(implicit p: Parameters) extends BoomModule
       when (dec_fire(w)) {
         printf("%d; O3PipeView:rename: %d\n", dec_uops(w).debug_events.fetch_seq, debug_tsc_reg)
       }
-      when (dispatcher.io.ren_uops(w).valid) {
-        printf("%d; O3PipeView:dispatch: %d\n", dispatcher.io.ren_uops(w).bits.debug_events.fetch_seq, debug_tsc_reg)
+      if(!boomParams.loadSliceMode){
+        when (dispatcher.io.ren_uops(w).valid) {
+          printf("%d; O3PipeView:dispatch: %d\n", dispatcher.io.ren_uops(w).bits.debug_events.fetch_seq, debug_tsc_reg)
+        }
       }
 
       when (dec_ready || flush_ifu) {
