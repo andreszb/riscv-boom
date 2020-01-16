@@ -125,7 +125,12 @@ abstract class IssueUnit(
       // For StoreAddrGen for Int, or AMOAddrGen, we go to addr gen state
       when ((io.dis_uops(w).bits.uopc === uopSTA && io.dis_uops(w).bits.lrs2_rtype === RT_FIX) ||
              io.dis_uops(w).bits.uopc === uopAMO_AG) {
-        dis_uops(w).iw_state := s_valid_1 //TODO: Remove this whole thing
+        if(boomParams.loadSliceMode) {
+          dis_uops(w).iw_state := s_valid_1 // Dont do the store splitting in the same Issue Slot
+        } else {
+          dis_uops(w).iw_state := s_valid_2
+        }
+
         // For store addr gen for FP, rs2 is the FP register, and we don't wait for that here
       } .elsewhen (io.dis_uops(w).bits.uopc === uopSTA && io.dis_uops(w).bits.lrs2_rtype =/= RT_FIX) {
         dis_uops(w).lrs2_rtype := RT_X
