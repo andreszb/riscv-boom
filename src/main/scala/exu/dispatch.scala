@@ -169,6 +169,7 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
   assert(!(b_valid && b_busy_resp.prs2_busy && b_head.lrs2 === 0.U), "[rename] x0 is busy??")
 
   if(usingFPU){
+    // TODO: also enable for b queue (float loads)
     io.slice_fp_busy_req_uops.get(0) := a_head
     io.slice_fp_busy_req_uops.get(1) := DontCare // b never contains floats
     val a_flt_busy_resp = io.slice_fp_busy_resps.get(0)
