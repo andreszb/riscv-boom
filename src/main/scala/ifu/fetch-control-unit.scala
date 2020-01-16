@@ -534,7 +534,6 @@ class FetchControlUnit(implicit p: Parameters) extends BoomModule
   fb.io.status := io.status
   fb.io.bp     := io.bp
 
-
   //-------------------------------------------------------------
   // **** FetchTargetQueue ****
   //-------------------------------------------------------------
