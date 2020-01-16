@@ -15,7 +15,7 @@ package boom.exu
 import chisel3._
 import chisel3.util._
 import freechips.rocketchip.config.Parameters
-import boom.common.{MicroOp, uopLD, _}
+import boom.common.{MicroOp, O3PIPEVIEW_PRINTF, uopLD, _}
 import boom.util._
 
 class DispatchIO(implicit p: Parameters) extends BoomBundle
@@ -35,6 +35,8 @@ class DispatchIO(implicit p: Parameters) extends BoomBundle
   // brinfo & flush for LSC
   val slice_brinfo = if(boomParams.loadSliceMode) Some(Input(new BrResolutionInfo())) else None
   val slice_flush = if(boomParams.loadSliceMode) Some(Input(Bool())) else None
+
+  val tsc_reg = Input(UInt(width=xLen.W))
 }
 
 abstract class Dispatcher(implicit p: Parameters) extends BoomModule
@@ -95,12 +97,14 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
   val a_issue_blocked = !a_mem_dispatch.ready || !a_int_dispatch.ready || a_fp_dispatch.map(!_.ready).getOrElse(false.B) // something from a is in a issue slot
   val b_issue_blocked = !b_mem_dispatch.ready || !b_int_dispatch.ready
 
-  val a_queue = Module(new SliceDispatchQueue())
-  val b_queue = Module(new SliceDispatchQueue())
+  val a_queue = Module(new SliceDispatchQueue(qName = "a_queue"))
+  val b_queue = Module(new SliceDispatchQueue(qName = "b_queue"))
   a_queue.io.flush := io.slice_flush.get
   b_queue.io.flush := io.slice_flush.get
   a_queue.io.brinfo := io.slice_brinfo.get
   b_queue.io.brinfo := io.slice_brinfo.get
+  a_queue.io.tsc_reg := io.tsc_reg
+  b_queue.io.tsc_reg := io.tsc_reg
 
   val a_head = WireInit(a_queue.io.head.bits)
   val b_head = WireInit(b_queue.io.head.bits)
@@ -254,6 +258,15 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
       b_int_dispatch.valid := true.B
     }
   }
+
+  if(O3PIPEVIEW_PRINTF){ // dispatch is here because it does not happen driectly after rename anymore
+    when (a_queue.io.deq_uop) {
+      printf("%d; O3PipeView:dispatch: %d\n", a_head.debug_events.fetch_seq, io.tsc_reg)
+    }
+    when (b_queue.io.deq_uop) {
+      printf("%d; O3PipeView:dispatch: %d\n", b_head.debug_events.fetch_seq, io.tsc_reg)
+    }
+  }
 }
 
 /**
@@ -295,7 +308,8 @@ class CompactingDispatcher(implicit p: Parameters) extends Dispatcher
 
 class SliceDispatchQueue(
                         val numEntries: Int = 8,
-                        val qAddrSz: Int = 3
+                        val qAddrSz: Int = 3,
+                        val qName: String
                         )(implicit p: Parameters) extends BoomModule
 {
   val io = IO(new Bundle {
@@ -305,6 +319,7 @@ class SliceDispatchQueue(
 
     val brinfo = Input(new BrResolutionInfo())
     val flush = Input(new Bool)
+    val tsc_reg = Input(UInt(width=xLen.W)) // needed for pipeview
   })
 
   // Maps i to idx of queue. Used with for-loops starting at head or tail
@@ -467,5 +482,13 @@ class SliceDispatchQueue(
   // No deques on flush
   assert(!(io.deq_uop && io.flush))
 
-
+  if (O3PIPEVIEW_PRINTF) {
+    for (i <- 0 until coreWidth) {
+      when (io.enq_uops(i).valid) {
+        printf("%d; O3PipeView:"+qName+": %d\n",
+          io.enq_uops(i).bits.debug_events.fetch_seq,
+          io.tsc_reg)
+      }
+    }
+  }
 }
