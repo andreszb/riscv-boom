@@ -169,10 +169,10 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
   assert(!(b_valid && b_busy_resp.prs2_busy && b_head.lrs2 === 0.U), "[rename] x0 is busy??")
 
   if(usingFPU){
-    // TODO: also enable for b queue (float loads)
     io.slice_fp_busy_req_uops.get(0) := a_head
-    io.slice_fp_busy_req_uops.get(1) := DontCare // b never contains floats
+    io.slice_fp_busy_req_uops.get(1) := b_head // also needed for b for float loads
     val a_flt_busy_resp = io.slice_fp_busy_resps.get(0)
+    val b_flt_busy_resp = io.slice_fp_busy_resps.get(1)
     // fp busy info
     when(a_head.lrs1_rtype === RT_FLT){
       a_head.prs1_busy := a_flt_busy_resp.prs1_busy
@@ -181,6 +181,13 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
       a_head.prs2_busy := a_flt_busy_resp.prs2_busy
     }
     a_head.prs3_busy := a_head.frs3_en && a_flt_busy_resp.prs3_busy
+    when(b_head.lrs1_rtype === RT_FLT){
+      b_head.prs1_busy := b_flt_busy_resp.prs1_busy
+    }
+    when(b_head.lrs2_rtype === RT_FLT){
+      b_head.prs2_busy := b_flt_busy_resp.prs2_busy
+    }
+    b_head.prs3_busy := b_head.frs3_en && b_flt_busy_resp.prs3_busy
   }
 
   // this is handling the ready valid interface stricter than necessary to prevent errors
