@@ -150,7 +150,7 @@ class IssueSlot(val numWakeupPorts: Int)(implicit p: Parameters)
 
   when (io.in_uop.valid) {
     slot_uop := io.in_uop.bits
-    assert (is_invalid || io.clear || io.kill, "trying to overwrite a valid issue slot.")
+    assert (is_invalid || io.clear || io.kill || !io.will_be_valid, "trying to overwrite a valid issue slot.")
   }
 
   // Wakeup Compare Logic
