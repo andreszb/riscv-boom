@@ -30,6 +30,8 @@ class DispatchIO(implicit p: Parameters) extends BoomBundle
   // io for busy table - used only for LSC
   val slice_busy_req_uops = if(boomParams.loadSliceMode) Some(Output(Vec(coreWidth, new MicroOp))) else None
   val slice_busy_resps = if(boomParams.loadSliceMode) Some(Input(Vec(coreWidth, new BusyResp))) else None
+  val slice_fp_busy_req_uops = if(boomParams.loadSliceMode && usingFPU) Some(Output(Vec(coreWidth, new MicroOp))) else None
+  val slice_fp_busy_resps = if(boomParams.loadSliceMode && usingFPU) Some(Input(Vec(coreWidth, new BusyResp))) else None
   // brinfo & flush for LSC
   val slice_brinfo = if(boomParams.loadSliceMode) Some(Input(new BrResolutionInfo())) else None
   val slice_flush = if(boomParams.loadSliceMode) Some(Input(Bool())) else None
@@ -74,16 +76,25 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
   require(issueParams(0).iqType==IQT_INT.litValue()) // INT
   require(issueParams(1).iqType==IQT_MEM.litValue()) // MEM
 
-  issueParams.map(ip => require(ip.dispatchWidth == 2)) // for now we support only one instruction per queue to preserve in order
+  require(issueParams(0).dispatchWidth == 2)
+  require(issueParams(1).dispatchWidth == 2)
+
+  if(usingFPU){
+    require(issueParams(2).iqType==IQT_FP.litValue()) // FP
+    require(issueParams(2).dispatchWidth == 1)
+  }
+
+
   val a_int_dispatch = io.dis_uops(0)(0)
   val a_mem_dispatch = io.dis_uops(1)(0)
+  val a_fp_dispatch =  if(usingFPU) Some(io.dis_uops(2)(0)) else None
   val b_int_dispatch = io.dis_uops(0)(1)
   val b_mem_dispatch = io.dis_uops(1)(1)
 
 
   // state that remembers if instruction in MEM issue slot belongs to A or B queue
 
-  val a_issue_blocked = !a_mem_dispatch.ready || !a_int_dispatch.ready // something from a is in a issue slot
+  val a_issue_blocked = !a_mem_dispatch.ready || !a_int_dispatch.ready || a_fp_dispatch.map(!_.ready).getOrElse(false.B) // something from a is in a issue slot
   val b_issue_blocked = !b_mem_dispatch.ready || !b_int_dispatch.ready
 
   val a_queue = Module(new SliceDispatchQueue(qName = "a_queue"))
@@ -100,6 +111,7 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
   val a_valid = a_queue.io.head.valid
   val b_valid = b_queue.io.head.valid
   val a_head_mem = a_head.iq_type === IQT_MEM
+  val a_head_fp = a_head.iq_type === IQT_FP
   val b_head_mem = b_head.iq_type === IQT_MEM
   val a_ready = a_queue.io.enq_uops.map(_.ready).reduce(_ && _)
   val b_ready = b_queue.io.enq_uops.map(_.ready).reduce(_ && _)
@@ -160,21 +172,49 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
   assert(!(b_valid && b_busy_resp.prs1_busy && b_head.lrs1 === 0.U), "[rename] x0 is busy??")
   assert(!(b_valid && b_busy_resp.prs2_busy && b_head.lrs2 === 0.U), "[rename] x0 is busy??")
 
+  if(usingFPU){
+    io.slice_fp_busy_req_uops.get(0) := a_head
+    io.slice_fp_busy_req_uops.get(1) := b_head // also needed for b for float loads
+    val a_flt_busy_resp = io.slice_fp_busy_resps.get(0)
+    val b_flt_busy_resp = io.slice_fp_busy_resps.get(1)
+    // fp busy info
+    when(a_head.lrs1_rtype === RT_FLT){
+      a_head.prs1_busy := a_flt_busy_resp.prs1_busy
+    }
+    when(a_head.lrs2_rtype === RT_FLT){
+      a_head.prs2_busy := a_flt_busy_resp.prs2_busy
+    }
+    a_head.prs3_busy := a_head.frs3_en && a_flt_busy_resp.prs3_busy
+    when(b_head.lrs1_rtype === RT_FLT){
+      b_head.prs1_busy := b_flt_busy_resp.prs1_busy
+    }
+    when(b_head.lrs2_rtype === RT_FLT){
+      b_head.prs2_busy := b_flt_busy_resp.prs2_busy
+    }
+    b_head.prs3_busy := b_head.frs3_en && b_flt_busy_resp.prs3_busy
+  }
+
   // this is handling the ready valid interface stricter than necessary to prevent errors
   // dispatch valid implies dispatch ready
   assert(!a_int_dispatch.valid || a_int_dispatch.ready)
   assert(!b_int_dispatch.valid || b_int_dispatch.ready)
   assert(!a_mem_dispatch.valid || a_mem_dispatch.ready)
   assert(!b_mem_dispatch.valid || b_mem_dispatch.ready)
+  if(usingFPU) {
+    assert(!a_fp_dispatch.get.valid || a_fp_dispatch.get.ready)
+  }
 
   // dispatch implies dequeue
   assert(!a_int_dispatch.valid || a_queue.io.deq_uop)
   assert(!b_int_dispatch.valid || b_queue.io.deq_uop)
   assert(!a_mem_dispatch.valid || a_queue.io.deq_uop)
   assert(!b_mem_dispatch.valid || b_queue.io.deq_uop)
+  if(usingFPU) {
+    assert(!a_fp_dispatch.get.valid || a_queue.io.deq_uop)
+  }
 
   // dequeue implies dispatch
-  assert(!a_queue.io.deq_uop || (a_int_dispatch.valid || a_mem_dispatch.valid))
+  assert(!a_queue.io.deq_uop || (a_int_dispatch.valid || a_mem_dispatch.valid || a_fp_dispatch.map(_.valid).getOrElse(false.B)))
   assert(!b_queue.io.deq_uop || (b_int_dispatch.valid || b_mem_dispatch.valid))
 
   a_queue.io.deq_uop := false.B
@@ -184,18 +224,29 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
   a_int_dispatch.valid := false.B
   b_mem_dispatch.valid := false.B
   b_int_dispatch.valid := false.B
+  if(usingFPU) {
+    a_fp_dispatch.get.valid := false.B
+  }
 
   a_mem_dispatch.bits := a_head
   a_int_dispatch.bits := a_head
   b_mem_dispatch.bits := b_head
   b_int_dispatch.bits := b_head
 
+  if(usingFPU){
+    a_fp_dispatch.get.bits := a_head
+  }
+
   // put uops into issue queues
   when(a_valid && !a_issue_blocked){
     a_queue.io.deq_uop := true.B
     when(a_head_mem){
       a_mem_dispatch.valid := true.B
-    } .otherwise{
+    } .elsewhen(a_head_fp){
+      if(usingFPU){
+        a_fp_dispatch.get.valid := true.B
+      }
+    }.otherwise{
       a_int_dispatch.valid := true.B
     }
   }
