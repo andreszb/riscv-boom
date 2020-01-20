@@ -83,7 +83,8 @@ case class BoomCoreParams(
   useRVE: Boolean = false,
   useBPWatch: Boolean = false,
   clockGate: Boolean = false,
-  loadSliceMode: Boolean = false
+  loadSliceCore: Option[LoadSliceCoreParams] = None
+
 ) extends freechips.rocketchip.tile.CoreParams
 {
   val haveFSDirty = false
@@ -93,6 +94,7 @@ case class BoomCoreParams(
   val retireWidth = decodeWidth
   val jumpInFrontend: Boolean = false // unused in boom
   val nPMPs: Int = 8
+  val loadSliceMode: Boolean = loadSliceCore.isDefined
 
   override def customCSRs(implicit p: Parameters) = new BoomCustomCSRs
 }
@@ -279,3 +281,10 @@ trait HasBoomCoreParameters extends freechips.rocketchip.tile.HasCoreParameters
   val corePAddrBits = paddrBits
   val corePgIdxBits = pgIdxBits
 }
+
+// Case class for LoadSliceCore parameters.
+//  TODO: Consider moving this to separate file?
+case class LoadSliceCoreParams(
+  numAqEntries: Int = 8,
+  numBqEntries: Int = 8
+                          )
