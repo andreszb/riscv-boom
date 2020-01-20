@@ -28,11 +28,11 @@ class DispatchIO(implicit p: Parameters) extends BoomBundle
   // dispatchWidth may vary between issue queues
   val dis_uops = MixedVec(issueParams.map(ip=>Vec(ip.dispatchWidth, DecoupledIO(new MicroOp))))
   // io for busy table - used only for LSC
-  val slice_busy_req_uops = if(boomParams.loadSliceMode) Some(Output(Vec(coreWidth, new MicroOp))) else None
-  val slice_busy_resps = if(boomParams.loadSliceMode) Some(Input(Vec(coreWidth, new BusyResp))) else None
+  val slice_busy_req_uops = if(boomParams.loadSliceCore.isDefined) Some(Output(Vec(coreWidth, new MicroOp))) else None
+  val slice_busy_resps = if(boomParams.loadSliceCore.isDefined) Some(Input(Vec(coreWidth, new BusyResp))) else None
   // brinfo & flush for LSC
-  val slice_brinfo = if(boomParams.loadSliceMode) Some(Input(new BrResolutionInfo())) else None
-  val slice_flush = if(boomParams.loadSliceMode) Some(Input(Bool())) else None
+  val slice_brinfo = if(boomParams.loadSliceCore.isDefined) Some(Input(new BrResolutionInfo())) else None
+  val slice_flush = if(boomParams.loadSliceCore.isDefined) Some(Input(Bool())) else None
 
   val tsc_reg = Input(UInt(width=xLen.W))
 }
@@ -86,8 +86,8 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
   val a_issue_blocked = !a_mem_dispatch.ready || !a_int_dispatch.ready // something from a is in a issue slot
   val b_issue_blocked = !b_mem_dispatch.ready || !b_int_dispatch.ready
 
-  val a_queue = Module(new SliceDispatchQueue(qName = "a_queue"))
-  val b_queue = Module(new SliceDispatchQueue(qName = "b_queue"))
+  val a_queue = Module(new SliceDispatchQueue(numEntries = boomParams.loadSliceCore.get.numAqEntries, qName = "a_queue"))
+  val b_queue = Module(new SliceDispatchQueue(numEntries = boomParams.loadSliceCore.get.numBqEntries, qName = "b_queue"))
   a_queue.io.flush := io.slice_flush.get
   b_queue.io.flush := io.slice_flush.get
   a_queue.io.brinfo := io.slice_brinfo.get
@@ -257,7 +257,6 @@ class CompactingDispatcher(implicit p: Parameters) extends Dispatcher
 
 class SliceDispatchQueue(
                         val numEntries: Int = 8,
-                        val qAddrSz: Int = 3,
                         val qName: String
                         )(implicit p: Parameters) extends BoomModule
 {
@@ -270,6 +269,8 @@ class SliceDispatchQueue(
     val flush = Input(new Bool)
     val tsc_reg = Input(UInt(width=xLen.W)) // needed for pipeview
   })
+
+  val qAddrSz: Int = log2Ceil(numEntries)
 
   // Maps i to idx of queue. Used with for-loops starting at head or tail
   def wrapIndex(i: UInt): UInt = {
