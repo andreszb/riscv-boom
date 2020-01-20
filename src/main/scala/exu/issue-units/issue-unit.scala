@@ -125,7 +125,7 @@ abstract class IssueUnit(
       // For StoreAddrGen for Int, or AMOAddrGen, we go to addr gen state
       when ((io.dis_uops(w).bits.uopc === uopSTA && io.dis_uops(w).bits.lrs2_rtype === RT_FIX) ||
              io.dis_uops(w).bits.uopc === uopAMO_AG) {
-        if(boomParams.loadSliceCore.isDefined) {
+        if(boomParams.loadSliceMode) {
           dis_uops(w).iw_state := s_valid_1 // Dont do the store splitting in the same Issue Slot
         } else {
           dis_uops(w).iw_state := s_valid_2

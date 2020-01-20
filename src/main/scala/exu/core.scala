@@ -118,7 +118,6 @@ class BoomCore(implicit p: Parameters) extends BoomModule
 
   val dispatcher       = if(boomParams.loadSliceMode) Module(new SliceDispatcher) else Module(new BasicDispatcher)
 
-
   val iregfile         = Module(new RegisterFileSynthesizable(
                              numIntPhysRegs,
                              numIrfReadPorts,
@@ -637,7 +636,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
     dispatcher.io.ren_uops(w).bits  := dis_uops(w)
   }
   // connect dispatch to busy table in LSC mode
-  if(boomParams.loadSliceCore.isDefined){
+  if(boomParams.loadSliceMode){
     rename_stage.io.slice_busy_req_uops.get := dispatcher.io.slice_busy_req_uops.get
     dispatcher.io.slice_busy_resps.get := rename_stage.io.slice_busy_resps.get
     if(usingFPU){
@@ -1408,7 +1407,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
       when (dec_fire(w)) {
         printf("%d; O3PipeView:rename: %d\n", dec_uops(w).debug_events.fetch_seq, debug_tsc_reg)
       }
-      if(!boomParams.loadSliceCore.isDefined){
+      if(!boomParams.loadSliceMode){
         when (dispatcher.io.ren_uops(w).valid) {
           printf("%d; O3PipeView:dispatch: %d\n", dispatcher.io.ren_uops(w).bits.debug_events.fetch_seq, debug_tsc_reg)
         }
