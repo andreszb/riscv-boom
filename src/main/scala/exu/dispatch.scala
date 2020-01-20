@@ -86,8 +86,8 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
   val a_issue_blocked = !a_mem_dispatch.ready || !a_int_dispatch.ready // something from a is in a issue slot
   val b_issue_blocked = !b_mem_dispatch.ready || !b_int_dispatch.ready
 
-  val a_queue = Module(new SliceDispatchQueue(qName = "a_queue"))
-  val b_queue = Module(new SliceDispatchQueue(qName = "b_queue"))
+  val a_queue = Module(new SliceDispatchQueue(numEntries = boomParams.numAqEntries, qName = "a_queue"))
+  val b_queue = Module(new SliceDispatchQueue(numEntries = boomParams.numBqEntries, qName = "b_queue"))
   a_queue.io.flush := io.slice_flush.get
   b_queue.io.flush := io.slice_flush.get
   a_queue.io.brinfo := io.slice_brinfo.get
@@ -257,7 +257,6 @@ class CompactingDispatcher(implicit p: Parameters) extends Dispatcher
 
 class SliceDispatchQueue(
                         val numEntries: Int = 8,
-                        val qAddrSz: Int = 3,
                         val qName: String
                         )(implicit p: Parameters) extends BoomModule
 {
@@ -270,6 +269,8 @@ class SliceDispatchQueue(
     val flush = Input(new Bool)
     val tsc_reg = Input(UInt(width=xLen.W)) // needed for pipeview
   })
+
+  val qAddrSz: Int = log2Ceil(numEntries)
 
   // Maps i to idx of queue. Used with for-loops starting at head or tail
   def wrapIndex(i: UInt): UInt = {
