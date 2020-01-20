@@ -168,10 +168,10 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
   b_head.prs2_busy := b_head.lrs2_rtype === RT_FIX && b_busy_resp.prs2_busy
   b_head.prs3_busy := b_head.frs3_en && b_busy_resp.prs3_busy
 
-  assert(!(a_valid && a_busy_resp.prs1_busy && a_head.lrs1 === 0.U), "[rename] x0 is busy??")
-  assert(!(a_valid && a_busy_resp.prs2_busy && a_head.lrs2 === 0.U), "[rename] x0 is busy??")
-  assert(!(b_valid && b_busy_resp.prs1_busy && b_head.lrs1 === 0.U), "[rename] x0 is busy??")
-  assert(!(b_valid && b_busy_resp.prs2_busy && b_head.lrs2 === 0.U), "[rename] x0 is busy??")
+  assert(!(a_valid && a_busy_resp.prs1_busy && a_head.lrs1_rtype === RT_FIX & a_head.lrs1 === 0.U), "[rename] x0 is busy??")
+  assert(!(a_valid && a_busy_resp.prs2_busy && a_head.lrs2_rtype === RT_FIX & a_head.lrs2 === 0.U), "[rename] x0 is busy??")
+  assert(!(b_valid && b_busy_resp.prs1_busy && b_head.lrs1_rtype === RT_FIX & b_head.lrs1 === 0.U), "[rename] x0 is busy??")
+  assert(!(b_valid && b_busy_resp.prs2_busy && b_head.lrs2_rtype === RT_FIX & b_head.lrs2 === 0.U), "[rename] x0 is busy??")
 
   if(usingFPU){
     io.slice_fp_busy_req_uops.get(0) := a_head
