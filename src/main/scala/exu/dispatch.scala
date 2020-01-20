@@ -33,8 +33,8 @@ class DispatchIO(implicit p: Parameters) extends BoomBundle
   val slice_fp_busy_req_uops = if(boomParams.loadSliceMode && usingFPU) Some(Output(Vec(coreWidth, new MicroOp))) else None
   val slice_fp_busy_resps = if(boomParams.loadSliceMode && usingFPU) Some(Input(Vec(coreWidth, new BusyResp))) else None
   // brinfo & flush for LSC
-  val slice_brinfo = if(boomParams.loadSliceCore.isDefined) Some(Input(new BrResolutionInfo())) else None
-  val slice_flush = if(boomParams.loadSliceCore.isDefined) Some(Input(Bool())) else None
+  val slice_brinfo = if(boomParams.loadSliceMode) Some(Input(new BrResolutionInfo())) else None
+  val slice_flush = if(boomParams.loadSliceMode) Some(Input(Bool())) else None
 
   val tsc_reg = Input(UInt(width=xLen.W))
 }
