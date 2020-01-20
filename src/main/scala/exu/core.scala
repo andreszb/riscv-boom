@@ -32,7 +32,6 @@ import java.nio.file.{Paths}
 
 import chisel3._
 import chisel3.util._
-
 import freechips.rocketchip.config.Parameters
 import freechips.rocketchip.rocket.Instructions._
 import freechips.rocketchip.rocket.{Causes, PRV}
@@ -43,6 +42,9 @@ import boom.common._
 import boom.exu.FUConstants._
 import boom.common.BoomTilesKey
 import boom.util.{RobTypeToChars, BoolToChar, GetNewUopAndBrMask, Sext, WrapInc, BoomCoreStringPrefix, DromajoCosimBlackBox}
+import chisel3.experimental.dontTouch
+import lsc.{InstructionSliceTable, RegisterDependencyTable}
+
 
 /**
  * IO bundle for the BOOM Core. Connects the external components such as
@@ -139,6 +141,9 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   val rob              = Module(new Rob(
                            numIrfWritePorts + numFpWakeupPorts, // +memWidth for ll writebacks
                            numFpWakeupPorts))
+
+  val ist = if(boomParams.loadSliceMode) Some(Module(new InstructionSliceTable())) else None
+  val rdt = if(boomParams.loadSliceMode) Some(Module(new RegisterDependencyTable())) else None
   // Used to wakeup registers in rename and issue. ROB needs to listen to something else.
   val int_iss_wakeups  = Wire(Vec(numIntIssueWakeupPorts, Valid(new ExeUnitResp(xLen))))
   val int_ren_wakeups  = Wire(Vec(numIntRenameWakeupPorts, Valid(new ExeUnitResp(xLen))))
@@ -618,6 +623,13 @@ class BoomCore(implicit p: Parameters) extends BoomModule
 
   //-------------------------------------------------------------
   // Dispatch to issue queues
+
+  // ist lookup
+  for (w <- 0 until coreWidth) {
+    ist.map(_.io.check(w).valid := dis_fire(w))
+    ist.map(_.io.check(w).bits := dis_uops(w).debug_pc)
+    dis_uops(w).is_lsc_b := ist.map(_.io.check(w).ready).getOrElse(false.B)
+  }
 
   // Get uops from rename2
   for (w <- 0 until coreWidth) {
@@ -1099,6 +1111,13 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   assert (!(csr.io.singleStep), "[core] single-step is unsupported.")
 
   rob.io.bxcpt <> br_unit.xcpt
+
+  //-------------------------------------------------------------
+  // **** IBDA ****
+  //-------------------------------------------------------------
+
+  ist.map(_.io.mark := rdt.get.io.mark)
+  rdt.map(_.io.commit := rob.io.commit)
 
   //-------------------------------------------------------------
   // **** Flush Pipeline ****
