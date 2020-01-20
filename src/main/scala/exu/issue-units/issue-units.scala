@@ -54,7 +54,7 @@ class IssueUnits(val numWakeupPorts: Int)(implicit val p: Parameters)
 
   // create the issue units (note: this does not create the fp issue unit)
   for (issueParam <- issueParams.filter(_.iqType != IQT_FP.litValue)) {
-    val issue_unit: IssueUnit = if(boomParams.loadSliceMode){
+    val issue_unit: IssueUnit = if(boomParams.loadSliceCore.isDefined){
       Module(new IssueUnitSlice(issueParam, numWakeupPorts))
     } else{
       Module(new IssueUnitCollapsing(issueParam, numWakeupPorts))

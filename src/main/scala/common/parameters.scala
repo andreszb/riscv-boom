@@ -83,9 +83,8 @@ case class BoomCoreParams(
   useRVE: Boolean = false,
   useBPWatch: Boolean = false,
   clockGate: Boolean = false,
-  loadSliceMode: Boolean = false,
-  numAqEntries: Int = 8,
-  numBqEntries: Int = 8
+  loadSliceCore: Option[LoadSliceCoreParams] = None
+
 ) extends freechips.rocketchip.tile.CoreParams
 {
   val haveFSDirty = false
@@ -264,8 +263,6 @@ trait HasBoomCoreParameters extends freechips.rocketchip.tile.HasCoreParameters
   val stqAddrSz       = log2Ceil(numStqEntries)
   val lsuAddrSz       = ldqAddrSz max stqAddrSz
   val brTagSz         = log2Ceil(maxBrCount)
-  val aqAddrSz        = log2Ceil(numAqEntries)
-  val bqAddrSz        = log2Ceil(numBqEntries)
 
   require (numIntPhysRegs >= (32 + coreWidth))
   require (numFpPhysRegs >= (32 + coreWidth))
@@ -285,3 +282,10 @@ trait HasBoomCoreParameters extends freechips.rocketchip.tile.HasCoreParameters
   val corePAddrBits = paddrBits
   val corePgIdxBits = pgIdxBits
 }
+
+// Case class for LoadSliceCore parameters.
+//  TODO: Consider moving this to separate file?
+case class LoadSliceCoreParams(
+  numAqEntries: Int = 8,
+  numBqEntries: Int = 8
+                          )
