@@ -198,9 +198,9 @@ class WithSliceBooms extends Config((site, here, up) => {
       decodeWidth = 2,
       numRobEntries = 32,
       issueParams = Seq(
-        IssueParams(issueWidth=2, numEntries=2, iqType=IQT_INT.litValue, dispatchWidth=2), // A
+        IssueParams(issueWidth=2, numEntries=2, iqType=IQT_INT.litValue, dispatchWidth=2), // INT
         IssueParams(issueWidth=1, numEntries=2, iqType=IQT_MEM.litValue, dispatchWidth=2), // MEM
-//        IssueParams(issueWidth=1, numEntries=1, iqType=IQT_INT.litValue, dispatchWidth=1), // B
+        IssueParams(issueWidth=1, numEntries=1, iqType=IQT_FP.litValue , dispatchWidth=1), // FP
       ),
       numIntPhysRegisters = 52,
       numFpPhysRegisters = 48,
@@ -216,9 +216,9 @@ class WithSliceBooms extends Config((site, here, up) => {
       tage = None,
       bpdRandom = None,
       nPerfCounters = 2,
-      fpu = None,
-      useAtomics = true,
-      usingFPU = false,
+      fpu = Some(freechips.rocketchip.tile.FPUParams(sfmaLatency=4, dfmaLatency=4, divSqrt=true)),
+      useAtomics = true, // TODO: test if atomics work - they should since they block the pipeline
+      usingFPU = true,
       loadSliceCore = Some(LoadSliceCoreParams(numAqEntries = 8, numBqEntries = 8))
     ),
     dcache = Some(DCacheParams(rowBits = site(SystemBusKey).beatBits,

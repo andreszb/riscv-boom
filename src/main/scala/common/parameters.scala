@@ -94,6 +94,7 @@ case class BoomCoreParams(
   val retireWidth = decodeWidth
   val jumpInFrontend: Boolean = false // unused in boom
   val nPMPs: Int = 8
+  val loadSliceMode: Boolean = loadSliceCore.isDefined
 
   override def customCSRs(implicit p: Parameters) = new BoomCustomCSRs
 }
