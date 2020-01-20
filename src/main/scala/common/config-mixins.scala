@@ -219,7 +219,7 @@ class WithSliceBooms extends Config((site, here, up) => {
       fpu = Some(freechips.rocketchip.tile.FPUParams(sfmaLatency=4, dfmaLatency=4, divSqrt=true)),
       useAtomics = true, // TODO: test if atomics work - they should since they block the pipeline
       usingFPU = true,
-      loadSliceMode = true,
+      loadSliceCore = Some(LoadSliceCoreParams(numAqEntries = 8, numBqEntries = 8))
     ),
     dcache = Some(DCacheParams(rowBits = site(SystemBusKey).beatBits,
                                nSets=64, nWays=4, nMSHRs=2, nTLBEntries=8)),
