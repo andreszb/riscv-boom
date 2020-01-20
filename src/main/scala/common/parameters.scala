@@ -148,8 +148,6 @@ trait HasBoomCoreParameters extends freechips.rocketchip.tile.HasCoreParameters
   val numRcqEntries = boomParams.numRCQEntries       // number of RoCC commit queue entries. This can be large since it just keeps a pdst
   val numLdqEntries = boomParams.numLdqEntries       // number of LAQ entries
   val numStqEntries = boomParams.numStqEntries       // number of SAQ/SDQ entries
-  val numAqEntries  = boomParams.numAqEntries        // number of A-Q entries
-  val numBqEntries  = boomParams.numBqEntries        // number of Bypass-Q entries
   val maxBrCount    = boomParams.maxBrCount          // number of branches we can speculate simultaneously
   val ftqSz         = boomParams.ftq.nEntries        // number of FTQ entries
   val numFetchBufferEntries = boomParams.numFetchBufferEntries // number of instructions that stored between fetch&decode
