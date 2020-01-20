@@ -124,6 +124,9 @@ class MicroOp(implicit p: Parameters) extends BoomBundle
   val lrs2_rtype       = UInt(2.W)
   val frs3_en          = Bool()
 
+  // LSC info
+  val is_lsc_b          = Bool()
+
   // floating point information
   val fp_val           = Bool()             // is a floating-point instruction (F- or D-extension)?
                                             // If it's non-ld/st it will write back exception bits to the fcsr.

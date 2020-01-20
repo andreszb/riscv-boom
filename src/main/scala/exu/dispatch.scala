@@ -123,9 +123,10 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
     // only accept uops from rename if both queues are ready
     io.ren_uops(w).ready := queues_ready
     val uop = io.ren_uops(w).bits
-    // use b que if uop is load for now
-    val use_b_queue = (uop.uopc === uopLD) || uop.uopc === uopSTA // TODO: uopST should be the opcode in Decode stage
-    val use_a_queue = (uop.uopc =/= uopLD)
+    // check if b queue can actually process insn
+    val can_use_b_alu = uop.fu_code_is(FUConstants.FU_ALU | FUConstants.FU_MUL | FUConstants.FU_DIV)
+    val use_b_queue = (uop.uopc === uopLD) || uop.uopc === uopSTA || (uop.is_lsc_b && can_use_b_alu)
+    val use_a_queue = (uop.uopc =/= uopLD) && !uop.is_lsc_b
 
     // enqueue logic
     a_queue.io.enq_uops(w).valid := io.ren_uops(w).fire() && use_a_queue
