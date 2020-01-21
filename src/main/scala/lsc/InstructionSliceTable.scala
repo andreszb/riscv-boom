@@ -7,11 +7,18 @@ import chisel3.core.Bundle
 import chisel3.util._
 import freechips.rocketchip.config.Parameters
 
+class IstCheck (implicit p: Parameters) extends BoomBundle
+{
+  val addr = Input(ValidIO(UInt(vaddrBits.W)))
+  val in_ist = Output(Bool())
+}
+
 class IstIO(implicit p: Parameters) extends BoomBundle
 {
   val mark = Input(new IstMark)
-  val check = Flipped(Vec(coreWidth, DecoupledIO(UInt(vaddrBits.W)))) // use ready bit as reponse
+  val check = Vec(coreWidth, new IstCheck)
 }
+
 class IstMark(implicit p: Parameters) extends BoomBundle
 {
   val mark = Vec(retireWidth*2, ValidIO(UInt(vaddrBits.W)))
@@ -32,11 +39,11 @@ class InstructionSliceTable(entries: Int=128, ways: Int=2)(implicit p: Parameter
   require(ways == 2, "only one lru bit for now!")
   // check
   for(i <- 0 until coreWidth){
-    val pc = io.check(i).bits
+    val pc = io.check(i).addr.bits
     val idx = index(pc)
     val is_match = WireInit(false.B)
-    io.check(i).ready := is_match // true if pc in IST
-    when(io.check(i).valid){
+    io.check(i).in_ist := is_match // true if pc in IST
+    when(io.check(i).addr.valid){
       for(j <- 0 until ways){
         val tidx = (idx << log2Up(ways)).asUInt() + j.U
         when(tag_valids(tidx) && tag_table(tidx) === pc){
