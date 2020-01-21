@@ -15,7 +15,7 @@ package boom.exu
 import chisel3._
 import chisel3.util._
 import freechips.rocketchip.config.Parameters
-import boom.common.{MicroOp, O3PIPEVIEW_PRINTF, uopLD, _}
+import boom.common.{IQT_MFP, MicroOp, O3PIPEVIEW_PRINTF, uopLD, _}
 import boom.util._
 
 class DispatchIO(implicit p: Parameters) extends BoomBundle
@@ -110,8 +110,9 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
   val b_head = WireInit(b_queue.io.head.bits)
   val a_valid = a_queue.io.head.valid
   val b_valid = b_queue.io.head.valid
-  val a_head_mem = a_head.iq_type === IQT_MEM
-  val a_head_fp = a_head.iq_type === IQT_FP
+  val a_head_mem = (a_head.iq_type & IQT_MEM) =/= 0.U
+  val a_head_fp = (a_head.iq_type & IQT_FP) =/= 0.U
+  val a_head_int = (a_head.iq_type & IQT_INT) =/= 0.U
   val b_head_mem = b_head.iq_type === IQT_MEM
   val a_ready = a_queue.io.enq_uops.map(_.ready).reduce(_ && _)
   val b_ready = b_queue.io.enq_uops.map(_.ready).reduce(_ && _)
@@ -141,6 +142,11 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
 
       uop_b.uopc := uopSTA
       uop_b.lrs2_rtype := RT_X
+      // fsw and fsd fix - they need to go to a -> fp and b -> mem
+      when(uop.iq_type === IQT_MFP){
+        uop_b.iq_type := IQT_MEM
+        uop_a.iq_type := IQT_FP
+      }
     }
     a_queue.io.enq_uops(w).bits := uop_a
     b_queue.io.enq_uops(w).bits := uop_b
@@ -242,11 +248,13 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
     a_queue.io.deq_uop := true.B
     when(a_head_mem){
       a_mem_dispatch.valid := true.B
-    } .elsewhen(a_head_fp){
+    }
+    when(a_head_fp){
       if(usingFPU){
         a_fp_dispatch.get.valid := true.B
       }
-    }.otherwise{
+    }
+    when(a_head_int){
       a_int_dispatch.valid := true.B
     }
   }

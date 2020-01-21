@@ -58,9 +58,12 @@ class FpPipeline(implicit p: Parameters) extends BoomModule with tile.HasFPUPara
   // construct all of the modules
 
   val exe_units      = new boom.exu.ExecutionUnits(fpu=true)
-  val issue_unit     = Module(new IssueUnitCollapsing(
-                         issueParams.find(_.iqType == IQT_FP.litValue).get,
-                         numWakeupPorts))
+  val issueParam     = issueParams.find(_.iqType == IQT_FP.litValue).get
+  val issue_unit: IssueUnit = if(boomParams.loadSliceMode){
+    Module(new IssueUnitSlice(issueParam, numWakeupPorts))
+  } else{
+    Module(new IssueUnitCollapsing(issueParam, numWakeupPorts))
+  }
   issue_unit.suggestName("fp_issue_unit")
   val fregfile       = Module(new RegisterFileSynthesizable(numFpPhysRegs,
                          exe_units.numFrfReadPorts,
@@ -204,7 +207,8 @@ class FpPipeline(implicit p: Parameters) extends BoomModule with tile.HasFPUPara
   require (w_cnt == fregfile.io.write_ports.length)
 
   val fpiu_unit = exe_units.fpiu_unit
-  val fpiu_is_sdq = fpiu_unit.io.ll_iresp.bits.uop.uopc === uopSTA
+  // magic that enables fsw and fsd - needs to support STD due to store splitting
+  val fpiu_is_sdq = fpiu_unit.io.ll_iresp.bits.uop.uopc === uopSTA || fpiu_unit.io.ll_iresp.bits.uop.uopc === uopSTD
   io.to_int.valid := fpiu_unit.io.ll_iresp.fire() && !fpiu_is_sdq
   io.to_sdq.valid := fpiu_unit.io.ll_iresp.fire() &&  fpiu_is_sdq
   io.to_int.bits  := fpiu_unit.io.ll_iresp.bits
