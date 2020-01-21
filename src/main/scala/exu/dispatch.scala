@@ -149,6 +149,7 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
       when(uop.iq_type === IQT_MFP){
         uop_b.iq_type := IQT_MEM
         uop_a.iq_type := IQT_FP
+        uop_a.uopc := uopSTA
       }
     }
     a_queue.io.enq_uops(w).bits := uop_a
