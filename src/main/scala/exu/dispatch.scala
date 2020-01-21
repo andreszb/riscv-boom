@@ -134,6 +134,8 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
     val uop_a = WireInit(uop)
     val uop_b = WireInit(uop)
 
+    assert(!io.ren_uops(w).fire() || (a_queue.io.enq_uops(w).fire() || b_queue.io.enq_uops(w).fire()), "op from rename was swallowed")
+
     when(uop.uopc === uopSTA) {
       // In case of splitting stores. We need to put data generation in A (uopSTD) and
       //  address generation (uopSTA) in B. We X out the opposite lrs by assigning RT_X to the rtype
