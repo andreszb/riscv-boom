@@ -578,9 +578,10 @@ class BoomCore(implicit p: Parameters) extends BoomModule
 
   io.lsu.fence_dmem := (dis_valids zip wait_for_empty_pipeline).map {case (v,w) => v && w} .reduce(_||_)
 
+  // determine for each slot if hazard or a hazard of a previous slot is set
   val dis_stalls = dis_hazards.scanLeft(false.B) ((s,h) => s || h).takeRight(coreWidth)
   dis_fire := dis_valids zip dis_stalls map {case (v,s) => v && !s}
-  dis_ready := !dis_stalls.last
+  dis_ready := !dis_stalls.last // no stalls or hazards
 
   //-------------------------------------------------------------
   // LDQ/STQ Allocation Logic
