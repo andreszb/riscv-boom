@@ -15,7 +15,7 @@ package boom.exu
 import chisel3._
 import chisel3.util._
 import freechips.rocketchip.config.Parameters
-import boom.common.{MicroOp, O3PIPEVIEW_PRINTF, uopLD, _}
+import boom.common.{IQT_MFP, MicroOp, O3PIPEVIEW_PRINTF, uopLD, _}
 import boom.util._
 
 class DispatchIO(implicit p: Parameters) extends BoomBundle
@@ -110,8 +110,9 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
   val b_head = WireInit(b_queue.io.head.bits)
   val a_valid = a_queue.io.head.valid
   val b_valid = b_queue.io.head.valid
-  val a_head_mem = a_head.iq_type === IQT_MEM
-  val a_head_fp = a_head.iq_type === IQT_FP
+  val a_head_mem = (a_head.iq_type & IQT_MEM) =/= 0.U
+  val a_head_fp = (a_head.iq_type & IQT_FP) =/= 0.U
+  val a_head_int = (a_head.iq_type & IQT_INT) =/= 0.U
   val b_head_mem = b_head.iq_type === IQT_MEM
   val a_ready = a_queue.io.enq_uops.map(_.ready).reduce(_ && _)
   val b_ready = b_queue.io.enq_uops.map(_.ready).reduce(_ && _)
@@ -123,15 +124,18 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
     // only accept uops from rename if both queues are ready
     io.ren_uops(w).ready := queues_ready
     val uop = io.ren_uops(w).bits
-    // use b que if uop is load for now
-    val use_b_queue = (uop.uopc === uopLD) || uop.uopc === uopSTA // TODO: uopST should be the opcode in Decode stage
-    val use_a_queue = (uop.uopc =/= uopLD)
+    // check if b queue can actually process insn
+    val can_use_b_alu = uop.fu_code_is(FUConstants.FU_ALU | FUConstants.FU_MUL | FUConstants.FU_DIV)
+    val use_b_queue = (uop.uopc === uopLD) || uop.uopc === uopSTA || (uop.is_lsc_b && can_use_b_alu)
+    val use_a_queue = (uop.uopc =/= uopLD) && (!uop.is_lsc_b || !can_use_b_alu)
 
     // enqueue logic
     a_queue.io.enq_uops(w).valid := io.ren_uops(w).fire() && use_a_queue
     b_queue.io.enq_uops(w).valid := io.ren_uops(w).fire() && use_b_queue
     val uop_a = WireInit(uop)
     val uop_b = WireInit(uop)
+
+    assert(!io.ren_uops(w).fire() || (a_queue.io.enq_uops(w).fire() || b_queue.io.enq_uops(w).fire()), "op from rename was swallowed")
 
     when(uop.uopc === uopSTA) {
       // In case of splitting stores. We need to put data generation in A (uopSTD) and
@@ -141,6 +145,12 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
 
       uop_b.uopc := uopSTA
       uop_b.lrs2_rtype := RT_X
+      // fsw and fsd fix - they need to go to a -> fp and b -> mem
+      when(uop.iq_type === IQT_MFP){
+        uop_b.iq_type := IQT_MEM
+        uop_a.iq_type := IQT_FP
+        uop_a.uopc := uopSTA
+      }
     }
     a_queue.io.enq_uops(w).bits := uop_a
     b_queue.io.enq_uops(w).bits := uop_b
@@ -167,10 +177,10 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
   b_head.prs2_busy := b_head.lrs2_rtype === RT_FIX && b_busy_resp.prs2_busy
   b_head.prs3_busy := b_head.frs3_en && b_busy_resp.prs3_busy
 
-  assert(!(a_valid && a_busy_resp.prs1_busy && a_head.lrs1 === 0.U), "[rename] x0 is busy??")
-  assert(!(a_valid && a_busy_resp.prs2_busy && a_head.lrs2 === 0.U), "[rename] x0 is busy??")
-  assert(!(b_valid && b_busy_resp.prs1_busy && b_head.lrs1 === 0.U), "[rename] x0 is busy??")
-  assert(!(b_valid && b_busy_resp.prs2_busy && b_head.lrs2 === 0.U), "[rename] x0 is busy??")
+  assert(!(a_valid && a_busy_resp.prs1_busy && a_head.lrs1_rtype === RT_FIX & a_head.lrs1 === 0.U), "[rename] x0 is busy??")
+  assert(!(a_valid && a_busy_resp.prs2_busy && a_head.lrs2_rtype === RT_FIX & a_head.lrs2 === 0.U), "[rename] x0 is busy??")
+  assert(!(b_valid && b_busy_resp.prs1_busy && b_head.lrs1_rtype === RT_FIX & b_head.lrs1 === 0.U), "[rename] x0 is busy??")
+  assert(!(b_valid && b_busy_resp.prs2_busy && b_head.lrs2_rtype === RT_FIX & b_head.lrs2 === 0.U), "[rename] x0 is busy??")
 
   if(usingFPU){
     io.slice_fp_busy_req_uops.get(0) := a_head
@@ -242,11 +252,13 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
     a_queue.io.deq_uop := true.B
     when(a_head_mem){
       a_mem_dispatch.valid := true.B
-    } .elsewhen(a_head_fp){
+    }
+    when(a_head_fp){
       if(usingFPU){
         a_fp_dispatch.get.valid := true.B
       }
-    }.otherwise{
+    }
+    when(a_head_int){
       a_int_dispatch.valid := true.B
     }
   }
