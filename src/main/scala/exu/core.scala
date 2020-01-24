@@ -617,7 +617,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   // ist lookup
   for (w <- 0 until coreWidth) {
     ist.map(_.io.check(w).addr.valid := dis_fire(w))
-    ist.map(_.io.check(w).addr.bits := dis_uops(w).debug_pc)
+    ist.map(_.io.check(w).addr.bits := Cat(dis_uops(w).inst, dis_uops(w).pc_lob))
     dis_uops(w).is_lsc_b := ist.map(_.io.check(w).in_ist).getOrElse(false.B)
   }
 
