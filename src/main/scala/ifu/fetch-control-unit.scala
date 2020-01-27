@@ -33,6 +33,8 @@ import boom.bpu._
 import boom.common._
 import boom.exu._
 import boom.util.{BoolToChar, AgePriorityEncoder, ElasticReg}
+import chisel3.experimental.dontTouch
+
 
 /**
  * Bundle passed into the FetchBuffer and used to combine multiple

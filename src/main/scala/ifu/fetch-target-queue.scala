@@ -26,6 +26,8 @@ import boom.bpu._
 import boom.common._
 import boom.exu._
 import boom.util._
+import chisel3.experimental.dontTouch
+
 
 /**
  * FTQ Parameters used in configurations
