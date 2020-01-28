@@ -42,7 +42,6 @@ import boom.common._
 import boom.exu.FUConstants._
 import boom.common.BoomTilesKey
 import boom.util.{RobTypeToChars, BoolToChar, GetNewUopAndBrMask, Sext, WrapInc, BoomCoreStringPrefix, DromajoCosimBlackBox}
-import chisel3.experimental.dontTouch
 import lsc.{InstructionSliceTable, RegisterDependencyTable}
 
 
@@ -1329,7 +1328,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
         val mmioStart = "0x" + f"${bootromParams.address + bootromParams.size}%X"
         val mmioEnd = "0x" + f"${extMemParams.master.base}%X"
         val plicBase = "0x" + f"${plicParams.baseAddress}%X"
-        //val plicSize = "0x" + f"${PLICConsts.size(plicParams.maxHarts)}%X"
+        val plicSize = "0x" + f"${PLICConsts.size(plicParams.maxHarts)}%X"
         val clintBase = "0x" + f"${clintParams.baseAddress}%X"
         val clintSize = "0x" + f"${CLINTConsts.size}%X"
         val memSize = "0x" + f"${extMemParams.master.size}%X"

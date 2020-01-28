@@ -216,9 +216,9 @@ class WithSliceBooms extends Config((site, here, up) => {
       tage = None,
       bpdRandom = None,
       nPerfCounters = 2,
-      fpu = None,
+      fpu = Some(freechips.rocketchip.tile.FPUParams(sfmaLatency=4, dfmaLatency=4, divSqrt=true)),
       useAtomics = true,
-      usingFPU = false,
+      usingFPU = true,
       loadSliceCore = Some(LoadSliceCoreParams(numAqEntries = 8, numBqEntries = 8))
     ),
     dcache = Some(DCacheParams(rowBits = site(SystemBusKey).beatBits,
