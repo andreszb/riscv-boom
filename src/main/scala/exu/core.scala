@@ -113,7 +113,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   val int_iss_unit     = Module(new IssueUnitCollapsing(intIssueParam, numIntIssueWakeupPorts))
   int_iss_unit.suggestName("int_issue_unit")
 
-  val issue_units      = Seq(mem_iss_unit, int_iss_unit)
+  val issue_units      = Seq(int_iss_unit,mem_iss_unit)
 
   val dispatcher       = if(boomParams.loadSliceMode) Module(new SliceDispatcher) else Module(new BasicDispatcher)
 
