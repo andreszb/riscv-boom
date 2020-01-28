@@ -108,12 +108,12 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   val fp_rename_stage  = if (usingFPU) Module(new RenameStage(coreWidth, numFpPhysRegs, numFpWakeupPorts, true))
                          else null
   val rename_stages    = if (usingFPU) Seq(rename_stage, fp_rename_stage) else Seq(rename_stage)
-  val mem_iss_unit     = Module(new IssueUnitCollapsing(memIssueParam, numIntIssueWakeupPorts))
+  val mem_iss_unit     = if (boomParams.loadSliceMode) Module(new IssueUnitSlice(memIssueParam, numIntIssueWakeupPorts)) else Module(new IssueUnitCollapsing(memIssueParam, numIntIssueWakeupPorts))
   mem_iss_unit.suggestName("mem_issue_unit")
-  val int_iss_unit     = Module(new IssueUnitCollapsing(intIssueParam, numIntIssueWakeupPorts))
+  val int_iss_unit     = if (boomParams.loadSliceMode) Module(new IssueUnitSlice(intIssueParam, numIntIssueWakeupPorts)) else Module(new IssueUnitCollapsing(intIssueParam, numIntIssueWakeupPorts))
   int_iss_unit.suggestName("int_issue_unit")
 
-  val issue_units      = Seq(int_iss_unit,mem_iss_unit)
+  val issue_units      = Seq(mem_iss_unit,int_iss_unit)
 
   val dispatcher       = if(boomParams.loadSliceMode) Module(new SliceDispatcher) else Module(new BasicDispatcher)
 
@@ -648,17 +648,34 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   }
   dispatcher.io.tsc_reg := debug_tsc_reg // needed for pipeview
 
-  var iu_idx = 0
-  // Send dispatched uops to correct issue queues
-  // Backpressure through dispatcher if necessary
-  for (i <- 0 until issueParams.size) {
-    if (issueParams(i).iqType == IQT_FP.litValue) {
-       fp_pipeline.io.dis_uops <> dispatcher.io.dis_uops(i)
-    } else {
-       issue_units(iu_idx).io.dis_uops <> dispatcher.io.dis_uops(i)
-       iu_idx += 1
+  if (boomParams.loadSliceMode) {
+    for (i <- 0 until issueParams.size)
+      {
+        if (issueParams(i).iqType == IQT_FP.litValue) {
+          fp_pipeline.io.dis_uops <> dispatcher.io.dis_uops(LSC_DIS_FP_PORT_IDX)
+        } else if (issueParams(i).iqType == IQT_INT.litValue) {
+          int_iss_unit.io.dis_uops <> dispatcher.io.dis_uops(LSC_DIS_INT_PORT_IDX)
+        } else if (issueParams(i).iqType == IQT_MEM.litValue) {
+          mem_iss_unit.io.dis_uops <> dispatcher.io.dis_uops(LSC_DIS_MEM_PORT_IDX)
+        } else {
+          assert(false.B, "[Core] Unsupported IssueQueue Type")
+        }
+      }
+
+  } else {
+    var iu_idx = 0
+    // Send dispatched uops to correct issue queues
+    // Backpressure through dispatcher if necessary
+    for (i <- 0 until issueParams.size) {
+      if (issueParams(i).iqType == IQT_FP.litValue) {
+        fp_pipeline.io.dis_uops <> dispatcher.io.dis_uops(i)
+      } else {
+        issue_units(iu_idx).io.dis_uops <> dispatcher.io.dis_uops(i)
+        iu_idx += 1
+      }
     }
   }
+
 
   //-------------------------------------------------------------
   //-------------------------------------------------------------
