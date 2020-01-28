@@ -398,3 +398,16 @@ trait ExcCauseConstants
   require (!freechips.rocketchip.rocket.Causes.all.contains(16))
   require (!freechips.rocketchip.rocket.Causes.all.contains(17))
 }
+
+
+trait LoadSliceCoreConstants
+{
+  // Constants decidng which Dispatch port is for which Issue Queue
+  val LSC_DIS_INT_PORT_IDX = 0
+  val LSC_DIS_MEM_PORT_IDX = 1
+  val LSC_DIS_FP_PORT_IDX = 2
+
+  // Constans for which port belongs to A and wich belongs to B
+  val LSC_DIS_A_PORT_IDX = 0
+  val LSC_DIS_B_PORT_IDX = 1
+}

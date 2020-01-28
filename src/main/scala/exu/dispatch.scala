@@ -72,7 +72,7 @@ class BasicDispatcher(implicit p: Parameters) extends Dispatcher
  */
 class SliceDispatcher(implicit p: Parameters) extends Dispatcher
 {
-  // todo: don't hardcode issue order
+  // Todo: These can probably be removed now. But we need the check somewhere else
   require(issueParams(0).iqType==IQT_INT.litValue()) // INT
   require(issueParams(1).iqType==IQT_MEM.litValue()) // MEM
 
@@ -85,11 +85,11 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
   }
 
 
-  val a_int_dispatch = io.dis_uops(0)(0)
-  val a_mem_dispatch = io.dis_uops(1)(0)
-  val a_fp_dispatch =  if(usingFPU) Some(io.dis_uops(2)(0)) else None
-  val b_int_dispatch = io.dis_uops(0)(1)
-  val b_mem_dispatch = io.dis_uops(1)(1)
+  val a_int_dispatch = io.dis_uops(LSC_DIS_INT_PORT_IDX)(LSC_DIS_A_PORT_IDX)
+  val a_mem_dispatch = io.dis_uops(LSC_DIS_MEM_PORT_IDX)(LSC_DIS_A_PORT_IDX)
+  val a_fp_dispatch =  if(usingFPU) Some(io.dis_uops(LSC_DIS_FP_PORT_IDX)(LSC_DIS_A_PORT_IDX)) else None
+  val b_int_dispatch = io.dis_uops(LSC_DIS_INT_PORT_IDX)(LSC_DIS_B_PORT_IDX)
+  val b_mem_dispatch = io.dis_uops(LSC_DIS_MEM_PORT_IDX)(LSC_DIS_B_PORT_IDX)
 
 
   // state that remembers if instruction in MEM issue slot belongs to A or B queue
