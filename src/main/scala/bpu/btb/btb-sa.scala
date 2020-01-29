@@ -29,12 +29,11 @@ package boom.bpu
 
 import chisel3._
 import chisel3.util._
-
 import freechips.rocketchip.config.Parameters
-
 import boom.common._
 import boom.exu._
-import boom.util.{BoolToChar, CfiTypeToChars, BoomCoreStringPrefix}
+import boom.util.{BoolToChar, BoomCoreStringPrefix, CfiTypeToChars}
+import chisel3.util.random.LFSR
 
 /**
  * Normal set-associative branch target buffer. Checks an incoming
@@ -79,6 +78,7 @@ class BTBsa(val bankBytes: Int)(implicit p: Parameters) extends BoomBTB
   val s1_resp_bits = Wire(new BoomBTBResp)
   s1_resp_bits := DontCare
   val hits_oh = Wire(Vec(nWays, Bool()))
+  val actual_hits_oh = Wire(Vec(nWays, Bool()))
   val data_out = Wire(Vec(nWays, new BTBSetData()))
   val s1_req_tag = RegEnable(getTag(io.req.bits.addr), !stall)
 
@@ -88,7 +88,7 @@ class BTBsa(val bankBytes: Int)(implicit p: Parameters) extends BoomBTB
   val widx = getIdx(r_btb_update.bits.pc)
   val wtag = getTag(r_btb_update.bits.pc)
   // TODO: currently a not-very-clever way to choose a replacement way
-  val next_replace = Counter(r_btb_update.valid, nWays)._1
+  val next_replace = LFSR(16, r_btb_update.valid)(log2Up(nWays)-1, 0) //Counter(r_btb_update.valid, nWays)._1
   val way_wen = UIntToOH(next_replace)
 
   // clear entries (e.g., multiple tag hits, which is an invalid variant)
@@ -99,7 +99,9 @@ class BTBsa(val bankBytes: Int)(implicit p: Parameters) extends BoomBTB
      printf("BTB-SA:\n")
    }
 
+  val previous_hit = (false.B :: Nil ++ hits_oh).scanLeft(false.B)(_||_).take(nWays)
   for (w <- 0 until nWays) {
+    actual_hits_oh(w) := hits_oh(w) && !previous_hit(w)
     val wen = update_valid && way_wen(w)
 
     val valids   = RegInit(0.U(nSets.W))
@@ -132,7 +134,7 @@ class BTBsa(val bankBytes: Int)(implicit p: Parameters) extends BoomBTB
     }
 
     // if multiple ways hit, clear the set last read
-    when (clear_valid) {
+    when (clear_valid && hits_oh(w) && previous_hit(w)) {
       valids := valids.bitSet(clear_idx, false.B)
     }
 
@@ -165,8 +167,8 @@ class BTBsa(val bankBytes: Int)(implicit p: Parameters) extends BoomBTB
   }
 
   // Mux out the winning hit.
-  s1_valid := PopCount(hits_oh) === 1.U && !io.flush
-  val s1_data = Mux1H(hits_oh, data_out)
+  s1_valid := hits_oh.reduce(_||_) && !io.flush
+  val s1_data = Mux1H(actual_hits_oh, data_out)
   val s1_target = Cat(s1_data.target, 0.U(log2Ceil(coreInstBytes).W))
   val s1_cfi_idx = s1_data.cfi_idx
   val s1_bpd_type = s1_data.bpd_type
@@ -184,7 +186,7 @@ class BTBsa(val bankBytes: Int)(implicit p: Parameters) extends BoomBTB
 
   if (nRAS > 0) {
     val ras = new RAS(nRAS, coreInstBytes)
-    val doPeek = (hits_oh zip data_out map {case(hit, data) => hit && BpredType.isReturn(data.bpd_type)}).reduce(_||_)
+    val doPeek = (actual_hits_oh zip data_out map {case(hit, data) => hit && BpredType.isReturn(data.bpd_type)}).reduce(_||_)
     val isEmpty = if (rasCheckForEmpty) ras.isEmpty else false.B
     when (!isEmpty && doPeek) {
       s1_resp_bits.target := ras.peek
