@@ -6,6 +6,12 @@ import chisel3.util._
 import freechips.rocketchip.config.Parameters
 import boom.common._
 
+/**
+  * Custom commit signals combining ROBs commit signals
+  * with a PC that must be fetched from the FTQ
+  * @param p
+  */
+
 class RdtCommitSignals(implicit p: Parameters) extends BoomBundle
 {
   val rob = new CommitSignals()

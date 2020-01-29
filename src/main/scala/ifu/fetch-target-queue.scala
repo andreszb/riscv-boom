@@ -77,6 +77,11 @@ class GetPCFromFtqIO(implicit p: Parameters) extends BoomBundle
   val next_pc  = Output(UInt(vaddrBitsExtended.W))
 }
 
+/**
+  * IO to provide the IST and RDT ports to the FTQ to get the PC of the instructions
+  * Is used with the LoadSliceCore
+  */
+
 class GetPCSlice(implicit  p: Parameters) extends BoomBundle
 {
   val ftq_idx  = Input(UInt(log2Ceil(ftqSz).W))

@@ -626,16 +626,19 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   // ist lookup
 
   if(boomParams.loadSliceMode) {
+    // Unwrap port to FTQ
     val get_pc_slice = io.ifu.get_pc_slice.get
     for (w <- 0 until coreWidth) {
+      // Access only IST ports
       val idx = w + IstFtqPortIdx
-      // Get PC from FTQ
+      // Request fetch_pc from FTQ
       get_pc_slice(idx).ftq_idx := dis_uops(w).ftq_idx
+      // Recreate PC for dispatched uop
       val block_pc = AlignPCToBoundary(get_pc_slice(idx).fetch_pc, icBlockBytes)
       val pc = (block_pc | dis_uops(w).pc_lob) - Mux(dis_uops(w).edge_inst, 2.U, 0.U)
       ist.get.io.check(w).addr.valid := dis_fire(w)
       ist.get.io.check(w).addr.bits := pc
-      dis_uops(w).is_lsc_b := ist.map(_.io.check(w).in_ist).getOrElse(false.B)
+      dis_uops(w).is_lsc_b := ist.get.io.check(w).in_ist
 
       assert(!(dis_fire(w) && (dis_uops(w).debug_pc =/= pc)), "[IST] debug_pc and fetch_pc mismatch")
     }
@@ -1146,18 +1149,19 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   //-------------------------------------------------------------
 
   if (boomParams.loadSliceMode) {
+    // Connect RDT and IST and forward the commit signals from ROB to RDT
     ist.get.io.mark := rdt.get.io.mark
     rdt.get.io.commit.rob := rob.io.commit
 
+    // Unwrap port to FTQ
     val get_pc_slice = io.ifu.get_pc_slice.get
     for (w <- 0 until retireWidth) {
       val idx = w + RdtFtqPortIdx
-      // Get PC from FTQ
+      // Request fetch_pc from ftq_idx
       get_pc_slice(idx).ftq_idx := rob.io.commit.uops(w).ftq_idx
+      // Recreate PC of this instruction
       val block_pc = AlignPCToBoundary(get_pc_slice(idx).fetch_pc, icBlockBytes)
       val pc = (block_pc | rob.io.commit.uops(w).pc_lob) - Mux(rob.io.commit.uops(w).edge_inst, 2.U, 0.U)
-
-      // Pass PC to RDT
       rdt.get.io.commit.pc(w) := pc
 
       assert(!(rob.io.commit.valids(w) && (pc =/= rob.io.commit.uops(w).debug_pc)), "[RDT] fetch_pc and debug_pc mismatch")
