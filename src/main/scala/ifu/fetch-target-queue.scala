@@ -77,6 +77,12 @@ class GetPCFromFtqIO(implicit p: Parameters) extends BoomBundle
   val next_pc  = Output(UInt(vaddrBitsExtended.W))
 }
 
+class GetPCSlice(implicit  p: Parameters) extends BoomBundle
+{
+  val ftq_idx  = Input(UInt(log2Ceil(ftqSz).W))
+  val fetch_pc = Output(UInt(vaddrBitsExtended.W))
+}
+
 /**
  * Queue to store the fetch PC and other relevant branch predictor signals that are inflight in the
  * processor.
@@ -98,6 +104,7 @@ class FetchTargetQueue(num_entries: Int)(implicit p: Parameters) extends BoomMod
 
     // Give PC info to BranchUnit.
     val get_ftq_pc = new GetPCFromFtqIO()
+    val get_pc_slice = if (boomParams.loadSliceMode) Some(Vec(coreWidth*2, new GetPCSlice())) else None
 
     // Restore predictor history on a branch mispredict or pipeline flush.
     val restore_history = Valid(new RestoreHistory)
@@ -292,6 +299,13 @@ class FetchTargetQueue(num_entries: Int)(implicit p: Parameters) extends BoomMod
   io.get_ftq_pc.fetch_pc := ram(curr_idx).fetch_pc
   io.get_ftq_pc.next_pc := ram(WrapInc(curr_idx, num_entries)).fetch_pc
   io.get_ftq_pc.next_val := WrapInc(curr_idx, num_entries) =/= enq_ptr.value
+
+  if (boomParams.loadSliceMode) {
+    val get_pc_slice = io.get_pc_slice.get
+    for (w <- 0 until coreWidth*2) {
+      get_pc_slice(w).fetch_pc := ram(get_pc_slice(w).ftq_idx).fetch_pc
+    }
+  }
 
   //-------------------------------------------------------------
   // **** Handle Flush/Pipeline Redirections ****

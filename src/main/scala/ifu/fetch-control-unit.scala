@@ -92,6 +92,7 @@ class FetchControlUnit(implicit p: Parameters) extends BoomModule
 
     val br_unit           = Input(new BranchUnitResp())
     val get_pc            = new GetPCFromFtqIO()
+    val get_pc_slice      = if(boomParams.loadSliceMode) Some(Vec(coreWidth*2, new GetPCSlice())) else None
 
     // Breakpoint info
     val status            = Input(new MStatus)
@@ -557,6 +558,8 @@ class FetchControlUnit(implicit p: Parameters) extends BoomModule
   ftq.io.deq := io.commit
   ftq.io.brinfo := br_unit.brinfo
   io.get_pc <> ftq.io.get_ftq_pc
+  io.get_pc_slice.get <> ftq.io.get_pc_slice.get
+
   ftq.io.flush := io.flush_info
   ftq.io.com_ftq_idx := io.com_ftq_idx
   io.com_fetch_pc := ftq.io.com_fetch_pc

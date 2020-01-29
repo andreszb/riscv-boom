@@ -41,7 +41,7 @@ import freechips.rocketchip.devices.tilelink.{PLICConsts, CLINTConsts}
 import boom.common._
 import boom.exu.FUConstants._
 import boom.common.BoomTilesKey
-import boom.util.{RobTypeToChars, BoolToChar, GetNewUopAndBrMask, Sext, WrapInc, BoomCoreStringPrefix, DromajoCosimBlackBox}
+import boom.util.{RobTypeToChars, BoolToChar, GetNewUopAndBrMask, Sext, WrapInc, BoomCoreStringPrefix, DromajoCosimBlackBox, AlignPCToBoundary}
 import lsc.{InstructionSliceTable, RegisterDependencyTable}
 
 
@@ -624,10 +624,24 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   // Dispatch to issue queues
 
   // ist lookup
-  for (w <- 0 until coreWidth) {
-    ist.map(_.io.check(w).addr.valid := dis_fire(w))
-    ist.map(_.io.check(w).addr.bits := dis_uops(w).debug_pc)
-    dis_uops(w).is_lsc_b := ist.map(_.io.check(w).in_ist).getOrElse(false.B)
+
+  if(boomParams.loadSliceMode) {
+    val get_pc_slice = io.ifu.get_pc_slice.get
+    for (w <- 0 until coreWidth) {
+      val idx = w + IstFtqPortIdx
+      // Get PC from FTQ
+      get_pc_slice(idx).ftq_idx := dis_uops(w).ftq_idx
+     //val block_pc = AlignPCToBoundary(get_pc_slice(idx).fetch_pc, icBlockBytes)
+      val block_pc = get_pc_slice(idx).fetch_pc
+      val pc = (block_pc | dis_uops(w).pc_lob) //- Mux(dis_uops(w).edge_inst, 2.U, 0.U)
+      ist.map(_.io.check(w).addr.valid := dis_fire(w))
+      ist.map(_.io.check(w).addr.bits := pc)
+      dis_uops(w).is_lsc_b := ist.map(_.io.check(w).in_ist).getOrElse(false.B)
+
+      assert(!dis_fire(w) && (dis_uops(w).debug_pc =/= pc), "[IST] debug_pc and fetch_pc mismatch")
+    }
+
+
   }
 
   // Get uops from rename2
@@ -1132,8 +1146,28 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   // **** IBDA ****
   //-------------------------------------------------------------
 
-  ist.map(_.io.mark := rdt.get.io.mark)
-  rdt.map(_.io.commit := rob.io.commit)
+  if (boomParams.loadSliceMode) {
+    ist.get.io.mark := rdt.get.io.mark
+    rdt.get.io.commit.rob := rob.io.commit
+
+    val get_pc_slice = io.ifu.get_pc_slice.get
+
+    for (w <- 0 until retireWidth) {
+      val idx = w + RdtFtqPortIdx
+      // Get PC from FTQ
+      get_pc_slice(idx).ftq_idx := rob.io.commit.uops(w).ftq_idx
+      //val block_pc = AlignPCToBoundary(get_pc_slice(idx).fetch_pc, icBlockBytes)
+      val block_pc = get_pc_slice(idx).fetch_pc
+      val pc = (block_pc | rob.io.commit.uops(w).pc_lob)// - Mux(rob.io.commit.uops(w).edge_inst, 2.U, 0.U)
+
+      // Pass PC to RDT
+      rdt.get.io.commit.pc(w) := pc
+
+      assert(!rob.io.commit.valids(w) && (pc =/= rob.io.commit.uops(w).debug_pc), "[RDT] fetch_pc and debug_pc mismatch")
+    }
+  }
+
+
 
   //-------------------------------------------------------------
   // **** Flush Pipeline ****

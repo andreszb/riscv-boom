@@ -9,7 +9,7 @@ import freechips.rocketchip.config.Parameters
 
 class IstCheck (implicit p: Parameters) extends BoomBundle
 {
-  val addr = Input(ValidIO(UInt(vaddrBits.W)))
+  val addr = Input(ValidIO(UInt(vaddrBitsExtended.W)))
   val in_ist = Output(Bool())
 }
 
@@ -21,7 +21,7 @@ class IstIO(implicit p: Parameters) extends BoomBundle
 
 class IstMark(implicit p: Parameters) extends BoomBundle
 {
-  val mark = Vec(retireWidth*2, ValidIO(UInt(vaddrBits.W)))
+  val mark = Vec(retireWidth*2, ValidIO(UInt(vaddrBitsExtended.W)))
 }
 
 class InstructionSliceTable(entries: Int=128, ways: Int=2)(implicit p: Parameters) extends BoomModule{
@@ -29,7 +29,7 @@ class InstructionSliceTable(entries: Int=128, ways: Int=2)(implicit p: Parameter
   require(isPow2(entries))
   require(isPow2(ways))
 
-  val tag_table = Reg(Vec(entries, UInt(vaddrBits.W)))
+  val tag_table = Reg(Vec(entries, UInt(vaddrBitsExtended.W)))
   val tag_valids = RegInit(VecInit(Seq.fill(entries)(false.B)))
   val tag_lru = RegInit(VecInit(Seq.fill(entries/2)(false.B)))
 

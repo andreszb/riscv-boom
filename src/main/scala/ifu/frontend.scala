@@ -88,6 +88,7 @@ class BoomFrontendIO(implicit p: Parameters) extends BoomBundle
 
   val br_unit           = Output(new BranchUnitResp())
   val get_pc            = Flipped(new GetPCFromFtqIO())
+  val get_pc_slice      = if (boomParams.loadSliceMode) Some(Vec(coreWidth*2, Flipped(new GetPCSlice()))) else None
 
   val sfence            = Valid(new SFenceReq)
 
@@ -275,6 +276,8 @@ class BoomFrontendModule(outer: BoomFrontend) extends LazyModuleImp(outer)
   fetch_controller.io.commit            := io.cpu.commit
 
   io.cpu.get_pc <> fetch_controller.io.get_pc
+  io.cpu.get_pc_slice.get <> fetch_controller.io.get_pc_slice.get
+
 
   io.cpu.com_fetch_pc := fetch_controller.io.com_fetch_pc
 
