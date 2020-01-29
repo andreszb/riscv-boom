@@ -126,8 +126,14 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
     val uop = io.ren_uops(w).bits
     // check if b queue can actually process insn
     val can_use_b_alu = uop.fu_code_is(FUConstants.FU_ALU | FUConstants.FU_MUL | FUConstants.FU_DIV)
-    val use_b_queue = (uop.uopc === uopLD) || uop.uopc === uopSTA || (uop.is_lsc_b && can_use_b_alu)
-    val use_a_queue = (uop.uopc =/= uopLD) && (!uop.is_lsc_b || !can_use_b_alu)
+    val use_b_queue = if(boomParams.loadSliceCore.get.emulateInOrder)
+      uop.uopc === uopSTA
+    else
+      (uop.uopc === uopLD) || uop.uopc === uopSTA || (uop.is_lsc_b && can_use_b_alu)
+    val use_a_queue = if(boomParams.loadSliceCore.get.emulateInOrder)
+      true.B
+    else
+      (uop.uopc =/= uopLD) && (!uop.is_lsc_b || !can_use_b_alu)
 
     // enqueue logic
     a_queue.io.enq_uops(w).valid := io.ren_uops(w).fire() && use_a_queue

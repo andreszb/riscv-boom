@@ -285,6 +285,7 @@ trait HasBoomCoreParameters extends freechips.rocketchip.tile.HasCoreParameters
 // Case class for LoadSliceCore parameters.
 //  TODO: Consider moving this to separate file?
 case class LoadSliceCoreParams(
-  numAqEntries: Int = 8,
-  numBqEntries: Int = 8
-                          )
+    numAqEntries: Int = 8,
+    numBqEntries: Int = 8,
+    emulateInOrder: Boolean = false,
+)
