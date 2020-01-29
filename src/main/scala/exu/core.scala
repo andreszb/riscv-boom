@@ -631,14 +631,13 @@ class BoomCore(implicit p: Parameters) extends BoomModule
       val idx = w + IstFtqPortIdx
       // Get PC from FTQ
       get_pc_slice(idx).ftq_idx := dis_uops(w).ftq_idx
-     //val block_pc = AlignPCToBoundary(get_pc_slice(idx).fetch_pc, icBlockBytes)
-      val block_pc = get_pc_slice(idx).fetch_pc
-      val pc = (block_pc | dis_uops(w).pc_lob) //- Mux(dis_uops(w).edge_inst, 2.U, 0.U)
-      ist.map(_.io.check(w).addr.valid := dis_fire(w))
-      ist.map(_.io.check(w).addr.bits := pc)
+      val block_pc = AlignPCToBoundary(get_pc_slice(idx).fetch_pc, icBlockBytes)
+      val pc = (block_pc | dis_uops(w).pc_lob) - Mux(dis_uops(w).edge_inst, 2.U, 0.U)
+      ist.get.io.check(w).addr.valid := dis_fire(w)
+      ist.get.io.check(w).addr.bits := pc
       dis_uops(w).is_lsc_b := ist.map(_.io.check(w).in_ist).getOrElse(false.B)
 
-      assert(!dis_fire(w) && (dis_uops(w).debug_pc =/= pc), "[IST] debug_pc and fetch_pc mismatch")
+      assert(!(dis_fire(w) && (dis_uops(w).debug_pc =/= pc)), "[IST] debug_pc and fetch_pc mismatch")
     }
 
 
@@ -1151,19 +1150,17 @@ class BoomCore(implicit p: Parameters) extends BoomModule
     rdt.get.io.commit.rob := rob.io.commit
 
     val get_pc_slice = io.ifu.get_pc_slice.get
-
     for (w <- 0 until retireWidth) {
       val idx = w + RdtFtqPortIdx
       // Get PC from FTQ
       get_pc_slice(idx).ftq_idx := rob.io.commit.uops(w).ftq_idx
-      //val block_pc = AlignPCToBoundary(get_pc_slice(idx).fetch_pc, icBlockBytes)
-      val block_pc = get_pc_slice(idx).fetch_pc
-      val pc = (block_pc | rob.io.commit.uops(w).pc_lob)// - Mux(rob.io.commit.uops(w).edge_inst, 2.U, 0.U)
+      val block_pc = AlignPCToBoundary(get_pc_slice(idx).fetch_pc, icBlockBytes)
+      val pc = (block_pc | rob.io.commit.uops(w).pc_lob) - Mux(rob.io.commit.uops(w).edge_inst, 2.U, 0.U)
 
       // Pass PC to RDT
       rdt.get.io.commit.pc(w) := pc
 
-      assert(!rob.io.commit.valids(w) && (pc =/= rob.io.commit.uops(w).debug_pc), "[RDT] fetch_pc and debug_pc mismatch")
+      assert(!(rob.io.commit.valids(w) && (pc =/= rob.io.commit.uops(w).debug_pc)), "[RDT] fetch_pc and debug_pc mismatch")
     }
   }
 
