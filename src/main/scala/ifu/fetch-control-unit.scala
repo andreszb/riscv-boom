@@ -558,7 +558,7 @@ class FetchControlUnit(implicit p: Parameters) extends BoomModule
   ftq.io.deq := io.commit
   ftq.io.brinfo := br_unit.brinfo
   io.get_pc <> ftq.io.get_ftq_pc
-  io.get_pc_slice.get <> ftq.io.get_pc_slice.get
+  io.get_pc_slice.map(_ <> ftq.io.get_pc_slice.get)
 
   ftq.io.flush := io.flush_info
   ftq.io.com_ftq_idx := io.com_ftq_idx

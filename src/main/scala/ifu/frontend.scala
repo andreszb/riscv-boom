@@ -276,7 +276,7 @@ class BoomFrontendModule(outer: BoomFrontend) extends LazyModuleImp(outer)
   fetch_controller.io.commit            := io.cpu.commit
 
   io.cpu.get_pc <> fetch_controller.io.get_pc
-  io.cpu.get_pc_slice.get <> fetch_controller.io.get_pc_slice.get
+  io.cpu.get_pc_slice.map(_ <> fetch_controller.io.get_pc_slice.get)
 
 
   io.cpu.com_fetch_pc := fetch_controller.io.com_fetch_pc
