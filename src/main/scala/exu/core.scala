@@ -1,5 +1,5 @@
 //******************************************************************************
-// Copyright (c) 2015 - 2018, The Regents of the University of California (Regents).
+// Copyright (c) 2015 - 2019, The Regents of the University of California (Regents).
 // All Rights Reserved. See LICENSE and LICENSE.SiFive for license details.
 //------------------------------------------------------------------------------
 
@@ -28,18 +28,23 @@
 
 package boom.exu
 
+import java.nio.file.{Paths}
+
 import chisel3._
 import chisel3.util._
-import chisel3.experimental.dontTouch
+
 import freechips.rocketchip.config.Parameters
 import freechips.rocketchip.rocket.Instructions._
 import freechips.rocketchip.rocket.{Causes, PRV}
-import freechips.rocketchip.util.{CoreMonitorBundle, Str, UIntIsOneOf}
+import freechips.rocketchip.util.{Str, UIntIsOneOf, CoreMonitorBundle}
+import freechips.rocketchip.devices.tilelink.{PLICConsts, CLINTConsts}
+
 import boom.common._
 import boom.exu.FUConstants._
 import boom.common.BoomTilesKey
-import boom.util.{BoolToChar, BoomCoreStringPrefix, GetNewUopAndBrMask, RobTypeToChars, Sext, WrapInc}
+import boom.util.{RobTypeToChars, BoolToChar, GetNewUopAndBrMask, Sext, WrapInc, BoomCoreStringPrefix, DromajoCosimBlackBox}
 import lsc.{InstructionSliceTable, RegisterDependencyTable}
+
 
 /**
  * IO bundle for the BOOM Core. Connects the external components such as
@@ -104,8 +109,13 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   val fp_rename_stage  = if (usingFPU) Module(new RenameStage(coreWidth, numFpPhysRegs, numFpWakeupPorts, true))
                          else null
   val rename_stages    = if (usingFPU) Seq(rename_stage, fp_rename_stage) else Seq(rename_stage)
+  val mem_iss_unit     = if (boomParams.loadSliceMode) Module(new IssueUnitSlice(memIssueParam, numIntIssueWakeupPorts)) else Module(new IssueUnitCollapsing(memIssueParam, numIntIssueWakeupPorts))
+  mem_iss_unit.suggestName("mem_issue_unit")
+  val int_iss_unit     = if (boomParams.loadSliceMode) Module(new IssueUnitSlice(intIssueParam, numIntIssueWakeupPorts)) else Module(new IssueUnitCollapsing(intIssueParam, numIntIssueWakeupPorts))
+  int_iss_unit.suggestName("int_issue_unit")
 
-  val issue_units      = new boom.exu.IssueUnits(numIntIssueWakeupPorts)
+  val issue_units      = Seq(mem_iss_unit,int_iss_unit)
+
   val dispatcher       = if(boomParams.loadSliceMode) Module(new SliceDispatcher) else Module(new BasicDispatcher)
 
   val iregfile         = Module(new RegisterFileSynthesizable(
@@ -639,17 +649,35 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   }
   dispatcher.io.tsc_reg := debug_tsc_reg // needed for pipeview
 
-  var iu_idx = 0
-  // Send dispatched uops to correct issue queues
-  // Backpressure through dispatcher if necessary
-  for (i <- 0 until issueParams.size) {
-    if (issueParams(i).iqType == IQT_FP.litValue) {
-       fp_pipeline.io.dis_uops <> dispatcher.io.dis_uops(i)
-    } else {
-       issue_units(iu_idx).io.dis_uops <> dispatcher.io.dis_uops(i)
-       iu_idx += 1
+  if (boomParams.loadSliceMode) {
+    for (i <- 0 until issueParams.size)
+      {
+        if (issueParams(i).iqType == IQT_FP.litValue) {
+          fp_pipeline.io.dis_uops <> dispatcher.io.dis_uops(LSC_DIS_FP_PORT_IDX)
+        } else if (issueParams(i).iqType == IQT_INT.litValue) {
+          int_iss_unit.io.dis_uops <> dispatcher.io.dis_uops(LSC_DIS_INT_PORT_IDX)
+        } else if (issueParams(i).iqType == IQT_MEM.litValue) {
+          mem_iss_unit.io.dis_uops <> dispatcher.io.dis_uops(LSC_DIS_MEM_PORT_IDX)
+        } else {
+          assert(false.B, "[Core] Unsupported IssueQueue Type")
+        }
+      }
+
+
+  } else {
+    var iu_idx = 0
+    // Send dispatched uops to correct issue queues
+    // Backpressure through dispatcher if necessary
+    for (i <- 0 until issueParams.size) {
+      if (issueParams(i).iqType == IQT_FP.litValue) {
+        fp_pipeline.io.dis_uops <> dispatcher.io.dis_uops(i)
+      } else {
+        issue_units(iu_idx).io.dis_uops <> dispatcher.io.dis_uops(i)
+        iu_idx += 1
+      }
     }
   }
+
 
   //-------------------------------------------------------------
   //-------------------------------------------------------------
@@ -692,9 +720,10 @@ class BoomCore(implicit p: Parameters) extends BoomModule
       // Fast Wakeup (uses just-issued uops that have known latencies)
       fast_wakeup.bits.uop := iss_uops(i)
       fast_wakeup.valid    := iss_valids(i) &&
-                                iss_uops(i).bypassable &&
-                                iss_uops(i).dst_rtype === RT_FIX &&
-                                iss_uops(i).ldst_val
+                              iss_uops(i).bypassable &&
+                              iss_uops(i).dst_rtype === RT_FIX &&
+                              iss_uops(i).ldst_val &&
+                              !(io.lsu.ld_miss && (iss_uops(i).iw_p1_poisoned || iss_uops(i).iw_p2_poisoned))
 
       // Slow Wakeup (uses write-port to register file)
       slow_wakeup.bits.uop := resp.bits.uop
@@ -732,11 +761,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   }
 
   for ((renport, intport) <- rename_stage.io.wakeups zip int_ren_wakeups) {
-    // Stop wakeup for bypassable children of spec-loads trying to issue during a ldMiss.
-    renport.valid :=
-       intport.valid &&
-       !(io.lsu.ld_miss && (intport.bits.uop.iw_p1_poisoned || intport.bits.uop.iw_p2_poisoned))
-    renport.bits := intport.bits
+    renport <> intport
   }
   if (usingFPU) {
     for ((renport, fpport) <- fp_rename_stage.io.wakeups zip fp_pipeline.io.wakeups) {
@@ -759,14 +784,14 @@ class BoomCore(implicit p: Parameters) extends BoomModule
       }
 
       if (exe_unit.hasMem) {
-        iss_valids(iss_idx) := issue_units.mem_iq.io.iss_valids(mem_iss_cnt)
-        iss_uops(iss_idx)   := issue_units.mem_iq.io.iss_uops(mem_iss_cnt)
-        issue_units.mem_iq.io.fu_types(mem_iss_cnt) := fu_types
+        iss_valids(iss_idx) := mem_iss_unit.io.iss_valids(mem_iss_cnt)
+        iss_uops(iss_idx)   := mem_iss_unit.io.iss_uops(mem_iss_cnt)
+        mem_iss_unit.io.fu_types(mem_iss_cnt) := fu_types
         mem_iss_cnt += 1
       } else {
-        iss_valids(iss_idx) := issue_units.int_iq.io.iss_valids(int_iss_cnt)
-        iss_uops(iss_idx)   := issue_units.int_iq.io.iss_uops(int_iss_cnt)
-        issue_units.int_iq.io.fu_types(int_iss_cnt) := fu_types
+        iss_valids(iss_idx) := int_iss_unit.io.iss_valids(int_iss_cnt)
+        iss_uops(iss_idx)   := int_iss_unit.io.iss_uops(int_iss_cnt)
+        int_iss_unit.io.fu_types(int_iss_cnt) := fu_types
         int_iss_cnt += 1
       }
       iss_idx += 1
@@ -779,10 +804,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   issue_units.map(_.io.flush_pipeline := rob.io.flush.valid)
 
   // Load-hit Misspeculations
-  require (issue_units.count(_.iqType == IQT_MEM.litValue) == 1)
-  val mem_iq = issue_units.mem_iq
-
-  require (mem_iq.issueWidth <= 2)
+  require (mem_iss_unit.issueWidth <= 2)
   issue_units.map(_.io.ld_miss := io.lsu.ld_miss)
 
   mem_units.map(u => u.io.com_exception := rob.io.flush.valid)
@@ -878,6 +900,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   // reading requires serializing the entire pipeline
   csr.io.fcsr_flags.valid := rob.io.commit.fflags.valid
   csr.io.fcsr_flags.bits  := rob.io.commit.fflags.bits
+  csr.io.set_fs_dirty.get := rob.io.commit.fflags.valid
 
   exe_units.withFilter(_.hasFcsr).map(_.io.fcsr_rm := csr.io.fcsr_rm)
   io.fcsr_rm := csr.io.fcsr_rm
@@ -1307,6 +1330,67 @@ class BoomCore(implicit p: Parameters) extends BoomModule
     }
   }
 
+  // enable Dromajo cosimulation
+  if (DROMAJO_COSIM_ENABLE) {
+    // currently only supports single-core systems
+    require(p(BoomTilesKey).size == 1)
+
+    tileParams.asInstanceOf[BoomTileParams].dromajoParams match {
+      case Some(params) => {
+        val bootromParams = params.bootromParams.get
+        val extMemParams = params.extMemParams.get
+        val plicParams = params.plicParams.get
+        val clintParams = params.clintParams.get
+
+        val resetVectorStr = "0x" + f"${bootromParams.hang}%X"
+        val bootromFile = Paths.get(bootromParams.contentFileName).toAbsolutePath.toString
+        val mmioStart = "0x" + f"${bootromParams.address + bootromParams.size}%X"
+        val mmioEnd = "0x" + f"${extMemParams.master.base}%X"
+        val plicBase = "0x" + f"${plicParams.baseAddress}%X"
+        val plicSize = "0x" + f"${PLICConsts.size(plicParams.maxHarts)}%X"
+        val clintBase = "0x" + f"${clintParams.baseAddress}%X"
+        val clintSize = "0x" + f"${CLINTConsts.size}%X"
+        val memSize = "0x" + f"${extMemParams.master.size}%X"
+
+        // instantiate dromajo cosim bbox
+        val dromajo = Module(new DromajoCosimBlackBox(
+          coreWidth,
+          xLen,
+          bootromFile,
+          resetVectorStr,
+          mmioStart,
+          mmioEnd,
+          plicBase,
+          plicSize,
+          clintBase,
+          clintSize,
+          memSize))
+
+        def getInst(uop: MicroOp): UInt = {
+          Mux(uop.is_rvc, Cat(0.U(16.W), uop.debug_inst(15,0)), uop.debug_inst)
+        }
+
+        def getWdata(uop: MicroOp): UInt = {
+          Mux((uop.dst_rtype === RT_FIX && uop.ldst =/= 0.U) || (uop.dst_rtype === RT_FLT), uop.debug_wdata, 0.U(xLen.W))
+        }
+
+        dromajo.io.clock := clock
+        dromajo.io.reset := reset
+        dromajo.io.valid := rob.io.commit.valids.asUInt
+        dromajo.io.hartid := io.hartid
+        dromajo.io.pc     := Cat(rob.io.commit.uops.reverse.map(uop => Sext(uop.debug_pc(vaddrBits-1,0), xLen)))
+        dromajo.io.inst   := Cat(rob.io.commit.uops.reverse.map(uop => getInst(uop)))
+        dromajo.io.wdata  := Cat(rob.io.commit.uops.reverse.map(uop => getWdata(uop)))
+        dromajo.io.mstatus := 0.U // Currently not used in Dromajo
+        dromajo.io.check   := ((1 << coreWidth) - 1).U
+        dromajo.io.int_xcpt := rob.io.com_xcpt.valid
+        dromajo.io.cause    := rob.io.com_xcpt.bits.cause
+      }
+
+      case None => throw new java.lang.Exception("Error: No BootROMParams found in BoomTile parameters")
+    }
+  }
+
   // TODO: Does anyone want this debugging functionality?
   val coreMonitorBundle = Wire(new CoreMonitorBundle(xLen))
   coreMonitorBundle.clock  := clock
@@ -1393,17 +1477,19 @@ class BoomCore(implicit p: Parameters) extends BoomModule
     }
   }
 
-  //io.trace := csr.io.trace unused
   if (p(BoomTilesKey)(0).trace) {
     for (w <- 0 until coreWidth) {
+      io.trace(w).clock      := clock
+      io.trace(w).reset      := reset
       io.trace(w).valid      := rob.io.commit.valids(w)
       io.trace(w).iaddr      := Sext(rob.io.commit.uops(w).debug_pc(vaddrBits-1,0), xLen)
       io.trace(w).insn       := rob.io.commit.uops(w).debug_inst
-      // I'm uncertain the commit signals from the ROB match these CSR exception signals
+      // These csr signals do not exactly match up with the ROB commit signals.
       io.trace(w).priv       := csr.io.status.prv
-      io.trace(w).exception  := csr.io.exception
-      io.trace(w).interrupt  := csr.io.interrupt
-      io.trace(w).cause      := csr.io.cause
+      // Can determine if it is an interrupt or not based on the MSB of the cause
+      io.trace(w).exception  := rob.io.com_xcpt.valid && !rob.io.com_xcpt.bits.cause(xLen - 1)
+      io.trace(w).interrupt  := rob.io.com_xcpt.valid && rob.io.com_xcpt.bits.cause(xLen - 1)
+      io.trace(w).cause      := rob.io.com_xcpt.bits.cause
       io.trace(w).tval       := csr.io.tval
     }
     dontTouch(io.trace)

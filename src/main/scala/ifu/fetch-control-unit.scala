@@ -23,8 +23,7 @@ package boom.ifu
 
 import chisel3._
 import chisel3.util._
-import chisel3.core.{withReset, DontCare}
-import chisel3.experimental.{dontTouch}
+import chisel3.core.{withReset}
 
 import freechips.rocketchip.rocket.{MStatus, BP}
 import freechips.rocketchip.config.{Parameters}
@@ -34,6 +33,7 @@ import boom.bpu._
 import boom.common._
 import boom.exu._
 import boom.util.{BoolToChar, AgePriorityEncoder, ElasticReg}
+
 
 /**
  * Bundle passed into the FetchBuffer and used to combine multiple
@@ -505,9 +505,12 @@ class FetchControlUnit(implicit p: Parameters) extends BoomModule
       if (i == 0) {
         f3_fetch_bundle.debug_events(i).fetch_seq := fseq_reg
       } else {
-        f3_fetch_bundle.debug_events(i).fetch_seq := fseq_reg + PopCount(f3_fetch_bundle.mask.asUInt()(i-1,0))
+        f3_fetch_bundle.debug_events(i).fetch_seq := fseq_reg +
+          PopCount(f3_fetch_bundle.mask.asUInt()(i-1,0))
       }
     }
+
+
     r_f4_req := f3_req
     r_f4_fetchpc := f3_imemresp.pc
     r_f4_taken := f3_taken
@@ -532,15 +535,6 @@ class FetchControlUnit(implicit p: Parameters) extends BoomModule
 
   fb.io.status := io.status
   fb.io.bp     := io.bp
-
-//  for (i <- 0 until fetchWidth) {
-//    if (i == 0) {
-//      fb.io.enq.bits.debug_events(i).fetch_seq := fseq_reg
-//    } else {
-//      fb.io.enq.bits.debug_events(i).fetch_seq := fseq_reg +
-//        PopCount(f3_fetch_bundle.mask.asUInt()(i-1,0))
-//    }
-//  }
 
   //-------------------------------------------------------------
   // **** FetchTargetQueue ****

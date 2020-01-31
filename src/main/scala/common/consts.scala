@@ -29,6 +29,8 @@ trait BOOMDebugConstants
   val MEMTRACE_PRINTF     = false // dump trace of memory accesses to L1D for debugging
   val O3PIPEVIEW_PRINTF   = true  // dump trace for O3PipeView from gem5
   val O3_CYCLE_TIME       = (2)// "cycle" time expected by o3pipeview.py
+  val DROMAJO_COSIM_ENABLE = false // enable dromajo cosim
+
 
   // When enabling DEBUG_PRINTF, the vertical whitespace can be padded out
   // such that viewing the *.out file in vim can line up veritically to
@@ -395,4 +397,17 @@ trait ExcCauseConstants
 
   require (!freechips.rocketchip.rocket.Causes.all.contains(16))
   require (!freechips.rocketchip.rocket.Causes.all.contains(17))
+}
+
+
+trait LoadSliceCoreConstants
+{
+  // Constants decidng which Dispatch port is for which Issue Queue
+  val LSC_DIS_INT_PORT_IDX = 0
+  val LSC_DIS_MEM_PORT_IDX = 1
+  val LSC_DIS_FP_PORT_IDX = 2
+
+  // Constans for which port belongs to A and wich belongs to B
+  val LSC_DIS_A_PORT_IDX = 0
+  val LSC_DIS_B_PORT_IDX = 1
 }

@@ -11,7 +11,9 @@ import chisel3.util._
 import freechips.rocketchip.rocket._
 import freechips.rocketchip.tile._
 import freechips.rocketchip.util._
+import freechips.rocketchip.subsystem.{MemoryPortParams}
 import freechips.rocketchip.config.{Parameters, Field}
+import freechips.rocketchip.devices.tilelink.{BootROMParams, CLINTParams, PLICParams}
 
 import boom.ifu._
 import boom.bpu._
@@ -22,6 +24,7 @@ import boom.lsu._
  * Default BOOM core parameters
  */
 case class BoomCoreParams(
+// DOC include start: BOOM Parameters
   fetchWidth: Int = 1,
   decodeWidth: Int = 1,
   numRobEntries: Int = 64,
@@ -59,14 +62,15 @@ case class BoomCoreParams(
   numRXQEntries: Int = 4,
   numRCQEntries: Int = 8,
   numDCacheBanks: Int = 1,
+  nPMPs: Int = 8,
   /* more stuff */
 
   useFetchMonitor: Boolean = true,
   bootFreqHz: BigInt = 0,
-  fpu: Option[FPUParams] = Some(FPUParams()),
+  fpu: Option[FPUParams] = Some(FPUParams(sfmaLatency=4, dfmaLatency=4)),
   usingFPU: Boolean = true,
   haveBasicCounters: Boolean = true,
-  misaWritable: Boolean = true,
+  misaWritable: Boolean = false,
   mtvecInit: Option[BigInt] = Some(BigInt(0)),
   mtvecWritable: Boolean = true,
   haveCFlush: Boolean = false,
@@ -87,13 +91,12 @@ case class BoomCoreParams(
 
 ) extends freechips.rocketchip.tile.CoreParams
 {
-  val haveFSDirty = false
+  val haveFSDirty = true
   val pmpGranularity: Int = 4
   val instBits: Int = if (useCompressed) 16 else 32
   val lrscCycles: Int = 80 // worst case is 14 mispredicted branches + slop
   val retireWidth = decodeWidth
   val jumpInFrontend: Boolean = false // unused in boom
-  val nPMPs: Int = 8
   val loadSliceMode: Boolean = loadSliceCore.isDefined
 
   override def customCSRs(implicit p: Parameters) = new BoomCustomCSRs
@@ -186,8 +189,12 @@ trait HasBoomCoreParameters extends freechips.rocketchip.tile.HasCoreParameters
   require (issueParams.count(_.iqType == IQT_MEM.litValue) == 1)
   require (issueParams.count(_.iqType == IQT_INT.litValue) == 1)
 
-  val intWidth = issueParams.find(_.iqType == IQT_INT.litValue).get.issueWidth
-  val memWidth = issueParams.find(_.iqType == IQT_MEM.litValue).get.issueWidth //TODO: change calculation to allow seperate mem queues
+  val intIssueParam = issueParams.find(_.iqType == IQT_INT.litValue).get
+  val memIssueParam = issueParams.find(_.iqType == IQT_MEM.litValue).get
+
+  val intWidth = intIssueParam.issueWidth
+  val memWidth = memIssueParam.issueWidth
+
 
   issueParams.map(x => require(x.dispatchWidth <= coreWidth && x.dispatchWidth > 0))
 
@@ -282,9 +289,24 @@ trait HasBoomCoreParameters extends freechips.rocketchip.tile.HasCoreParameters
   val corePgIdxBits = pgIdxBits
 }
 
+
+/**
+ * Dromajo simulation parameters
+ */
+case class DromajoParams(
+  bootromParams: Option[BootROMParams] = None,
+  extMemParams: Option[MemoryPortParams] = None,
+  clintParams: Option[CLINTParams] = None,
+  plicParams: Option[PLICParams] = None
+)
+
+
 // Case class for LoadSliceCore parameters.
 //  TODO: Consider moving this to separate file?
 case class LoadSliceCoreParams(
   numAqEntries: Int = 8,
   numBqEntries: Int = 8
+
                           )
+
+

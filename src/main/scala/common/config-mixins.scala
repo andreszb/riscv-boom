@@ -217,7 +217,7 @@ class WithSliceBooms extends Config((site, here, up) => {
       bpdRandom = None,
       nPerfCounters = 2,
       fpu = Some(freechips.rocketchip.tile.FPUParams(sfmaLatency=4, dfmaLatency=4, divSqrt=true)),
-      useAtomics = true, // TODO: test if atomics work - they should since they block the pipeline
+      useAtomics = true,
       usingFPU = true,
       loadSliceCore = Some(LoadSliceCoreParams(numAqEntries = 8, numBqEntries = 8))
     ),
@@ -269,6 +269,7 @@ class WithMediumBooms extends Config((site, here, up) => {
 
 })
 
+// DOC include start: LargeBoomConfig
 /**
  * 3-wide BOOM. Try to match the Cortex-A15.
  */
@@ -304,6 +305,7 @@ class WithLargeBooms extends Config((site, here, up) => {
   case XLen => 64
   case MaxHartIdBits => log2Up(site(BoomTilesKey).size)
 })
+// DOC include end: LargeBoomConfig
 
 /**
  * 4-wide BOOM.

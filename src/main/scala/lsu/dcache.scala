@@ -8,7 +8,6 @@ package boom.lsu
 
 import chisel3._
 import chisel3.util._
-import chisel3.experimental.dontTouch
 
 import freechips.rocketchip.config.Parameters
 import freechips.rocketchip.diplomacy._
@@ -750,6 +749,7 @@ class BoomNonBlockingDCacheModule(outer: BoomNonBlockingDCache) extends LazyModu
   metaWriteArb.io.in(1) <> prober.io.meta_write
   prober.io.mshr_rdy    := mshrs.io.probe_rdy
   prober.io.wb_rdy      := (prober.io.meta_write.bits.idx =/= wb.io.idx.bits) || !wb.io.idx.valid
+  mshrs.io.prober_idle  := prober.io.req.ready && !lrsc_valid
 
   // refills
   when (tl_out.d.bits.source === cfg.nMSHRs.U) {
