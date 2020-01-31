@@ -29,8 +29,8 @@ trait BOOMDebugConstants
   val MEMTRACE_PRINTF     = false // dump trace of memory accesses to L1D for debugging
   val O3PIPEVIEW_PRINTF   = true  // dump trace for O3PipeView from gem5
   val O3_CYCLE_TIME       = (2)// "cycle" time expected by o3pipeview.py
-
   val DROMAJO_COSIM_ENABLE = false // enable dromajo cosim
+
 
   // When enabling DEBUG_PRINTF, the vertical whitespace can be padded out
   // such that viewing the *.out file in vim can line up veritically to

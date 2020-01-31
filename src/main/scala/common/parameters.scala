@@ -300,9 +300,13 @@ case class DromajoParams(
   plicParams: Option[PLICParams] = None
 )
 
+
 // Case class for LoadSliceCore parameters.
 //  TODO: Consider moving this to separate file?
 case class LoadSliceCoreParams(
   numAqEntries: Int = 8,
   numBqEntries: Int = 8
+
                           )
+
+

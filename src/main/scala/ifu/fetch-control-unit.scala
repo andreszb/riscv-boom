@@ -510,6 +510,7 @@ class FetchControlUnit(implicit p: Parameters) extends BoomModule
       }
     }
 
+
     r_f4_req := f3_req
     r_f4_fetchpc := f3_imemresp.pc
     r_f4_taken := f3_taken
