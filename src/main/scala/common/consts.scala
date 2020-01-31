@@ -410,4 +410,7 @@ trait LoadSliceCoreConstants
   // Constans for which port belongs to A and wich belongs to B
   val LSC_DIS_A_PORT_IDX = 0
   val LSC_DIS_B_PORT_IDX = 1
+
+  val IstFtqPortIdx = 0
+  val RdtFtqPortIdx = 2
 }
