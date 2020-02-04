@@ -191,6 +191,7 @@ trait HasBoomCoreParameters extends freechips.rocketchip.tile.HasCoreParameters
 
   val intIssueParam = issueParams.find(_.iqType == IQT_INT.litValue).get
   val memIssueParam = issueParams.find(_.iqType == IQT_MEM.litValue).get
+  val combIssueParam = issueParams.find(_.iqType == IQT_COMB.litValue).get
 
   val intWidth = intIssueParam.issueWidth
   val memWidth = memIssueParam.issueWidth
@@ -305,8 +306,8 @@ case class DromajoParams(
 //  TODO: Consider moving this to separate file?
 case class LoadSliceCoreParams(
   numAqEntries: Int = 8,
-  numBqEntries: Int = 8
-
-                          )
+  numBqEntries: Int = 8,
+  unifiedIssueQueue: Boolean = false,
+)
 
 

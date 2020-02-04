@@ -68,6 +68,7 @@ trait IQType
   val IQT_FP  = 4.U(IQT_SZ.W)
 
   val IQT_MFP = 6.U(IQT_SZ.W)
+  val IQT_COMB = 0.U(IQT_SZ.W)
 }
 
 

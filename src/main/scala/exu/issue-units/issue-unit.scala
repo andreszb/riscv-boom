@@ -80,6 +80,7 @@ class IssueUnitIO(
 
   // tell the issue unit what each execution pipeline has in terms of functional units
   val fu_types         = Input(Vec(issueWidth, Bits(width=FUC_SZ.W)))
+  val iq_types         = if(boomParams.loadSliceCore.exists(_.unifiedIssueQueue)) Some(Input(Vec(issueWidth, Bits(width=IQT_SZ.W)))) else None
 
   val brinfo           = Input(new BrResolutionInfo())
   val flush_pipeline   = Input(Bool())

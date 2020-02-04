@@ -106,6 +106,9 @@ class FpPipeline(implicit p: Parameters) extends BoomModule with tile.HasFPUPara
   // Input (Dispatch)
   for (w <- 0 until dispatchWidth) {
     issue_unit.io.dis_uops(w) <> io.dis_uops(w)
+    if(boomParams.loadSliceCore.get.unifiedIssueQueue){
+      issue_unit.io.iq_types.get(w) := IQT_FP
+    }
   }
 
   //-------------------------------------------------------------

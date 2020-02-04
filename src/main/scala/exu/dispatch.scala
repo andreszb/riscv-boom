@@ -85,13 +85,19 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
     require(issueParams(2).dispatchWidth == 1)
   }
 
-
+  // for now I'm just setting both dispatch ports to the same port - should work since they are never written to at the same time...
   val a_int_dispatch = io.dis_uops(LSC_DIS_INT_PORT_IDX)(LSC_DIS_A_PORT_IDX)
-  val a_mem_dispatch = io.dis_uops(LSC_DIS_MEM_PORT_IDX)(LSC_DIS_A_PORT_IDX)
+  val a_mem_dispatch = if(boomParams.loadSliceCore.get.unifiedIssueQueue) io.dis_uops(LSC_DIS_INT_PORT_IDX)(LSC_DIS_A_PORT_IDX)
+  else io.dis_uops(LSC_DIS_MEM_PORT_IDX)(LSC_DIS_A_PORT_IDX)
   val a_fp_dispatch =  if(usingFPU) Some(io.dis_uops(LSC_DIS_FP_PORT_IDX)(LSC_DIS_A_PORT_IDX)) else None
   val b_int_dispatch = io.dis_uops(LSC_DIS_INT_PORT_IDX)(LSC_DIS_B_PORT_IDX)
-  val b_mem_dispatch = io.dis_uops(LSC_DIS_MEM_PORT_IDX)(LSC_DIS_B_PORT_IDX)
+  val b_mem_dispatch = if(boomParams.loadSliceCore.get.unifiedIssueQueue) io.dis_uops(LSC_DIS_INT_PORT_IDX)(LSC_DIS_B_PORT_IDX)
+  else io.dis_uops(LSC_DIS_MEM_PORT_IDX)(LSC_DIS_B_PORT_IDX)
 
+  if(boomParams.loadSliceCore.get.unifiedIssueQueue){
+    io.dis_uops(LSC_DIS_MEM_PORT_IDX) := DontCare
+    io.dis_uops(3) := DontCare
+  }
 
 
   // state that remembers if instruction in MEM issue slot belongs to A or B queue
