@@ -821,6 +821,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
         iss_uops(iss_idx) := unified_iss_unit.io.iss_uops(int_iss_cnt)
         unified_iss_unit.io.fu_types(int_iss_cnt) := fu_types
         unified_iss_unit.io.iq_types.get(int_iss_cnt) := exe_unit.iqType.U
+//        println(s"unified_exu($w) iqType: ${exe_unit.iqType}\n")
         int_iss_cnt += 1
       } else if (exe_unit.hasMem) {
         iss_valids(iss_idx) := mem_iss_unit.io.iss_valids(mem_iss_cnt)

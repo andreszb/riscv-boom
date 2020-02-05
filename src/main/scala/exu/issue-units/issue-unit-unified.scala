@@ -13,6 +13,7 @@ package boom.exu
 
 import boom.common._
 import chisel3._
+import chisel3.internal.naming.chiselName
 import freechips.rocketchip.config.Parameters
 
 /**
@@ -77,7 +78,11 @@ class IssueUnitUnified(
     var uop_issued = false.B
 
     for (w <- 0 until issueWidth) {
-      val can_allocate = (issue_slots(i).uop.fu_code & io.fu_types(w)) =/= 0.U && issue_slots(i).uop.iq_type === io.iq_types.get(i)
+      val iq_type_match = (issue_slots(i).uop.iq_type === io.iq_types.get(w))
+      val fu_type_match = ((issue_slots(i).uop.fu_code & io.fu_types(w)) =/= 0.U)
+      iq_type_match.suggestName(s"iq_type_match_slot_${i}_exu_$w")
+      fu_type_match.suggestName(s"fu_type_match_slot_${i}_exu_$w")
+      val can_allocate = fu_type_match && iq_type_match
 
       when (requests(i) && !uop_issued && can_allocate && !port_issued(w)) {
         issue_slots(i).grant := true.B
