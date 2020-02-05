@@ -306,25 +306,12 @@ case class DromajoParams(
 case class LoadSliceCoreParams(
   numAqEntries: Int = 8,
   numBqEntries: Int = 8,
-  ibdaTag: Int = IBDA_TAG_FULL_PC
-                          )(implicit p: Parameters) extends HasTileParameters with HasBoomCoreParameters
-{
-  // Calculate the size of the tag based on the config chosen in config-mixin.scala
-  val ibdaTagSz = ibdaTag match {
-    case IBDA_TAG_FULL_PC => vaddrBitsExtended
-    case IBDA_TAG_UOPC_LOB => UOPC_SZ + log2Ceil(icBlockBytes) //uopc + pc_lob
-    case IBDA_TAG_INST_LOB => 32 + log2Ceil(icBlockBytes) //inst + pc_lob
-  }
-
-  // Create function that extracts the tag from a MicroOp
-  def ibda_get_tag(uop: MicroOp): UInt = {
-   val tag = UInt(ibdaTagSz.W)
-    if(ibdaTag == IBDA_TAG_FULL_PC) tag := uop.debug_pc
-    else if (ibdaTag == IBDA_TAG_UOPC_LOB) tag := Cat(uop.uopc, uop.pc_lob)
-    else if (ibdaTag == IBDA_TAG_INST_LOB) tag := Cat(uop.inst, uop.pc_lob)
-    tag
+  ibdaTagType: Int = IBDA_TAG_FULL_PC
+                          ) {
+  val ibdaTagSz = ibdaTagType match {
+    case IBDA_TAG_FULL_PC => 40
+    case IBDA_TAG_UOPC_LOB => UOPC_SZ + 6 //uopc + pc_lob
+    case IBDA_TAG_INST_LOB => 32 + 6 //inst + pc_lob
   }
 
 }
-
-

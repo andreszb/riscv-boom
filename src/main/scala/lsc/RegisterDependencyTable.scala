@@ -15,7 +15,7 @@ import boom.common._
 class RdtCommitSignals(implicit p: Parameters) extends BoomBundle
 {
   val rob = new CommitSignals()
-  val pc  = Vec(retireWidth, UInt(vaddrBitsExtended.W))
+  val tag  = Vec(retireWidth, UInt(boomParams.loadSliceCore.get.ibdaTagSz.W))
 }
 
 class RdtIO(implicit p: Parameters) extends BoomBundle
@@ -24,10 +24,10 @@ class RdtIO(implicit p: Parameters) extends BoomBundle
   val mark = Output(new IstMark)
 }
 
-class RegisterDependencyTable()(implicit p: Parameters) extends BoomModule{
-  val io = IO(new RdtIO())
+class RegisterDependencyTable(implicit p: Parameters) extends BoomModule{
+  val io = IO(new RdtIO)
 
-  val rdt = Reg(Vec(32, UInt(vaddrBitsExtended.W))) //32 is hardcoded for now since logicalRegCount includes fpu regs
+  val rdt = Reg(Vec(32, UInt(boomParams.loadSliceCore.get.ibdaTagSz.W))) //32 is hardcoded for now since logicalRegCount includes fpu regs
   val commit_dst_valid = WireInit(VecInit(Seq.fill(retireWidth)(false.B)))
 
   io.mark := DontCare
@@ -39,7 +39,7 @@ class RegisterDependencyTable()(implicit p: Parameters) extends BoomModule{
     // exclude 0 reg
     when(io.commit.rob.valids(i) && uop.dst_rtype === RT_FIX && uop.ldst =/= 0.U){
       // TODO: figure out if there is a better pc - guess we shouldn't use debug...
-      rdt(uop.ldst) := io.commit.pc(i)
+      rdt(uop.ldst) := io.commit.tag(i)
       commit_dst_valid(i) := true.B
     }
 
@@ -53,7 +53,7 @@ class RegisterDependencyTable()(implicit p: Parameters) extends BoomModule{
         for (j <- 0 until i){
           val uop_j = io.commit.rob.uops(j)
           when(commit_dst_valid(j) && uop_j.ldst === uop.lrs1){
-            io.mark.mark(2*i).bits := io.commit.pc(j)
+            io.mark.mark(2*i).bits := io.commit.tag(j)
           }
         }
       }
@@ -64,7 +64,7 @@ class RegisterDependencyTable()(implicit p: Parameters) extends BoomModule{
         for (j <- 0 until i){
           val uop_j = io.commit.rob.uops(j)
           when(commit_dst_valid(j) && uop_j.ldst === uop.lrs2){
-            io.mark.mark(2*i).bits := io.commit.pc(j)
+            io.mark.mark(2*i).bits := io.commit.tag(j)
           }
         }
       }
