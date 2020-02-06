@@ -10,7 +10,7 @@ import freechips.rocketchip.config.Parameters
 
 class IstCheck (implicit p: Parameters) extends BoomBundle
 {
-  val tag = Input(ValidIO(UInt(boomParams.loadSliceCore.get.ibdaTagSz.W)))
+  val tag = Input(ValidIO(UInt(IbdaParams.ibda_tag_sz.W)))
   val in_ist = Output(Bool())
 }
 
