@@ -305,8 +305,9 @@ case class DromajoParams(
 //  TODO: Consider moving this to separate file?
 case class LoadSliceCoreParams(
   numAqEntries: Int = 8,
-  numBqEntries: Int = 8
+  numBqEntries: Int = 8,
+  ibdaTagType: Int = IBDA_TAG_FULL_PC
+                              ) {
 
-                          )
 
-
+}
