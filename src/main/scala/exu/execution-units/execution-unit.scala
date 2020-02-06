@@ -161,7 +161,9 @@ abstract class ExecutionUnit(
     hasRocc, hasBrUnit, hasFpu || hasIfpu || hasFdiv, hasMem,
     numBypassStages, dataWidth))
 
-  assert(!io.req.valid || io.req.bits.uop.iq_type === iqType.U, "wrong IQ-Type for exu")
+  if(boomParams.loadSliceMode){
+    assert(!io.req.valid || io.req.bits.uop.iq_type === iqType.U, "wrong IQ-Type for exu")
+  }
 
   if (writesIrf)   { io.iresp.bits.fflags.valid    := false.B; assert(io.iresp.ready) }
   if (writesLlIrf) { io.ll_iresp.bits.fflags.valid := false.B }

@@ -114,8 +114,9 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   var fp_issue_unit: IssueUnit = null
   var unified_iss_unit:IssueUnit = null
   if(boomParams.unifiedIssueQueue){
+    require(combIssueParam.isDefined)
     // TODO: use something other than intIssueParam??
-    unified_iss_unit = Module(new IssueUnitUnified(combIssueParam, numIntIssueWakeupPorts+numFpWakeupPorts))
+    unified_iss_unit = Module(new IssueUnitUnified(combIssueParam.get, numIntIssueWakeupPorts+numFpWakeupPorts))
     unified_iss_unit.suggestName("unified_issue_unit")
   } else {
     mem_iss_unit = if (boomParams.loadSliceMode) Module(new IssueUnitSlice(memIssueParam, numIntIssueWakeupPorts)) else Module(new IssueUnitCollapsing(memIssueParam, numIntIssueWakeupPorts))

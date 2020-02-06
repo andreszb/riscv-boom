@@ -193,7 +193,7 @@ trait HasBoomCoreParameters extends freechips.rocketchip.tile.HasCoreParameters
   val intIssueParam = issueParams.find(_.iqType == IQT_INT.litValue).get
   val memIssueParam = issueParams.find(_.iqType == IQT_MEM.litValue).get
   val fpIssueParam = issueParams.find(_.iqType == IQT_FP.litValue).get
-  val combIssueParam = issueParams.find(_.iqType == IQT_COMB.litValue).get
+  val combIssueParam = issueParams.find(_.iqType == IQT_COMB.litValue)
 
   val intWidth = intIssueParam.issueWidth
   val memWidth = memIssueParam.issueWidth
