@@ -307,11 +307,7 @@ case class LoadSliceCoreParams(
   numAqEntries: Int = 8,
   numBqEntries: Int = 8,
   ibdaTagType: Int = IBDA_TAG_FULL_PC
-                          ) {
-  val ibdaTagSz = ibdaTagType match {
-    case IBDA_TAG_FULL_PC => 40
-    case IBDA_TAG_UOPC_LOB => UOPC_SZ + 6 //uopc + pc_lob
-    case IBDA_TAG_INST_LOB => 32 + 6 //inst + pc_lob
-  }
+                              ) {
+
 
 }

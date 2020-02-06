@@ -22,7 +22,7 @@ class IstIO(implicit p: Parameters) extends BoomBundle
 
 class IstMark(implicit p: Parameters) extends BoomBundle
 {
-  val mark = Vec(retireWidth*2, ValidIO(UInt(boomParams.loadSliceCore.get.ibdaTagSz.W)))
+  val mark = Vec(retireWidth*2, ValidIO(UInt(IbdaParams.ibda_tag_sz.W)))
 }
 
 class InstructionSliceTable(entries: Int=128, ways: Int=2)(implicit p: Parameters) extends BoomModule{
@@ -30,7 +30,7 @@ class InstructionSliceTable(entries: Int=128, ways: Int=2)(implicit p: Parameter
   require(isPow2(entries))
   require(isPow2(ways))
 
-  val tag_table = Reg(Vec(entries, UInt(boomParams.loadSliceCore.get.ibdaTagSz.W)))
+  val tag_table = Reg(Vec(entries, UInt(IbdaParams.ibda_tag_sz.W)))
   val tag_valids = RegInit(VecInit(Seq.fill(entries)(false.B)))
   val tag_lru = RegInit(VecInit(Seq.fill(entries/2)(false.B)))
 
