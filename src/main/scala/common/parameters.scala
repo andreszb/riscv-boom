@@ -98,6 +98,7 @@ case class BoomCoreParams(
   val retireWidth = decodeWidth
   val jumpInFrontend: Boolean = false // unused in boom
   val loadSliceMode: Boolean = loadSliceCore.isDefined
+  val unifiedIssueQueue: Boolean = loadSliceCore.exists(_.unifiedIssueQueue)
 
   override def customCSRs(implicit p: Parameters) = new BoomCustomCSRs
 }
@@ -191,6 +192,7 @@ trait HasBoomCoreParameters extends freechips.rocketchip.tile.HasCoreParameters
 
   val intIssueParam = issueParams.find(_.iqType == IQT_INT.litValue).get
   val memIssueParam = issueParams.find(_.iqType == IQT_MEM.litValue).get
+  val fpIssueParam = issueParams.find(_.iqType == IQT_FP.litValue).get
   val combIssueParam = issueParams.find(_.iqType == IQT_COMB.litValue).get
 
   val intWidth = intIssueParam.issueWidth

@@ -111,19 +111,26 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   val rename_stages    = if (usingFPU) Seq(rename_stage, fp_rename_stage) else Seq(rename_stage)
   var mem_iss_unit:IssueUnit = null
   var int_iss_unit:IssueUnit = null
+  var fp_issue_unit: IssueUnit = null
   var unified_iss_unit:IssueUnit = null
-  if(boomParams.loadSliceCore.exists(_.unifiedIssueQueue)){
+  if(boomParams.unifiedIssueQueue){
     // TODO: use something other than intIssueParam??
-    unified_iss_unit = Module(new IssueUnitUnified(combIssueParam, numIntIssueWakeupPorts))
+    unified_iss_unit = Module(new IssueUnitUnified(combIssueParam, numIntIssueWakeupPorts+numFpWakeupPorts))
     unified_iss_unit.suggestName("unified_issue_unit")
   } else {
     mem_iss_unit = if (boomParams.loadSliceMode) Module(new IssueUnitSlice(memIssueParam, numIntIssueWakeupPorts)) else Module(new IssueUnitCollapsing(memIssueParam, numIntIssueWakeupPorts))
     mem_iss_unit.suggestName("mem_issue_unit")
     int_iss_unit = if (boomParams.loadSliceMode) Module(new IssueUnitSlice(intIssueParam, numIntIssueWakeupPorts)) else Module(new IssueUnitCollapsing(intIssueParam, numIntIssueWakeupPorts))
     int_iss_unit.suggestName("int_issue_unit")
+    fp_issue_unit = if(boomParams.loadSliceMode){
+      Module(new IssueUnitSlice(fpIssueParam, numFpWakeupPorts))
+    } else{
+      Module(new IssueUnitCollapsing(fpIssueParam, numFpWakeupPorts))
+    }
+    fp_issue_unit.suggestName("fp_issue_unit")
   }
 
-  val issue_units      = if(boomParams.loadSliceCore.exists(_.unifiedIssueQueue)) Seq(unified_iss_unit)else Seq(mem_iss_unit,int_iss_unit)
+  val issue_units      = if(boomParams.unifiedIssueQueue) Seq(unified_iss_unit)else Seq(mem_iss_unit,int_iss_unit)
 
   val dispatcher       = if(boomParams.loadSliceMode) Module(new SliceDispatcher) else Module(new BasicDispatcher)
 
@@ -140,7 +147,8 @@ class BoomCore(implicit p: Parameters) extends BoomModule
                                                                    (if (usingFPU) 1 else 0) +
                                                                    (if (usingRoCC) 1 else 0)))
   val iregister_read   = Module(new RegisterRead(
-                           issue_units.map(_.issueWidth).sum,
+//                           issue_units.map(_.issueWidth).sum,
+                           exe_units.numIrfReaders,
                            exe_units.withFilter(_.readsIrf).map(_.supportedFuncUnits),
                            numIrfReadPorts,
                            exe_units.withFilter(_.readsIrf).map(x => 2),
@@ -158,7 +166,9 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   int_iss_wakeups := DontCare
   int_ren_wakeups := DontCare
 
-  require (exe_units.length == issue_units.map(_.issueWidth).sum)
+  if(!boomParams.unifiedIssueQueue){
+    require (exe_units.length == issue_units.map(_.issueWidth).sum)
+  }
 
   //***********************************
   // Pipeline State Registers and Wires
@@ -675,17 +685,17 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   dispatcher.io.tsc_reg := debug_tsc_reg // needed for pipeview
 
   if (boomParams.loadSliceMode) {
-    if(boomParams.loadSliceCore.get.unifiedIssueQueue){
+    if(boomParams.unifiedIssueQueue){
       // TODO: maybe two for a and B?
       unified_iss_unit.io.dis_uops <> dispatcher.io.dis_uops(LSC_DIS_INT_PORT_IDX)
-      fp_pipeline.io.dis_uops <> dispatcher.io.dis_uops(LSC_DIS_FP_PORT_IDX)
       dispatcher.io.dis_uops(LSC_DIS_MEM_PORT_IDX).map(_.ready := false.B)
+      dispatcher.io.dis_uops(LSC_DIS_FP_PORT_IDX).map(_.ready := false.B)
       dispatcher.io.dis_uops(3).map(_.ready := false.B) //TODO: replace magic number
     } else{
       for (i <- 0 until issueParams.size){
         // TODO: why is this a loop??
         if (issueParams(i).iqType == IQT_FP.litValue) {
-          fp_pipeline.io.dis_uops <> dispatcher.io.dis_uops(LSC_DIS_FP_PORT_IDX)
+          fp_issue_unit.io.dis_uops <> dispatcher.io.dis_uops(LSC_DIS_FP_PORT_IDX)
         } else if (issueParams(i).iqType == IQT_INT.litValue) {
           int_iss_unit.io.dis_uops <> dispatcher.io.dis_uops(LSC_DIS_INT_PORT_IDX)
         } else if (issueParams(i).iqType == IQT_MEM.litValue) {
@@ -703,7 +713,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
     // Backpressure through dispatcher if necessary
     for (i <- 0 until issueParams.size) {
       if (issueParams(i).iqType == IQT_FP.litValue) {
-        fp_pipeline.io.dis_uops <> dispatcher.io.dis_uops(i)
+        fp_issue_unit.io.dis_uops <> dispatcher.io.dis_uops(i)
       } else {
         issue_units(iu_idx).io.dis_uops <> dispatcher.io.dis_uops(i)
         iu_idx += 1
@@ -711,14 +721,25 @@ class BoomCore(implicit p: Parameters) extends BoomModule
     }
   }
 
+  if(!boomParams.unifiedIssueQueue){
+    fp_issue_unit.io.tsc_reg := debug_tsc_reg
+    fp_issue_unit.io.brinfo := br_unit.brinfo
+    fp_issue_unit.io.flush_pipeline := rob.io.flush.valid
+    // Don't support ld-hit speculation to FP window.
+    fp_issue_unit.io.spec_ld_wakeup.valid := false.B
+    fp_issue_unit.io.spec_ld_wakeup.bits := 0.U
+    fp_issue_unit.io.ld_miss := false.B
+    fp_issue_unit.io.fu_types := fp_pipeline.io.iss.fu_types
+    fp_issue_unit.io.wakeup_ports := fp_pipeline.io.iss.wakeup_ports
+    fp_pipeline.io.iss.iss_uops := fp_issue_unit.io.iss_uops
+    fp_pipeline.io.iss.iss_valids := fp_issue_unit.io.iss_valids
+  }
 
   //-------------------------------------------------------------
   //-------------------------------------------------------------
   // **** Issue Stage ****
   //-------------------------------------------------------------
   //-------------------------------------------------------------
-
-  require (issue_units.map(_.issueWidth).sum == exe_units.length)
 
   var iss_wu_idx = 1
   var ren_wu_idx = 1
@@ -804,7 +825,10 @@ class BoomCore(implicit p: Parameters) extends BoomModule
 
   var iss_idx = 0
   var int_iss_cnt = 0
+  var uni_iss_cnt = 0
   var mem_iss_cnt = 0
+
+  println(s"exl: ${exe_units.length}, fpw: ${numFpWakeupPorts}, iw: ${numIntIssueWakeupPorts}")
   for (w <- 0 until exe_units.length) {
     var fu_types = exe_units(w).io.fu_types
     val exe_unit = exe_units(w)
@@ -815,14 +839,13 @@ class BoomCore(implicit p: Parameters) extends BoomModule
         val idiv_issued = iss_valids(iss_idx) && iss_uops(iss_idx).fu_code_is(FU_DIV)
         fu_types = fu_types & RegNext(~Mux(idiv_issued, FU_DIV, 0.U))
       }
-      if(boomParams.loadSliceCore.exists(_.unifiedIssueQueue)){
-        // we use int_iss_cnt for now...
-        iss_valids(iss_idx) := unified_iss_unit.io.iss_valids(int_iss_cnt)
-        iss_uops(iss_idx) := unified_iss_unit.io.iss_uops(int_iss_cnt)
-        unified_iss_unit.io.fu_types(int_iss_cnt) := fu_types
-        unified_iss_unit.io.iq_types.get(int_iss_cnt) := exe_unit.iqType.U
+      if(boomParams.unifiedIssueQueue){
+        iss_valids(iss_idx) := unified_iss_unit.io.iss_valids(uni_iss_cnt)
+        iss_uops(iss_idx) := unified_iss_unit.io.iss_uops(uni_iss_cnt)
+        unified_iss_unit.io.fu_types(uni_iss_cnt) := fu_types
+        unified_iss_unit.io.iq_types.get(uni_iss_cnt) := exe_unit.iqType.U
 //        println(s"unified_exu($w) iqType: ${exe_unit.iqType}\n")
-        int_iss_cnt += 1
+        uni_iss_cnt += 1
       } else if (exe_unit.hasMem) {
         iss_valids(iss_idx) := mem_iss_unit.io.iss_valids(mem_iss_cnt)
         iss_uops(iss_idx) := mem_iss_unit.io.iss_uops(mem_iss_cnt)
@@ -838,6 +861,16 @@ class BoomCore(implicit p: Parameters) extends BoomModule
     }
   }
   require(iss_idx == exe_units.numIrfReaders)
+  if(boomParams.unifiedIssueQueue){
+    for (w <- 0 until fpIssueParam.issueWidth) {
+      println(s"w: $w uni_iss_cnt: $uni_iss_cnt")
+      fp_pipeline.io.iss.iss_valids(w) := unified_iss_unit.io.iss_valids(uni_iss_cnt)
+      fp_pipeline.io.iss.iss_uops(w) := unified_iss_unit.io.iss_uops(uni_iss_cnt)
+      unified_iss_unit.io.fu_types(uni_iss_cnt) := fp_pipeline.io.iss.fu_types(w)
+      unified_iss_unit.io.iq_types.get(uni_iss_cnt) := IQT_FP
+      uni_iss_cnt += 1
+    }
+  }
 
   issue_units.map(_.io.tsc_reg := debug_tsc_reg)
   issue_units.map(_.io.brinfo := br_unit.brinfo)
@@ -857,8 +890,18 @@ class BoomCore(implicit p: Parameters) extends BoomModule
     issport.valid := wakeup.valid
     issport.bits.pdst := wakeup.bits.uop.pdst
     issport.bits.poisoned := wakeup.bits.uop.iw_p1_poisoned || wakeup.bits.uop.iw_p2_poisoned
-
-    require (iu.io.wakeup_ports.length == int_iss_wakeups.length)
+    issport.bits.reg_type.map(_ := RT_FIX)
+    // TODO: figure out
+    if(!boomParams.unifiedIssueQueue){
+      require (iu.io.wakeup_ports.length == (int_iss_wakeups.length))
+    }
+  }
+  if(boomParams.unifiedIssueQueue){
+    for {
+      (issport, wakeup) <- unified_iss_unit.io.wakeup_ports.slice(numIntIssueWakeupPorts, numIntIssueWakeupPorts+numFpWakeupPorts) zip fp_pipeline.io.iss.wakeup_ports
+    } {
+      issport := wakeup
+    }
   }
 
   //-------------------------------------------------------------
@@ -1227,10 +1270,6 @@ class BoomCore(implicit p: Parameters) extends BoomModule
     idle_cycles := 0.U
   }
   assert (!(idle_cycles.value(13)), "Pipeline has hung.")
-
-  if (usingFPU) {
-    fp_pipeline.io.debug_tsc_reg := debug_tsc_reg
-  }
 
   //-------------------------------------------------------------
   //-------------------------------------------------------------

@@ -87,16 +87,22 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
 
   // for now I'm just setting both dispatch ports to the same port - should work since they are never written to at the same time...
   val a_int_dispatch = io.dis_uops(LSC_DIS_INT_PORT_IDX)(LSC_DIS_A_PORT_IDX)
-  val a_mem_dispatch = if(boomParams.loadSliceCore.get.unifiedIssueQueue) io.dis_uops(LSC_DIS_INT_PORT_IDX)(LSC_DIS_A_PORT_IDX)
+  val a_mem_dispatch = if(boomParams.unifiedIssueQueue) io.dis_uops(LSC_DIS_INT_PORT_IDX)(LSC_DIS_A_PORT_IDX)
   else io.dis_uops(LSC_DIS_MEM_PORT_IDX)(LSC_DIS_A_PORT_IDX)
-  val a_fp_dispatch =  if(usingFPU) Some(io.dis_uops(LSC_DIS_FP_PORT_IDX)(LSC_DIS_A_PORT_IDX)) else None
+  val a_fp_dispatch =  if(usingFPU){
+    if(boomParams.unifiedIssueQueue) Some(io.dis_uops(LSC_DIS_INT_PORT_IDX)(LSC_DIS_A_PORT_IDX))
+    else Some(io.dis_uops(LSC_DIS_FP_PORT_IDX)(LSC_DIS_A_PORT_IDX))
+  } else None
   val b_int_dispatch = io.dis_uops(LSC_DIS_INT_PORT_IDX)(LSC_DIS_B_PORT_IDX)
-  val b_mem_dispatch = if(boomParams.loadSliceCore.get.unifiedIssueQueue) io.dis_uops(LSC_DIS_INT_PORT_IDX)(LSC_DIS_B_PORT_IDX)
+  val b_mem_dispatch = if(boomParams.unifiedIssueQueue) io.dis_uops(LSC_DIS_INT_PORT_IDX)(LSC_DIS_B_PORT_IDX)
   else io.dis_uops(LSC_DIS_MEM_PORT_IDX)(LSC_DIS_B_PORT_IDX)
 
-  if(boomParams.loadSliceCore.get.unifiedIssueQueue){
+  if(boomParams.unifiedIssueQueue){
     io.dis_uops(LSC_DIS_MEM_PORT_IDX) := DontCare
-    io.dis_uops(3) := DontCare
+    io.dis_uops(3) := DontCare // TODO: clean up
+    if(usingFPU){
+      io.dis_uops(LSC_DIS_FP_PORT_IDX) := DontCare
+    }
   }
 
 
@@ -157,8 +163,10 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher
       // fsw and fsd fix - they need to go to a -> fp and b -> mem
       when(uop.iq_type === IQT_MFP){
         uop_b.iq_type := IQT_MEM
+        uop_b.lrs2_rtype := RT_X
         uop_a.iq_type := IQT_FP
         uop_a.uopc := uopSTA
+        uop_a.lrs1_rtype := RT_X
       }
     }
     a_queue.io.enq_uops(w).bits := uop_a
