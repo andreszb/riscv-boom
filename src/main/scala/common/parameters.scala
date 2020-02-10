@@ -313,7 +313,7 @@ case class LoadSliceCoreParams(
   aDequeues: Int = 1,
   bDequeues: Int = 1,
 ){
-  def busyReqWidth(): Int = aDequeues+bDequeues
+  def dispatches(): Int = aDequeues+bDequeues
 }
 
 
