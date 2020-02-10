@@ -44,7 +44,6 @@ import boom.exu.FUConstants._
 import boom.common.BoomTilesKey
 import boom.util.{RobTypeToChars, BoolToChar, GetNewUopAndBrMask, Sext, WrapInc, BoomCoreStringPrefix, DromajoCosimBlackBox, AlignPCToBoundary}
 import lsc.{InstructionSliceTable, RegisterDependencyTable}
-import lsc.IbdaParams
 
 
 /**
@@ -630,12 +629,14 @@ class BoomCore(implicit p: Parameters) extends BoomModule
     *
     */
 
+
+
   // Calculate the size of the tag based on the config chosen in config-mixin.scala
   if (boomParams.loadSliceMode) {
-
+    val LscParams = boomParams.loadSliceCore.get
     // If we want the Full PC we need FTQ ports and etc. This is not
     //  the preferred way since we need so many ports to FTQ
-    if (boomParams.loadSliceCore.get.ibdaTagType == IBDA_TAG_FULL_PC) {
+    if (LscParams.ibdaTagType == IBDA_TAG_FULL_PC) {
       val get_pc_slice = io.ifu.get_pc_slice.get
       for (w <- 0 until coreWidth) {
         // Access only IST ports
@@ -656,7 +657,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
       //  The hash itself is chosen in the ibda_get_tag function defined above
       for (w <- 0 until coreWidth) {
         ist.get.io.check(w).tag.valid := dis_fire(w)
-        ist.get.io.check(w).tag.bits := IbdaParams.ibda_get_tag(dis_uops(w))
+        ist.get.io.check(w).tag.bits := LscParams.ibda_get_tag(dis_uops(w))
       }
     }
 
@@ -1167,11 +1168,11 @@ class BoomCore(implicit p: Parameters) extends BoomModule
 
   if (boomParams.loadSliceMode) {
     // Connect RDT and IST and forward the commit signals from ROB to RDT
-
+    val LscParams = boomParams.loadSliceCore.get
     ist.get.io.mark := rdt.get.io.mark
     rdt.get.io.commit.rob := rob.io.commit
 
-    if (boomParams.loadSliceCore.get.ibdaTagType == IBDA_TAG_FULL_PC) {
+    if (LscParams.ibdaTagType == IBDA_TAG_FULL_PC) {
       // Unwrap port to FTQ
       val get_pc_slice = io.ifu.get_pc_slice.get
       for (w <- 0 until retireWidth) {
@@ -1187,7 +1188,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
       }
     } else {
       for (w <- 0 until retireWidth) {
-        rdt.get.io.commit.tag(w) := IbdaParams.ibda_get_tag(rob.io.commit.uops(w))
+        rdt.get.io.commit.tag(w) := LscParams.ibda_get_tag(rob.io.commit.uops(w))
       }
     }
 

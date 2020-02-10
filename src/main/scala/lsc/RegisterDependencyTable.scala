@@ -15,7 +15,7 @@ import boom.common._
 class RdtCommitSignals(implicit p: Parameters) extends BoomBundle
 {
   val rob = new CommitSignals()
-  val tag  = Vec(retireWidth, UInt(IbdaParams.ibda_tag_sz.W))
+  val tag  = Vec(retireWidth, UInt(boomParams.loadSliceCore.get.ibda_tag_sz.W))
 }
 
 class RdtIO(implicit p: Parameters) extends BoomBundle
@@ -27,7 +27,7 @@ class RdtIO(implicit p: Parameters) extends BoomBundle
 class RegisterDependencyTable(implicit p: Parameters) extends BoomModule{
   val io = IO(new RdtIO)
 
-  val rdt = Reg(Vec(32, UInt(IbdaParams.ibda_tag_sz.W))) //32 is hardcoded for now since logicalRegCount includes fpu regs
+  val rdt = Reg(Vec(32, UInt(boomParams.loadSliceCore.get.ibda_tag_sz.W))) //32 is hardcoded for now since logicalRegCount includes fpu regs
   val commit_dst_valid = WireInit(VecInit(Seq.fill(retireWidth)(false.B)))
 
   io.mark := DontCare
