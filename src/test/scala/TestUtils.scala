@@ -5,42 +5,39 @@
 
 package boom.tests
 
+import boom.common.BoomTilesKey
 import org.scalatest._
-
 import chisel3._
 import chisel3.util._
-
-import freechips.rocketchip.config.{Parameters, Config}
+import freechips.rocketchip.config.{Config, Parameters}
 import freechips.rocketchip.system._
 import freechips.rocketchip.tile._
 import freechips.rocketchip.tilelink._
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.subsystem._
 
-import boom.system._
-
 /**
  * Factory object to help create a set of BOOM parameters to use in tests
  */
 object BoomTestUtils {
 
-  private def augment(tp: TileParams)(implicit p: Parameters): Parameters = p.alterPartial {
+  def augment(tp: TileParams)(implicit p: Parameters): Parameters = p.alterPartial {
     case TileKey => tp
-
-    // TODO: Figure out proper TL parameters
-    case SharedMemoryTLEdge => new TLEdgeOut(TLClientPortParameters(Seq(TLClientParameters(
-                                                                          name = "fake-client-node",
-                                                                          sourceId = IdRange(0,2)))),
-                                             TLManagerPortParameters(Seq(TLManagerParameters(
-                                                                           address = Seq(
-                                                                             AddressSet(x"8000_0000",
-                                                                                        x"1000_0000" - 1)),
-                                                                           supportsGet = TransferSizes(1, 64),
-                                                                           supportsPutFull = TransferSizes(1, 64),
-                                                                           supportsPutPartial = TransferSizes(1, 64))),
-                                                                     8),
-                                             Parameters.empty,
-                                             null)
+    case TileVisibilityNodeKey => TLEphemeralNode()(ValName("tile_master"))
+//    // TODO: Figure out proper TL parameters
+//    case SharedMemoryTLEdge => new TLEdgeOut(TLClientPortParameters(Seq(TLClientParameters(
+//                                                                          name = "fake-client-node",
+//                                                                          sourceId = IdRange(0,2)))),
+//                                             TLManagerPortParameters(Seq(TLManagerParameters(
+//                                                                           address = Seq(
+//                                                                             AddressSet(x"8000_0000",
+//                                                                                        x"1000_0000" - 1)),
+//                                                                           supportsGet = TransferSizes(1, 64),
+//                                                                           supportsPutFull = TransferSizes(1, 64),
+//                                                                           supportsPutPartial = TransferSizes(1, 64))),
+//                                                                     8),
+//                                             Parameters.empty,
+//                                             null)
 
     case LookupByHartId => lookupByHartId(Seq(tp))
   }
