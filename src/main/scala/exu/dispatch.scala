@@ -17,6 +17,7 @@ import chisel3.util._
 import freechips.rocketchip.config.Parameters
 import boom.common.{IQT_MFP, MicroOp, O3PIPEVIEW_PRINTF, uopLD, _}
 import boom.util._
+import chisel3.internal.naming.chiselName
 
 class DispatchIO(implicit p: Parameters) extends BoomBundle
 {
@@ -343,6 +344,7 @@ class CompactingDispatcher(implicit p: Parameters) extends Dispatcher
           u.ready := r}
 }
 
+@chiselName
 class SliceDispatchQueue(
                         val numEntries: Int = 8,
                         val qName: String,
@@ -373,7 +375,7 @@ class SliceDispatchQueue(
 
   // Queue state
   val q_uop = Reg(Vec(numEntries, new MicroOp()))
-  val valids = RegInit(0.U(numEntries.W))
+  val valids = RegInit(VecInit(Seq.fill(numEntries)(false.B)))
   val head = RegInit(0.U(qAddrSz.W))
   val tail = RegInit(0.U(qAddrSz.W))
 
@@ -395,6 +397,7 @@ class SliceDispatchQueue(
 
     when(io.enq_uops(w).fire)
     {
+      valids(enq_idx(w)) := true.B
       q_uop(enq_idx(w)) := io.enq_uops(w).bits
     }
   }
@@ -455,12 +458,13 @@ class SliceDispatchQueue(
   {
     head_next := 0.U
     tail_next := 0.U
-    valids := 0.U
+    valids.map(_ := false.B)
   }
 
   require(numEntries>2*coreWidth)
 
 
+  for(i <- 0 until deqWidth){
   for(i <- 0 until deqWidth){
     val idx = head + i.U
     // Route out IO
@@ -469,6 +473,10 @@ class SliceDispatchQueue(
       !updated_brmask && //TODO: this might lead to poor performance
       !entry_killed(idx) &&
       !io.flush // TODO: handle flush?
+    when(io.heads(i).fire()){
+      valids(idx) := false.B
+    }
+  }
   }
 
   for (w <- 0 until coreWidth)
@@ -502,4 +510,12 @@ class SliceDispatchQueue(
       }
     }
   }
+
+  dontTouch(io)
+  dontTouch(q_uop)
+  dontTouch(valids)
+  dontTouch(head)
+  dontTouch(tail)
+  dontTouch(head_next)
+  dontTouch(tail_next)
 }
