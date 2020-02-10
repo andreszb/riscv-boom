@@ -24,6 +24,58 @@ class RdtIO(implicit p: Parameters) extends BoomBundle
   val mark = Output(new IstMark)
 }
 
+
+
+class RdtIstFIFOSimple(numEntries: Int = 16,
+                       numEnqueues: Int = 2,
+                       numDequeues: Int = 1)
+                      (implicit p: Parameters) extends BoomModule {
+  val LscParams = boomParams.loadSliceCore.get
+  val dataSz = LscParams.ibda_tag_sz()
+
+  // This type of FIFO only supports Deq-width less or equal to Enq-width
+  require(numDequeues <= numEnqueues)
+
+  val io = IO(new Bundle {
+    val enq = Vec(numEnqueues, Flipped(DecoupledIO(UInt(dataSz.W))))
+    val deq = Vec(numDequeues, DecoupledIO(UInt(dataSz.W)))
+  })
+
+
+  val fifos: Seq[Queue[UInt]] = Seq.fill(numEnqueues)(new Queue(UInt((dataSz+1).W), entries=numEntries, pipe=true, flow=true))
+
+
+  val any_valid = io.enq.map(_.valid).reduce(_ || _) // Do we have any valid enqueues this CC?
+  val any_ready = fifos.head.io.enq.ready //Since we enqueue/dequeue all fifos together, we can use ready signal from one to check if full
+  val will_fire = any_valid && any_ready // Will we fire this rounc?
+  for(i <- 0 until numEnqueues) {
+    io.enq(i).ready := any_ready
+    fifos(i).io.enq.bits := Cat(io.enq(i).bits, io.enq(i).valid) // Add the valid bit
+    fifos(i).io.enq.valid := any_valid
+  }
+
+
+  var deq_idx = 0
+  var all_head_served = true
+  for (i <- 0 until numEnqueues) {
+    val head = fifos(i).io.deq
+    when(head.valid && io.deq(i).ready && head.bits.asUInt()(dataSz,dataSz+1) === 1.U) {
+      if (deq_idx < numDequeues) {
+        io.deq(deq_idx).valid := true.B
+        io.deq(deq_idx).bits := head.bits.asUInt()(0, dataSz)
+        head.bits.asUInt()(dataSz, dataSz + 1) := 0.U // Mark as read
+      } else {
+        all_head_served = false // We werent able to read all the heads. Must wait until next CC
+      }
+      deq_idx += 1
+    }
+  }
+
+  // Dequeue all FIFOs in same CC
+  fifos.map(_.io.deq.ready := all_head_served.B)
+
+}
+
 class RegisterDependencyTable(implicit p: Parameters) extends BoomModule{
   val io = IO(new RdtIO)
 
