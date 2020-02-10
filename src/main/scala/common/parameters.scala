@@ -310,6 +310,10 @@ case class LoadSliceCoreParams(
   numAqEntries: Int = 8,
   numBqEntries: Int = 8,
   unifiedIssueQueue: Boolean = false,
-)
+  aDequeues: Int = 1,
+  bDequeues: Int = 1,
+){
+  def busyReqWidth(): Int = aDequeues+bDequeues
+}
 
 
