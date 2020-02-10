@@ -486,11 +486,13 @@ class BoomCore(implicit p: Parameters) extends BoomModule
 
   //-------------------------------------------------------------
   // Instruction Slice Lookup
+
   val ist_pc =  WireInit(VecInit(Seq.fill(decodeWidth) {0.U(vaddrBitsExtended.W)}))
   if (boomParams.loadSliceMode) {
+    val LscParams = boomParams.loadSliceCore.get
     // If we want the Full PC we need FTQ ports and etc. This is not
     //  the preferred way since we need so many ports to FTQ
-    if (boomParams.loadSliceCore.get.ibdaTagType == IBDA_TAG_FULL_PC) {
+    if (LscParams.ibdaTagType == IBDA_TAG_FULL_PC) {
       val get_pc_slice = io.ifu.get_pc_slice.get
       for (w <- 0 until coreWidth) {
 
@@ -509,7 +511,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
       // We dont want the full PC but rather some hash of the UOP.
       for (w <- 0 until coreWidth) {
         ist.get.io.check(w).tag.valid := dec_fire(w)
-        ist.get.io.check(w).tag.bits := IbdaParams.ibda_get_tag(dec_uops(w))
+        ist.get.io.check(w).tag.bits := LscParams.ibda_get_tag(dec_uops(w))
       }
     }
   }
@@ -579,6 +581,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   //-------------------------------------------------------------
 
   if (boomParams.loadSliceMode) {
+    val LscParams = boomParams.loadSliceCore.get
     // Connect RDT to IST. Mark new instructions as part of a load slice in IST
     ist.get.io.mark := rdt.get.io.mark
 
@@ -587,10 +590,10 @@ class BoomCore(implicit p: Parameters) extends BoomModule
     for (w <- 0 until decodeWidth) {
       rdt.get.io.update(w).valid := dis_fire(w)
       rdt.get.io.update(w).uop := dis_uops(w)
-      if (boomParams.loadSliceCore.get.ibdaTagType == IBDA_TAG_FULL_PC) {
+      if (LscParams.ibdaTagType == IBDA_TAG_FULL_PC) {
         rdt.get.io.update(w).tag :=  RegNext(ist_pc(w))
       } else {
-        rdt.get.io.update(w).tag :=  IbdaParams.ibda_get_tag(dis_uops(w))
+        rdt.get.io.update(w).tag :=  LscParams.ibda_get_tag(dis_uops(w))
       }
 
     }
@@ -680,46 +683,6 @@ class BoomCore(implicit p: Parameters) extends BoomModule
 
   //-------------------------------------------------------------
   // Dispatch to issue queues
-
-  /**
-    * IBDA stuff
-    *
-    */
-
-
-
-  // Calculate the size of the tag based on the config chosen in config-mixin.scala
-  if (boomParams.loadSliceMode) {
-    val LscParams = boomParams.loadSliceCore.get
-    // If we want the Full PC we need FTQ ports and etc. This is not
-    //  the preferred way since we need so many ports to FTQ
-    if (LscParams.ibdaTagType == IBDA_TAG_FULL_PC) {
-      val get_pc_slice = io.ifu.get_pc_slice.get
-      for (w <- 0 until coreWidth) {
-        // Access only IST ports
-        val idx = w + IstFtqPortIdx
-        // Request fetch_pc from FTQ
-        get_pc_slice(idx).ftq_idx := dis_uops(w).ftq_idx
-        // Recreate PC for dispatched uop
-        val block_pc = AlignPCToBoundary(get_pc_slice(idx).fetch_pc, icBlockBytes)
-        val pc = (block_pc | dis_uops(w).pc_lob) - Mux(dis_uops(w).edge_inst, 2.U, 0.U)
-        ist.get.io.check(w).tag.valid := dis_fire(w)
-        ist.get.io.check(w).tag.bits := pc
-        dis_uops(w).is_lsc_b := ist.get.io.check(w).in_ist
-
-        assert(!(dis_fire(w) && (dis_uops(w).debug_pc =/= pc)), "[IST] debug_pc and fetch_pc mismatch")
-      }
-    } else {
-      // We dont want the full PC but rather some hash of the UOP.
-      //  The hash itself is chosen in the ibda_get_tag function defined above
-      for (w <- 0 until coreWidth) {
-        ist.get.io.check(w).tag.valid := dis_fire(w)
-        ist.get.io.check(w).tag.bits := LscParams.ibda_get_tag(dis_uops(w))
-        dis_uops(w).is_lsc_b := ist.get.io.check(w).in_ist
-      }
-    }
-
-  }
 
   // Get uops from rename2
   for (w <- 0 until coreWidth) {
@@ -1219,39 +1182,6 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   assert (!(csr.io.singleStep), "[core] single-step is unsupported.")
 
   rob.io.bxcpt <> br_unit.xcpt
-
-  //-------------------------------------------------------------
-  // **** IBDA ****
-  //-------------------------------------------------------------
-  if (boomParams.loadSliceMode) {
-    // Connect RDT and IST and forward the commit signals from ROB to RDT
-    val LscParams = boomParams.loadSliceCore.get
-    ist.get.io.mark := rdt.get.io.mark
-    rdt.get.io.commit.rob := rob.io.commit
-
-    if (LscParams.ibdaTagType == IBDA_TAG_FULL_PC) {
-      // Unwrap port to FTQ
-      val get_pc_slice = io.ifu.get_pc_slice.get
-      for (w <- 0 until retireWidth) {
-        val idx = w + RdtFtqPortIdx
-        // Request fetch_pc from ftq_idx
-        get_pc_slice(idx).ftq_idx := rob.io.commit.uops(w).ftq_idx
-        // Recreate PC of this instruction
-        val block_pc = AlignPCToBoundary(get_pc_slice(idx).fetch_pc, icBlockBytes)
-        val pc = (block_pc | rob.io.commit.uops(w).pc_lob) - Mux(rob.io.commit.uops(w).edge_inst, 2.U, 0.U)
-        rdt.get.io.commit.tag(w) := pc
-
-        assert(!(rob.io.commit.valids(w) && (pc =/= rob.io.commit.uops(w).debug_pc)), "[RDT] fetch_pc and debug_pc mismatch")
-      }
-    } else {
-      for (w <- 0 until retireWidth) {
-        rdt.get.io.commit.tag(w) := LscParams.ibda_get_tag(rob.io.commit.uops(w))
-      }
-    }
-
-  }
-
-
 
   //-------------------------------------------------------------
   // **** Flush Pipeline ****

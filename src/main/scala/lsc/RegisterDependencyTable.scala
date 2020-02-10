@@ -15,7 +15,7 @@ import boom.common._
 class RdtUpdateSignals(implicit p: Parameters) extends BoomBundle
 {
   val valid = Bool()
-  val tag  = UInt(IbdaParams.ibda_tag_sz.W)
+  val tag  = UInt(boomParams.loadSliceCore.get.ibda_tag_sz.W)
   val uop = new MicroOp
 }
 
@@ -28,7 +28,9 @@ class RdtIO(implicit p: Parameters) extends BoomBundle
 class RegisterDependencyTable(implicit p: Parameters) extends BoomModule{
   val io = IO(new RdtIO)
 
-  val rdt = Reg(Vec(boomParams.numIntPhysRegisters, UInt(IbdaParams.ibda_tag_sz.W)))
+  val LscParams = boomParams.loadSliceCore.get
+
+  val rdt = Reg(Vec(boomParams.numIntPhysRegisters, UInt(LscParams.ibda_tag_sz.W)))
   val commit_dst_valid = WireInit(VecInit(Seq.fill(decodeWidth)(false.B)))
 
   io.mark := DontCare
