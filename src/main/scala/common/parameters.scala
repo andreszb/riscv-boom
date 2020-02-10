@@ -303,6 +303,7 @@ case class DromajoParams(
 
 // Case class for LoadSliceCore parameters.
 //  TODO: Consider moving this to separate file?
+// TODO: case class vs class
 case class LoadSliceCoreParams(
   numAqEntries: Int = 8,
   numBqEntries: Int = 8,
