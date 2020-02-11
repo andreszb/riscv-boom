@@ -512,6 +512,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
       for (w <- 0 until coreWidth) {
         ist.get.io.check(w).tag.valid := dec_fire(w)
         ist.get.io.check(w).tag.bits := LscParams.ibda_get_tag(dec_uops(w))
+        dis_uops(w).is_lsc_b := ist.get.io.check(w).in_ist
       }
     }
   }
@@ -579,7 +580,6 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   //-------------------------------------------------------------
   // Register Dependency Table update
   //-------------------------------------------------------------
-
   if (boomParams.loadSliceMode) {
     val LscParams = boomParams.loadSliceCore.get
     // Connect RDT to IST. Mark new instructions as part of a load slice in IST
