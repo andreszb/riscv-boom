@@ -166,7 +166,7 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher {
     //    assert(!(a_valid && busy_resp.prs2_busy && uop.lrs2_rtype === RT_FIX & uop.lrs2 === 0.U), "[rename] x0 is busy??")
     if (usingFPU) {
       io.slice_fp_busy_req_uops.get(idx) := uop
-      val flt_busy_resp = io.slice_fp_busy_resps.get(0)
+      val flt_busy_resp = io.slice_fp_busy_resps.get(idx)
       // fp busy info
       when(uop.lrs1_rtype === RT_FLT) {
         uop.prs1_busy := flt_busy_resp.prs1_busy
