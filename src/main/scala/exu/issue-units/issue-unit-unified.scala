@@ -29,6 +29,7 @@ class IssueUnitUnified(
   extends IssueUnit(params.numEntries, params.issueWidth, numWakeupPorts, params.iqType, params.dispatchWidth)
 {
   require(params.dispatchWidth == numIssueSlots, "one slot per dispatch port!")
+  require(params.dispatchWidth == boomParams.loadSliceCore.get.dispatches())
 
   for (i <- 0 until numIssueSlots) {
     issue_slots(i).in_uop.valid := false.B
@@ -48,13 +49,34 @@ class IssueUnitUnified(
     issue_slots(i).clear        := false.B
   }
 
+  // TODO: make sure that insns are actually executed in the right order
+  var aIndices: List[Int] = Nil
+  var bIndices: List[Int] = Nil
+  var idx = 0
+  for(i <- 0 until boomParams.loadSliceCore.get.aDispatches){
+    aIndices = idx :: aIndices
+    idx += 1
+  }
+
+  for(i <- 0 until boomParams.loadSliceCore.get.bDispatches){
+    bIndices = idx :: bIndices
+    idx += 1
+  }
+
+  val readys = issue_slots.map(!_.will_be_valid)
+
+  val a_ready = aIndices.map(readys(_)).reduce(_ && _)
+  val b_ready = bIndices.map(readys(_)).reduce(_ && _)
   //-------------------------------------------------------------
   // Dispatch/Entry Logic
   // did we find a spot to slide the new dispatched uops into?
 
-  for (w <- 0 until dispatchWidth) {
-    io.dis_uops(w).ready := !issue_slots(w).will_be_valid
-  }
+//  for (w <- 0 until dispatchWidth) {
+//    io.dis_uops(w).ready := readys(w)
+//  }
+
+  aIndices.foreach(io.dis_uops(_).ready := a_ready)
+  bIndices.foreach(io.dis_uops(_).ready := b_ready)
 
   //-------------------------------------------------------------
   // Issue Select Logic

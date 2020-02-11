@@ -199,7 +199,9 @@ trait HasBoomCoreParameters extends freechips.rocketchip.tile.HasCoreParameters
   val memWidth = memIssueParam.issueWidth
 
 
-  issueParams.map(x => require(x.dispatchWidth <= coreWidth && x.dispatchWidth > 0))
+  if(!boomParams.unifiedIssueQueue){
+    issueParams.map(x => require(x.dispatchWidth <= coreWidth && x.dispatchWidth > 0))
+  }
 
   //************************************
   // Load/Store Unit
@@ -307,13 +309,13 @@ case class DromajoParams(
 // Case class for LoadSliceCore parameters.
 //  TODO: Consider moving this to separate file?
 case class LoadSliceCoreParams(
-  numAqEntries: Int = 8,
-  numBqEntries: Int = 8,
-  unifiedIssueQueue: Boolean = false,
-  aDequeues: Int = 1,
-  bDequeues: Int = 1,
+                                numAqEntries: Int = 8,
+                                numBqEntries: Int = 8,
+                                unifiedIssueQueue: Boolean = false,
+                                aDispatches: Int = 1,
+                                bDispatches: Int = 1,
 ){
-  def dispatches(): Int = aDequeues+bDequeues
+  def dispatches(): Int = aDispatches+bDispatches
 }
 
 

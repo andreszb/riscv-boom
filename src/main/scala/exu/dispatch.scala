@@ -30,9 +30,9 @@ class DispatchIO(implicit p: Parameters) extends BoomBundle
   val dis_uops = MixedVec(issueParams.map(ip=>Vec(ip.dispatchWidth, DecoupledIO(new MicroOp))))
   // io for busy table - used only for LSC
   val slice_busy_req_uops = if(boomParams.loadSliceMode) Some(Output(Vec(boomParams.loadSliceCore.get.dispatches, new MicroOp))) else None //TODO: change width
-  val slice_busy_resps = if(boomParams.loadSliceMode) Some(Input(Vec(coreWidth, new BusyResp))) else None
-  val slice_fp_busy_req_uops = if(boomParams.loadSliceMode && usingFPU) Some(Output(Vec(coreWidth, new MicroOp))) else None
-  val slice_fp_busy_resps = if(boomParams.loadSliceMode && usingFPU) Some(Input(Vec(coreWidth, new BusyResp))) else None
+  val slice_busy_resps = if(boomParams.loadSliceMode) Some(Input(Vec(boomParams.loadSliceCore.get.dispatches, new BusyResp))) else None
+  val slice_fp_busy_req_uops = if(boomParams.loadSliceMode && usingFPU) Some(Output(Vec(boomParams.loadSliceCore.get.dispatches, new MicroOp))) else None
+  val slice_fp_busy_resps = if(boomParams.loadSliceMode && usingFPU) Some(Input(Vec(boomParams.loadSliceCore.get.dispatches, new BusyResp))) else None
   // brinfo & flush for LSC
   val slice_brinfo = if(boomParams.loadSliceMode) Some(Input(new BrResolutionInfo())) else None
   val slice_flush = if(boomParams.loadSliceMode) Some(Input(Bool())) else None
@@ -90,11 +90,11 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher {
   val a_queue = Module(new SliceDispatchQueue(
     numEntries = boomParams.loadSliceCore.get.numAqEntries,
     qName = "a_queue",
-    deqWidth = boomParams.loadSliceCore.get.aDequeues))
+    deqWidth = boomParams.loadSliceCore.get.aDispatches))
   val b_queue = Module(new SliceDispatchQueue(
     numEntries = boomParams.loadSliceCore.get.numBqEntries,
     qName = "b_queue",
-    deqWidth = boomParams.loadSliceCore.get.bDequeues))
+    deqWidth = boomParams.loadSliceCore.get.bDispatches))
   a_queue.io.flush := io.slice_flush.get
   b_queue.io.flush := io.slice_flush.get
   a_queue.io.brinfo := io.slice_brinfo.get
@@ -192,15 +192,15 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher {
 //      io.dis_uops(LSC_DIS_FP_PORT_IDX) := DontCare
 //    }
     var dis_idx = 0
-    for(i <- 0 until boomParams.loadSliceCore.get.aDequeues){
-      val dis = io.dis_uops(LSC_DIS_INT_PORT_IDX)(dis_idx) // TODO: fix?
+    for(i <- 0 until boomParams.loadSliceCore.get.aDispatches){
+      val dis = io.dis_uops(LSC_DIS_COMB_PORT_IDX)(dis_idx)
       dis.valid := a_queue.io.heads(i).valid
       a_queue.io.heads(i).ready := dis.ready
       dis.bits := a_heads(i)
       dis_idx += 1
     }
-    for(i <- 0 until boomParams.loadSliceCore.get.bDequeues){
-      val dis = io.dis_uops(LSC_DIS_INT_PORT_IDX)(dis_idx) // TODO: fix?
+    for(i <- 0 until boomParams.loadSliceCore.get.bDispatches){
+      val dis = io.dis_uops(LSC_DIS_COMB_PORT_IDX)(dis_idx)
       dis.valid := b_queue.io.heads(i).valid
       b_queue.io.heads(i).ready := dis.ready
       dis.bits := b_heads(i)
@@ -209,6 +209,9 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher {
     require(dis_idx == boomParams.loadSliceCore.get.dispatches)
 
   } else {
+    require(boomParams.loadSliceCore.get.aDispatches == 1)
+    require(boomParams.loadSliceCore.get.bDispatches == 1)
+
     // for now I'm just setting both dispatch ports to the same port - should work since they are never written to at the same time...
     val a_int_dispatch = io.dis_uops(LSC_DIS_INT_PORT_IDX)(LSC_DIS_A_PORT_IDX)
     val a_mem_dispatch = io.dis_uops(LSC_DIS_MEM_PORT_IDX)(LSC_DIS_A_PORT_IDX)
@@ -299,12 +302,12 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher {
   }
 
   if(O3PIPEVIEW_PRINTF){ // dispatch is here because it does not happen driectly after rename anymore
-    for(i <- 0 until boomParams.loadSliceCore.get.aDequeues){
+    for(i <- 0 until boomParams.loadSliceCore.get.aDispatches){
       when (a_queue.io.heads(i).fire()) {
         printf("%d; O3PipeView:dispatch: %d\n", a_queue.io.heads(i).bits.debug_events.fetch_seq, io.tsc_reg)
       }
     }
-    for(i <- 0 until boomParams.loadSliceCore.get.bDequeues){
+    for(i <- 0 until boomParams.loadSliceCore.get.bDispatches){
       when (b_queue.io.heads(i).fire()) {
         printf("%d; O3PipeView:dispatch: %d\n", b_queue.io.heads(i).bits.debug_events.fetch_seq, io.tsc_reg)
       }

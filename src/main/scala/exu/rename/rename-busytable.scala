@@ -33,7 +33,7 @@ class RenameBusyTable(
   (implicit p: Parameters) extends BoomModule
 {
   val pregSz = log2Ceil(numPregs)
-  val reqWidth = boomParams.loadSliceCore.map(_.busyReqWidth).getOrElse(plWidth)
+  val reqWidth = boomParams.loadSliceCore.map(_.dispatches).getOrElse(plWidth)
 
   val io = IO(new BoomBundle()(p) {
     val ren_uops = Input(Vec(plWidth, new MicroOp))

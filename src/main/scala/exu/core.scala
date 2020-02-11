@@ -688,10 +688,12 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   if (boomParams.loadSliceMode) {
     if(boomParams.unifiedIssueQueue){
       // TODO: maybe two for a and B?
-      unified_iss_unit.io.dis_uops <> dispatcher.io.dis_uops(LSC_DIS_INT_PORT_IDX)
-      dispatcher.io.dis_uops(LSC_DIS_MEM_PORT_IDX).map(_.ready := false.B)
-      dispatcher.io.dis_uops(LSC_DIS_FP_PORT_IDX).map(_.ready := false.B)
-      dispatcher.io.dis_uops(3).map(_.ready := false.B) //TODO: replace magic number
+      dispatcher.io.dis_uops.map(_.map(_.ready := false.B))
+      unified_iss_unit.io.dis_uops <> dispatcher.io.dis_uops(LSC_DIS_COMB_PORT_IDX)
+//      dispatcher.io.dis_uops(LSC_DIS_INT_PORT_IDX).map(_.ready := false.B)
+//      dispatcher.io.dis_uops(LSC_DIS_MEM_PORT_IDX).map(_.ready := false.B)
+//      dispatcher.io.dis_uops(LSC_DIS_FP_PORT_IDX).map(_.ready := false.B)
+//      dispatcher.io.dis_uops(3).map(_.ready := false.B) //TODO: replace magic number
     } else{
       for (i <- 0 until issueParams.size){
         // TODO: why is this a loop??
