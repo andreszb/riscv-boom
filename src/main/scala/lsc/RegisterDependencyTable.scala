@@ -70,7 +70,7 @@ class RegisterDependencyTable(implicit p: Parameters) extends BoomModule{
         for (j <- 0 until i){
           val uop_j = io.update(j).uop
           when(commit_dst_valid(j) && uop_j.pdst === uop.prs2){
-            io.mark.mark(2*i).bits := io.update(j).tag
+            io.mark.mark(2*i+1).bits := io.update(j).tag
           }
         }
       }
