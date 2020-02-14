@@ -658,6 +658,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
       for (w <- 0 until coreWidth) {
         ist.get.io.check(w).tag.valid := dis_fire(w)
         ist.get.io.check(w).tag.bits := LscParams.ibda_get_tag(dis_uops(w))
+        dis_uops(w).is_lsc_b := ist.get.io.check(w).in_ist
       }
     }
 
@@ -1165,7 +1166,6 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   //-------------------------------------------------------------
   // **** IBDA ****
   //-------------------------------------------------------------
-
   if (boomParams.loadSliceMode) {
     // Connect RDT and IST and forward the commit signals from ROB to RDT
     val LscParams = boomParams.loadSliceCore.get
