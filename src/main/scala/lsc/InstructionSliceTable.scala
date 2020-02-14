@@ -34,12 +34,23 @@ class InstructionSliceTable(entries: Int=128, ways: Int=2)(implicit p: Parameter
   val tag_valids = RegInit(VecInit(Seq.fill(entries)(false.B)))
   val tag_lru = RegInit(VecInit(Seq.fill(entries/2)(false.B)))
 
+  val lscParams = boomParams.loadSliceCore.get
 
+  def index(i: UInt): UInt = {
 
-  def index(i: UInt): UInt ={
     val indexBits = log2Up(entries/ways)
-    // xor the second lowest bit with the highest index bit so compressed insns are spread around
-    i(indexBits+2-1, 2) ^ Cat(i(1), 0.U((indexBits-1).W))
+    val index = Wire(UInt(indexBits.W))
+    if (lscParams.ibdaTagType == IBDA_TAG_FULL_PC) {
+      // xor the second lowest bit with the highest index bit so compressed insns are spread around
+      index := i(indexBits+2-1, 2) ^ Cat(i(1), 0.U((indexBits-1).W))
+    } else if (lscParams.ibdaTagType == IBDA_TAG_INST_LOB) {
+      index := i(indexBits+2-1,2) ^ Cat(i(1), 0.U((indexBits-1).W))
+    } else if (lscParams.ibdaTagType == IBDA_TAG_UOPC_LOB) {
+      index := i(indexBits+2-1,2) ^ Cat(i(1), 0.U((indexBits-1).W))
+    }
+
+    index
+
   }
   require(ways == 2, "only one lru bit for now!")
   // check
