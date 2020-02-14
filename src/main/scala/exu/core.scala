@@ -503,7 +503,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
         ist_pc(w) := (block_pc | dec_uops(w).pc_lob) - Mux(dec_uops(w).edge_inst, 2.U, 0.U)
         ist.get.io.check(w).tag.valid := dec_fire(w)
         ist.get.io.check(w).tag.bits := ist_pc(w)
-        dis_uops(w).is_lsc_b := ist.get.io.check(w).in_ist
+        dec_uops(w).is_lsc_b := ist.get.io.check(w).in_ist
 
         assert(!(dec_fire(w) && (dec_uops(w).debug_pc =/= ist_pc(w))), "[IST] debug_pc and fetch_pc mismatch")
       }
@@ -512,7 +512,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
       for (w <- 0 until coreWidth) {
         ist.get.io.check(w).tag.valid := dec_fire(w)
         ist.get.io.check(w).tag.bits := LscParams.ibda_get_tag(dec_uops(w))
-        dis_uops(w).is_lsc_b := ist.get.io.check(w).in_ist
+        dec_uops(w).is_lsc_b := ist.get.io.check(w).in_ist
       }
     }
   }
@@ -582,6 +582,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   //-------------------------------------------------------------
   if (boomParams.loadSliceMode) {
     val LscParams = boomParams.loadSliceCore.get
+    val rdt_pc = Reg(Vec(decodeWidth, UInt(vaddrBitsExtended.W)))
     // Connect RDT to IST. Mark new instructions as part of a load slice in IST
     ist.get.io.mark := rdt.get.io.mark
 
@@ -591,7 +592,12 @@ class BoomCore(implicit p: Parameters) extends BoomModule
       rdt.get.io.update(w).valid := dis_fire(w)
       rdt.get.io.update(w).uop := dis_uops(w)
       if (LscParams.ibdaTagType == IBDA_TAG_FULL_PC) {
-        rdt.get.io.update(w).tag :=  RegNext(ist_pc(w))
+        // Only update rdt_pc on next CC when we decode. I.e. when IST does a lookup.
+        when(dec_fire(w)) {
+          rdt_pc(w) := ist_pc(w)
+        }
+        rdt.get.io.update(w).tag :=  rdt_pc(w)
+
       } else {
         rdt.get.io.update(w).tag :=  LscParams.ibda_get_tag(dis_uops(w))
       }
