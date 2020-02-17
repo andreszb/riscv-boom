@@ -16,13 +16,13 @@ class IstCheck (implicit p: Parameters) extends BoomBundle
 
 class IstIO(implicit p: Parameters) extends BoomBundle
 {
-  val mark = Input(new IstMark)
+  val mark = Vec(retireWidth*2, Input(new IstMark))
   val check = Vec(coreWidth, new IstCheck)
 }
 
 class IstMark(implicit p: Parameters) extends BoomBundle
 {
-  val mark = Vec(retireWidth*2, ValidIO(UInt(boomParams.loadSliceCore.get.ibda_tag_sz.W)))
+  val mark = ValidIO(UInt(boomParams.loadSliceCore.get.ibda_tag_sz.W))
 }
 
 class InstructionSliceTable(entries: Int=128, ways: Int=2)(implicit p: Parameters) extends BoomModule{
@@ -74,8 +74,8 @@ class InstructionSliceTable(entries: Int=128, ways: Int=2)(implicit p: Parameter
   }
   // mark - later so mark lrus get priority
   for(i <- 0 until retireWidth*2){
-    when(io.mark.mark(i).valid){
-      val pc = io.mark.mark(i).bits
+    when(io.mark(i).mark.valid){
+      val pc = io.mark(i).mark.bits
       val idx = index(pc)
       val is_match = WireInit(false.B)
       for(j <- 0 until ways){

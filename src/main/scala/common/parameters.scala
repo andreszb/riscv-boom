@@ -307,7 +307,8 @@ case class DromajoParams(
 case class LoadSliceCoreParams(
   numAqEntries: Int = 8,
   numBqEntries: Int = 8,
-  ibdaTagType: Int = IBDA_TAG_FULL_PC
+  ibdaTagType: Int = IBDA_TAG_FULL_PC,
+  rdtIstMarkWidth: Int = 1
                               ) {
 
   def ibda_get_tag(uop: MicroOp): UInt = {
