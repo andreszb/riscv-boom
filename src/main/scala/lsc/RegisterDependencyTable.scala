@@ -58,8 +58,7 @@ class RdtOneBit(implicit p: Parameters) extends RegisterDependencyTable {
 
     // Mark source register 1
     when(valid && is_b) {
-      when(uop.lrs1_rtype === RT_FIX && uop.prs1 =/= 0.U)
-        {
+      when(uop.lrs1_rtype === RT_FIX && uop.prs1 =/= 0.U) {
         if (mark_port_idx < lscParams.rdtIstMarkWidth) {
           io.mark(mark_port_idx).mark.valid := !in_ist(uop.prs1) // Only valid when RS1 is not already in IST
           io.mark(mark_port_idx).mark.bits := rdt(uop.prs1)
@@ -78,8 +77,9 @@ class RdtOneBit(implicit p: Parameters) extends RegisterDependencyTable {
       }
 
       // Mark source register 2
-      when(uop.lrs2_rtype === RT_FIX && uop.prs2 =/= 0.U)
-      {
+      when(uop.lrs2_rtype === RT_FIX &&
+        uop.prs2 =/= 0.U &&
+        !(uop.uopc === uopSTA || uop.uopc === uopSTD) ) { //Dont mark RS2 of stores, since its the data generation
         if (mark_port_idx < lscParams.rdtIstMarkWidth) {
           io.mark(mark_port_idx).mark.valid := !in_ist(uop.prs2) // Only valid when RS1 is not already in IST
           io.mark(mark_port_idx).mark.bits := rdt(uop.prs2)
@@ -98,6 +98,7 @@ class RdtOneBit(implicit p: Parameters) extends RegisterDependencyTable {
       }
     }
   }
+}
 
 
 
