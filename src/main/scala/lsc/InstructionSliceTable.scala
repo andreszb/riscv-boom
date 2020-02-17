@@ -36,6 +36,8 @@ class InstructionSliceTable(entries: Int=128, ways: Int=2)(implicit p: Parameter
 
   val lscParams = boomParams.loadSliceCore.get
 
+  require(entries == 128)
+  require(ways == 2)
   def index(i: UInt): UInt = {
 
     val indexBits = log2Up(entries/ways)
@@ -44,7 +46,8 @@ class InstructionSliceTable(entries: Int=128, ways: Int=2)(implicit p: Parameter
       // xor the second lowest bit with the highest index bit so compressed insns are spread around
       index := i(indexBits+2-1, 2) ^ Cat(i(1), 0.U((indexBits-1).W))
     } else if (lscParams.ibdaTagType == IBDA_TAG_INST_LOB) {
-      index := i(indexBits+2-1,2) ^ Cat(i(1), 0.U((indexBits-1).W))
+      index := Cat(i(12), i(13), i(5,2)) ^ Cat(i(1), 0.U((indexBits-1).W))
+      // TODO: Research the entropy in the instruction encoding?
     } else if (lscParams.ibdaTagType == IBDA_TAG_UOPC_LOB) {
       index := i(indexBits+2-1,2) ^ Cat(i(1), 0.U((indexBits-1).W))
     }
