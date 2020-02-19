@@ -5,6 +5,7 @@ import chisel3._
 import chisel3.util._
 import freechips.rocketchip.config.Parameters
 import boom.common._
+import freechips.rocketchip.util.PopCountAtLeast
 
 /**
   * Custom commit signals combining ROBs commit signals
@@ -39,7 +40,10 @@ class RdtOneBit(implicit p: Parameters) extends RegisterDependencyTable {
   io.mark := DontCare
   io.mark.map(_.mark.valid := false.B)
 
-  var mark_port_idx = 0
+  // To track which ports have already been used to mark and when we are full
+  val mark_port_idx = Wire(Vec(decodeWidth * 2, UInt(log2Ceil(lscParams.rdtIstMarkWidth).W)))
+  val mark_port_used = WireInit(VecInit(Seq.fill(decodeWidth*2)(false.B)))
+  val mark_port_full = WireInit(VecInit(Seq.fill(decodeWidth*2)(false.B)))
 
   for (i <- 0 until decodeWidth) {
     val uop = io.update(i).uop
@@ -48,6 +52,27 @@ class RdtOneBit(implicit p: Parameters) extends RegisterDependencyTable {
 
     val is_b = uop.is_lsc_b || uop.uopc === uopLD || uop.uopc === uopSTA || uop.uopc === uopSTD
 
+    // First the logic for getting which mark_port to use and wether it is already full.
+    //  The logic is based on a SW for-loop. mark_port_idx of current iteration depends on the last iteration
+    //  mark_port_full of this iteration depends on wether last iteration were already full or if it used the port
+    //  and we now are full. It is a little messy since we are looping through 2 ports per iteration (1 per source register)
+
+    if (i == 0) { // Special case of 1 dispatched instr. At this point we dont depend on any previous iteration
+      mark_port_idx(0) := 0.U
+      mark_port_full(0) := false.B
+
+      mark_port_idx(1) :=  Mux(mark_port_used(0),1.U, 0.U)
+      mark_port_full(1) := Mux(mark_port_used(0) && lscParams.rdtIstMarkWidth.asUInt === 1.U, true.B, false.B)
+     } else { // Normal case
+      mark_port_idx(2*i) := Mux(mark_port_used(2*i - 1), mark_port_idx(2*i - 1) + 1.U, mark_port_idx(2*i - 1))
+      mark_port_full(2*i) := Mux(mark_port_used(2*i - 1) &&
+                                mark_port_idx(2 * i) === lscParams.rdtIstMarkWidth.asUInt(), true.B, mark_port_full(2*i - 1))
+
+      mark_port_idx(2*i + 1) := Mux(mark_port_used(2*i), mark_port_idx(2*i) + 1.U, mark_port_idx(2*i))
+      mark_port_full(2*i + 1) := Mux(mark_port_used(2*i) &&
+        mark_port_idx(2 * i + 1) === lscParams.rdtIstMarkWidth.asUInt(),
+        true.B, mark_port_full(2*i))
+    }
 
     // record pc of last insn that writes to reg
     when(valid && uop.dst_rtype === RT_FIX && uop.pdst =/= 0.U) {
@@ -55,45 +80,52 @@ class RdtOneBit(implicit p: Parameters) extends RegisterDependencyTable {
       in_ist(uop.pdst) := is_b
       commit_dst_valid(i) := true.B
     }
-
     // Mark source register 1
     when(valid && is_b) {
+      val port_idx = mark_port_idx(2*i)
+      val port_used = mark_port_used(2*i)
+      val port_full = mark_port_full(2*i)
       when(uop.lrs1_rtype === RT_FIX && uop.prs1 =/= 0.U) {
-        if (mark_port_idx < lscParams.rdtIstMarkWidth) {
-          io.mark(mark_port_idx).mark.valid := !in_ist(uop.prs1) // Only valid when RS1 is not already in IST
-          io.mark(mark_port_idx).mark.bits := rdt(uop.prs1)
+        when(!port_full) {
+          io.mark(port_idx).mark.valid := !in_ist(uop.prs1) // Only valid when RS1 is not already in IST
+          port_used := !in_ist(uop.prs1)
+          io.mark(port_idx).mark.bits := rdt(uop.prs1)
           in_ist(uop.prs1) := true.B // Update in_ist
           // bypass rdt for previous insns written in same cycle
           for (j <- 0 until i) {
             val uop_j = io.update(j).uop
             val uop_j_in_ist = (uop_j.is_lsc_b || uop_j.uopc === uopLD || uop_j.uopc === uopSTA || uop_j.uopc === uopSTD)
             when(commit_dst_valid(j) && uop_j.pdst === uop.prs1) {
-              io.mark(mark_port_idx).mark.valid := !uop_j_in_ist
-              io.mark(mark_port_idx).mark.bits := io.update(j).tag
+              io.mark(port_idx).mark.valid := !uop_j_in_ist
+              port_used := !uop_j_in_ist
+              io.mark(port_idx).mark.bits := io.update(j).tag
             }
           }
-          mark_port_idx += 1
         }
       }
 
       // Mark source register 2
       when(uop.lrs2_rtype === RT_FIX &&
         uop.prs2 =/= 0.U &&
-        !(uop.uopc === uopSTA || uop.uopc === uopSTD) ) { //Dont mark RS2 of stores, since its the data generation
-        if (mark_port_idx < lscParams.rdtIstMarkWidth) {
-          io.mark(mark_port_idx).mark.valid := !in_ist(uop.prs2) // Only valid when RS1 is not already in IST
-          io.mark(mark_port_idx).mark.bits := rdt(uop.prs2)
+        !(uop.uopc === uopSTA || uop.uopc === uopSTD) ) {//Dont mark RS2 of stores, since its the data generation
+        val port_idx = mark_port_idx(2*i + 1)
+        val port_used = mark_port_used(2*i + 1)
+        val port_full = mark_port_full(2*i + 1)
+        when(!port_full) {
+          io.mark(port_idx).mark.valid := !in_ist(uop.prs2) // Only valid when RS1 is not already in IST
+          io.mark(port_idx).mark.bits := rdt(uop.prs2)
+          port_used := !in_ist(uop.prs2)
           in_ist(uop.prs2) := true.B // Update in_ist
           // bypass rdt for previous insns written in same cycle
           for (j <- 0 until i) {
             val uop_j = io.update(j).uop
             val uop_j_in_ist = (uop_j.is_lsc_b || uop_j.uopc === uopLD || uop_j.uopc === uopSTA || uop_j.uopc === uopSTD)
             when(commit_dst_valid(j) && uop_j.pdst === uop.prs2) {
-              io.mark(mark_port_idx).mark.valid := !uop_j_in_ist
-              io.mark(mark_port_idx).mark.bits := io.update(j).tag
+              io.mark(port_idx).mark.valid := !uop_j_in_ist
+              port_used := !uop_j_in_ist
+              io.mark(port_idx).mark.bits := io.update(j).tag
             }
           }
-          mark_port_idx += 1
         }
       }
     }
