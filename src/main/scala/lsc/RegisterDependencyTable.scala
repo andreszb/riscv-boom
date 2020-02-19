@@ -90,7 +90,6 @@ class RdtOneBit(implicit p: Parameters) extends RegisterDependencyTable {
           io.mark(port_idx).mark.valid := !in_ist(uop.prs1) // Only valid when RS1 is not already in IST
           port_used := !in_ist(uop.prs1)
           io.mark(port_idx).mark.bits := rdt(uop.prs1)
-          in_ist(uop.prs1) := true.B // Update in_ist
           // bypass rdt for previous insns written in same cycle
           for (j <- 0 until i) {
             val uop_j = io.update(j).uop
@@ -100,6 +99,9 @@ class RdtOneBit(implicit p: Parameters) extends RegisterDependencyTable {
               port_used := !uop_j_in_ist
               io.mark(port_idx).mark.bits := io.update(j).tag
             }
+          }
+          when (port_used) {
+            in_ist(uop.prs1) := true.B
           }
         }
       }
@@ -115,7 +117,6 @@ class RdtOneBit(implicit p: Parameters) extends RegisterDependencyTable {
           io.mark(port_idx).mark.valid := !in_ist(uop.prs2) // Only valid when RS1 is not already in IST
           io.mark(port_idx).mark.bits := rdt(uop.prs2)
           port_used := !in_ist(uop.prs2)
-          in_ist(uop.prs2) := true.B // Update in_ist
           // bypass rdt for previous insns written in same cycle
           for (j <- 0 until i) {
             val uop_j = io.update(j).uop
@@ -125,6 +126,9 @@ class RdtOneBit(implicit p: Parameters) extends RegisterDependencyTable {
               port_used := !uop_j_in_ist
               io.mark(port_idx).mark.bits := io.update(j).tag
             }
+          }
+          when (port_used) {
+            in_ist(uop.prs2) := true.B
           }
         }
       }
