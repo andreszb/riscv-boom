@@ -41,13 +41,14 @@ class RdtOneBit(implicit p: Parameters) extends RegisterDependencyTable {
   io.mark.map(_.mark.valid := false.B)
 
   // To track which ports have already been used to mark and when we are full
-  val mark_port_idx = Wire(Vec(decodeWidth * 2, UInt(log2Ceil(lscParams.rdtIstMarkWidth).W)))
+  val mark_port_idx = Wire(Vec(decodeWidth * 2, UInt(lscParams.rdtIstMarkSz.W)))
   val mark_port_used = WireInit(VecInit(Seq.fill(decodeWidth*2)(false.B)))
   val mark_port_full = Wire(Vec(decodeWidth * 2, Bool()))
 
   //TODO: Remove these DontTouches
   dontTouch(mark_port_used)
   dontTouch(mark_port_full)
+  dontTouch(mark_port_idx)
 
   for (i <- 0 until decodeWidth) {
     val uop = io.update(i).uop
