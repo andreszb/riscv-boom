@@ -233,8 +233,11 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   if (boomParams.loadSliceCore.isDefined) {
     if (decodeWidth == 2) {
       perfEvents = perfEvents ++ new freechips.rocketchip.rocket.EventSet((mask, hits) => (mask & hits).orR, Seq(
-        ("A-Q"), () => dispatcher.perf.)
-      )
+        (("A-Q1"), () => dispatcher.io.lsc_perf.get.aq(0)),
+        (("B-Q1"), () => dispatcher.io.lsc_perf.get.bq(0)),
+        (("A-Q2"), () => dispatcher.io.lsc_perf.get.aq(1)),
+        (("B-Q2"), () => dispatcher.io.lsc_perf.get.bq(1)),
+      ))
     }
 
   }
