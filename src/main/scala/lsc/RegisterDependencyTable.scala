@@ -43,7 +43,11 @@ class RdtOneBit(implicit p: Parameters) extends RegisterDependencyTable {
   // To track which ports have already been used to mark and when we are full
   val mark_port_idx = Wire(Vec(decodeWidth * 2, UInt(log2Ceil(lscParams.rdtIstMarkWidth).W)))
   val mark_port_used = WireInit(VecInit(Seq.fill(decodeWidth*2)(false.B)))
-  val mark_port_full = WireInit(VecInit(Seq.fill(decodeWidth*2)(false.B)))
+  val mark_port_full = Wire(Vec(decodeWidth * 2, Bool()))
+
+  //TODO: Remove these DontTouches
+  dontTouch(mark_port_used)
+  dontTouch(mark_port_full)
 
   for (i <- 0 until decodeWidth) {
     val uop = io.update(i).uop
@@ -57,22 +61,16 @@ class RdtOneBit(implicit p: Parameters) extends RegisterDependencyTable {
     //  mark_port_full of this iteration depends on wether last iteration were already full or if it used the port
     //  and we now are full. It is a little messy since we are looping through 2 ports per iteration (1 per source register)
 
-    if (i == 0) { // Special case of 1 dispatched instr. At this point we dont depend on any previous iteration
+    if (i == 0) { // Special case of first dispatched instr. At this point we dont depend on any previous iteration
       mark_port_idx(0) := 0.U
       mark_port_full(0) := false.B
 
-      mark_port_idx(1) :=  Mux(mark_port_used(0),1.U, 0.U)
-      mark_port_full(1) := Mux(mark_port_used(0) && lscParams.rdtIstMarkWidth.asUInt === 1.U, true.B, false.B)
      } else { // Normal case
-      mark_port_idx(2*i) := Mux(mark_port_used(2*i - 1), mark_port_idx(2*i - 1) + 1.U, mark_port_idx(2*i - 1))
-      mark_port_full(2*i) := Mux(mark_port_used(2*i - 1) &&
+      mark_port_idx(2*i + 0) := Mux(mark_port_used(2*i - 1), mark_port_idx(2*i - 1) + 1.U, mark_port_idx(2*i - 1))
+      mark_port_full(2*i + 0) := Mux(mark_port_used(2*i - 1) &&
                                 mark_port_idx(2 * i) === lscParams.rdtIstMarkWidth.asUInt(), true.B, mark_port_full(2*i - 1))
-
-      mark_port_idx(2*i + 1) := Mux(mark_port_used(2*i), mark_port_idx(2*i) + 1.U, mark_port_idx(2*i))
-      mark_port_full(2*i + 1) := Mux(mark_port_used(2*i) &&
-        mark_port_idx(2 * i + 1) === lscParams.rdtIstMarkWidth.asUInt(),
-        true.B, mark_port_full(2*i))
     }
+
 
     // record pc of last insn that writes to reg
     when(valid && uop.dst_rtype === RT_FIX && uop.pdst =/= 0.U) {
@@ -105,6 +103,11 @@ class RdtOneBit(implicit p: Parameters) extends RegisterDependencyTable {
           }
         }
       }
+      // Can we try to mark RS2?
+      mark_port_idx(2*i + 1) := Mux(mark_port_used(2*i), mark_port_idx(2*i) + 1.U, mark_port_idx(2*i))
+      mark_port_full(2*i + 1) := Mux(mark_port_used(2*i) &&
+        mark_port_idx(2 * i + 1) === lscParams.rdtIstMarkWidth.asUInt(),
+        true.B, mark_port_full(2*i))
 
       // Mark source register 2
       when(uop.lrs2_rtype === RT_FIX &&
