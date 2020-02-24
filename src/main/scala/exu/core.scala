@@ -225,8 +225,19 @@ class BoomCore(implicit p: Parameters) extends BoomModule
 //      ("D$ release",  () => io.dmem.perf.release),
       ("ITLB miss",   () => io.ifu.perf.tlbMiss),
 //      ("DTLB miss",   () => io.dmem.perf.tlbMiss),
-      ("L2 TLB miss", () => io.ptw.perf.l2miss)))))
+      ("L2 TLB miss", () => io.ptw.perf.l2miss)))
+    )
+  )
 
+  // Add perf counter for LoadSliceCore
+  if (boomParams.loadSliceCore.isDefined) {
+    if (decodeWidth == 2) {
+      perfEvents = perfEvents ++ new freechips.rocketchip.rocket.EventSet((mask, hits) => (mask & hits).orR, Seq(
+        ("A-Q"), () => dispatcher.perf.)
+      )
+    }
+
+  }
   val csr = Module(new freechips.rocketchip.rocket.CSRFile(perfEvents, boomParams.customCSRs.decls))
   csr.io.inst foreach { c => c := DontCare }
   csr.io.rocc_interrupt := io.rocc.interrupt
