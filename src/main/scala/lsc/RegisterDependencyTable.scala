@@ -139,6 +139,8 @@ class RdtOneBit(implicit p: Parameters) extends RegisterDependencyTable {
       }
     }
   }
+
+  assert(PopCount(mark_port_used) <= lscParams.rdtIstMarkWidth.U, "[RDT] try to mark more regs than mark-ports")
 }
 
 
