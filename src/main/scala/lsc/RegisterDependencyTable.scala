@@ -71,6 +71,12 @@ class RdtOneBit(implicit p: Parameters) extends RegisterDependencyTable {
                                 mark_port_idx(2 * i) === lscParams.rdtIstMarkWidth.asUInt(), true.B, mark_port_full(2*i - 1))
     }
 
+    // Can we try to mark RS2?
+    mark_port_idx(2*i + 1) := Mux(mark_port_used(2*i), mark_port_idx(2*i) + 1.U, mark_port_idx(2*i))
+    mark_port_full(2*i + 1) := Mux(mark_port_used(2*i) &&
+      mark_port_idx(2 * i + 1) === lscParams.rdtIstMarkWidth.asUInt(),
+      true.B, mark_port_full(2*i))
+
 
     // record pc of last insn that writes to reg
     when(valid && uop.dst_rtype === RT_FIX && uop.pdst =/= 0.U) {
@@ -103,11 +109,6 @@ class RdtOneBit(implicit p: Parameters) extends RegisterDependencyTable {
           }
         }
       }
-      // Can we try to mark RS2?
-      mark_port_idx(2*i + 1) := Mux(mark_port_used(2*i), mark_port_idx(2*i) + 1.U, mark_port_idx(2*i))
-      mark_port_full(2*i + 1) := Mux(mark_port_used(2*i) &&
-        mark_port_idx(2 * i + 1) === lscParams.rdtIstMarkWidth.asUInt(),
-        true.B, mark_port_full(2*i))
 
       // Mark source register 2
       when(uop.lrs2_rtype === RT_FIX &&
