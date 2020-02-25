@@ -77,7 +77,7 @@ class RdtOneBit(implicit p: Parameters) extends RegisterDependencyTable {
 
   for (w <- 0 until lscParams.rdtIstMarkWidth) {
     io.mark(w).mark.valid := RegNext(mark_valid(w))
-    io.mark(w).mark.bits  := MuxCase(mark_tag_mem_idx(w), Array( mark_tag_select(w)(0).asBool() -> rdt(mark_tag_mem_idx(w)),
+    io.mark(w).mark.bits  := MuxCase(0.U, Array( mark_tag_select(w)(0).asBool() -> rdt(mark_tag_mem_idx(w)),
                                                             mark_tag_select(w)(1).asBool() -> RegNext(mark_tag_bypass_last(w)),
                                                             mark_tag_select(w)(2).asBool() -> RegNext(mark_tag_bypass_curr(w)))
                                                            )

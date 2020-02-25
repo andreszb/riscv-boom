@@ -488,6 +488,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   // Instruction Slice Lookup
 
   val ist_pc =  WireInit(VecInit(Seq.fill(decodeWidth) {0.U(vaddrBitsExtended.W)}))
+  val in_ist = Wire(Vec(decodeWidth, Bool()))
   if (boomParams.loadSliceMode) {
     val LscParams = boomParams.loadSliceCore.get
     // If we want the Full PC we need FTQ ports and etc. This is not
@@ -503,7 +504,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
         ist_pc(w) := (block_pc | dec_uops(w).pc_lob) - Mux(dec_uops(w).edge_inst, 2.U, 0.U)
         ist.get.io.check(w).tag.valid := dec_fire(w)
         ist.get.io.check(w).tag.bits := ist_pc(w)
-        dec_uops(w).is_lsc_b := ist.get.io.check(w).in_ist
+        in_ist(w) := ist.get.io.check(w).in_ist
 
         assert(!(dec_fire(w) && (dec_uops(w).debug_pc =/= ist_pc(w))), "[IST] debug_pc and fetch_pc mismatch")
       }
@@ -512,7 +513,12 @@ class BoomCore(implicit p: Parameters) extends BoomModule
       for (w <- 0 until coreWidth) {
         ist.get.io.check(w).tag.valid := dec_fire(w)
         ist.get.io.check(w).tag.bits := LscParams.ibda_get_tag(dec_uops(w))
-        dec_uops(w).is_lsc_b := ist.get.io.check(w).in_ist
+        in_ist(w) := ist.get.io.check(w).in_ist
+      }
+    }
+    for (w <- 0 until coreWidth) {
+      when(dis_fire(w)) {
+        dis_uops(w).is_lsc_b := in_ist(w)
       }
     }
   }
