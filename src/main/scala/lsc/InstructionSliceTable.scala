@@ -16,13 +16,13 @@ class IstCheck (implicit p: Parameters) extends BoomBundle
 
 class IstIO(implicit p: Parameters) extends BoomBundle
 {
-  val mark = Input(new IstMark)
+  val mark = Vec(boomParams.loadSliceCore.get.rdtIstMarkWidth, Input(new IstMark))
   val check = Vec(coreWidth, new IstCheck)
 }
 
 class IstMark(implicit p: Parameters) extends BoomBundle
 {
-  val mark = Vec(retireWidth*2, ValidIO(UInt(boomParams.loadSliceCore.get.ibda_tag_sz.W)))
+  val mark = ValidIO(UInt(boomParams.loadSliceCore.get.ibda_tag_sz.W))
 }
 
 class InstructionSliceTable(entries: Int=128, ways: Int=2)(implicit p: Parameters) extends BoomModule{
@@ -34,12 +34,26 @@ class InstructionSliceTable(entries: Int=128, ways: Int=2)(implicit p: Parameter
   val tag_valids = RegInit(VecInit(Seq.fill(entries)(false.B)))
   val tag_lru = RegInit(VecInit(Seq.fill(entries/2)(false.B)))
 
+  val lscParams = boomParams.loadSliceCore.get
 
+  require(entries == 128)
+  require(ways == 2)
+  def index(i: UInt): UInt = {
 
-  def index(i: UInt): UInt ={
     val indexBits = log2Up(entries/ways)
-    // xor the second lowest bit with the highest index bit so compressed insns are spread around
-    i(indexBits+2-1, 2) ^ Cat(i(1), 0.U((indexBits-1).W))
+    val index = Wire(UInt(indexBits.W))
+    if (lscParams.ibdaTagType == IBDA_TAG_FULL_PC) {
+      // xor the second lowest bit with the highest index bit so compressed insns are spread around
+      index := i(indexBits+2-1, 2) ^ Cat(i(1), 0.U((indexBits-1).W))
+    } else if (lscParams.ibdaTagType == IBDA_TAG_INST_LOB) {
+      index := Cat(i(12), i(13), i(5,2)) ^ Cat(i(1), 0.U((indexBits-1).W))
+      // TODO: Research the entropy in the instruction encoding?
+    } else if (lscParams.ibdaTagType == IBDA_TAG_UOPC_LOB) {
+      index := i(indexBits+2-1,2) ^ Cat(i(1), 0.U((indexBits-1).W))
+    }
+
+    index
+
   }
   require(ways == 2, "only one lru bit for now!")
   // check
@@ -59,9 +73,9 @@ class InstructionSliceTable(entries: Int=128, ways: Int=2)(implicit p: Parameter
     }
   }
   // mark - later so mark lrus get priority
-  for(i <- 0 until retireWidth*2){
-    when(io.mark.mark(i).valid){
-      val pc = io.mark.mark(i).bits
+  for(i <- 0 until lscParams.rdtIstMarkWidth){
+    when(io.mark(i).mark.valid){
+      val pc = io.mark(i).mark.bits
       val idx = index(pc)
       val is_match = WireInit(false.B)
       for(j <- 0 until ways){

@@ -43,7 +43,7 @@ import boom.common._
 import boom.exu.FUConstants._
 import boom.common.BoomTilesKey
 import boom.util.{RobTypeToChars, BoolToChar, GetNewUopAndBrMask, Sext, WrapInc, BoomCoreStringPrefix, DromajoCosimBlackBox, AlignPCToBoundary}
-import lsc.{InstructionSliceTable, RegisterDependencyTable}
+import lsc.{InstructionSliceTable, RdtOneBit, RdtBasic}
 
 
 /**
@@ -142,7 +142,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
                            numFpWakeupPorts))
 
   val ist = if(boomParams.loadSliceMode) Some(Module(new InstructionSliceTable())) else None
-  val rdt = if(boomParams.loadSliceMode) Some(Module(new RegisterDependencyTable())) else None
+  val rdt = if(boomParams.loadSliceMode) Some(Module(new RdtOneBit())) else None
   // Used to wakeup registers in rename and issue. ROB needs to listen to something else.
   val int_iss_wakeups  = Wire(Vec(numIntIssueWakeupPorts, Valid(new ExeUnitResp(xLen))))
   val int_ren_wakeups  = Wire(Vec(numIntRenameWakeupPorts, Valid(new ExeUnitResp(xLen))))
