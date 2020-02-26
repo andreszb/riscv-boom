@@ -28,22 +28,20 @@
 
 package boom.exu
 
-import java.nio.file.{Paths}
+import java.nio.file.Paths
 
 import chisel3._
 import chisel3.util._
-
 import freechips.rocketchip.config.Parameters
 import freechips.rocketchip.rocket.Instructions._
 import freechips.rocketchip.rocket.{Causes, PRV}
-import freechips.rocketchip.util.{Str, UIntIsOneOf, CoreMonitorBundle}
-import freechips.rocketchip.devices.tilelink.{PLICConsts, CLINTConsts}
-
+import freechips.rocketchip.util.{CoreMonitorBundle, Str, UIntIsOneOf}
+import freechips.rocketchip.devices.tilelink.{CLINTConsts, PLICConsts}
 import boom.common._
 import boom.exu.FUConstants._
 import boom.common.BoomTilesKey
-import boom.util.{RobTypeToChars, BoolToChar, GetNewUopAndBrMask, Sext, WrapInc, BoomCoreStringPrefix, DromajoCosimBlackBox, AlignPCToBoundary}
-import lsc.{InstructionSliceTable, RdtOneBit, RdtBasic}
+import boom.util.{AlignPCToBoundary, BoolToChar, BoomCoreStringPrefix, DromajoCosimBlackBox, GetNewUopAndBrMask, RobTypeToChars, Sext, WrapInc}
+import lsc.{InstructionSliceTable, InstructionSliceTableSyncMem, RdtBasic, RdtOneBit, RdtSyncMem}
 
 
 /**
@@ -141,8 +139,8 @@ class BoomCore(implicit p: Parameters) extends BoomModule
                            numIrfWritePorts + numFpWakeupPorts, // +memWidth for ll writebacks
                            numFpWakeupPorts))
 
-  val ist = if(boomParams.loadSliceMode) Some(Module(new InstructionSliceTable())) else None
-  val rdt = if(boomParams.loadSliceMode) Some(Module(new RdtOneBit())) else None
+  val ist = if(boomParams.loadSliceMode) Some(Module(new InstructionSliceTableSyncMem())) else None
+  val rdt = if(boomParams.loadSliceMode) Some(Module(new RdtSyncMem())) else None
   // Used to wakeup registers in rename and issue. ROB needs to listen to something else.
   val int_iss_wakeups  = Wire(Vec(numIntIssueWakeupPorts, Valid(new ExeUnitResp(xLen))))
   val int_ren_wakeups  = Wire(Vec(numIntRenameWakeupPorts, Valid(new ExeUnitResp(xLen))))
@@ -488,7 +486,6 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   // Instruction Slice Lookup
 
   val ist_pc =  WireInit(VecInit(Seq.fill(decodeWidth) {0.U(vaddrBitsExtended.W)}))
-  val in_ist = Wire(Vec(decodeWidth, Bool()))
   if (boomParams.loadSliceMode) {
     val LscParams = boomParams.loadSliceCore.get
     // If we want the Full PC we need FTQ ports and etc. This is not
@@ -504,7 +501,9 @@ class BoomCore(implicit p: Parameters) extends BoomModule
         ist_pc(w) := (block_pc | dec_uops(w).pc_lob) - Mux(dec_uops(w).edge_inst, 2.U, 0.U)
         ist.get.io.check(w).tag.valid := dec_fire(w)
         ist.get.io.check(w).tag.bits := ist_pc(w)
-        in_ist(w) := ist.get.io.check(w).in_ist
+        when(ist.get.io.check(w).in_ist.valid) {
+          dis_uops(w).is_lsc_b := ist.get.io.check(w).in_ist.bits
+        }
 
         assert(!(dec_fire(w) && (dec_uops(w).debug_pc =/= ist_pc(w))), "[IST] debug_pc and fetch_pc mismatch")
       }
@@ -513,14 +512,10 @@ class BoomCore(implicit p: Parameters) extends BoomModule
       for (w <- 0 until coreWidth) {
         ist.get.io.check(w).tag.valid := dec_fire(w)
         ist.get.io.check(w).tag.bits := LscParams.ibda_get_tag(dec_uops(w))
-        in_ist(w) := ist.get.io.check(w).in_ist
+
       }
     }
-    for (w <- 0 until coreWidth) {
-      when(dis_fire(w)) {
-        dis_uops(w).is_lsc_b := in_ist(w)
-      }
-    }
+
   }
 
 
@@ -554,7 +549,26 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   dis_valids := rename_stage.io.ren2_mask
   ren_stalls := rename_stage.io.ren_stalls
 
+  val in_ist_reg = if (boomParams.loadSliceMode) Some(Reg(Vec(decodeWidth, Bool()))) else None
+  val has_stalled = if (boomParams.loadSliceMode) Some(Reg(Vec(decodeWidth, Bool()))) else None
 
+  if (boomParams.loadSliceMode) {
+    // IST check. We have to deal with pipeline stalls
+    for (w <- 0 until coreWidth) {
+      val in_ist = ist.get.io.check(w).in_ist.bits
+      when(ist.get.io.check(w).in_ist.valid) {
+        in_ist_reg.get(w) := in_ist
+      }
+
+      when(dis_fire(w)) {
+        dis_uops(w).is_lsc_b := Mux(has_stalled.get(w), in_ist_reg.get(w), in_ist)
+        has_stalled.get(w) := false.B
+      }.otherwise {
+        has_stalled.get(w) := true.B
+      }
+
+    }
+  }
   /**
    * TODO This is a bit nasty, but it's currently necessary to
    * split the INT/FP rename pipelines into separate instantiations.
