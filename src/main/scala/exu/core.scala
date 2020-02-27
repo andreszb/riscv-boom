@@ -200,30 +200,65 @@ class BoomCore(implicit p: Parameters) extends BoomModule
 
   //-------------------------------------------------------------
   // Uarch Hardware Performance Events (HPEs)
+  val perfEvents = if (boomParams.loadSliceCore.isDefined && decodeWidth == 2) {
+    new freechips.rocketchip.rocket.EventSets(Seq(
+      new freechips.rocketchip.rocket.EventSet((mask, hits) => (mask & hits).orR, Seq(
+        ("exception", () => rob.io.com_xcpt.valid),
+        ("nop", () => false.B),
+        ("nop", () => false.B),
+        ("nop", () => false.B))),
 
-  val perfEvents = new freechips.rocketchip.rocket.EventSets(Seq(
-    new freechips.rocketchip.rocket.EventSet((mask, hits) => (mask & hits).orR, Seq(
-      ("exception", () => rob.io.com_xcpt.valid),
-      ("nop",       () => false.B),
-      ("nop",       () => false.B),
-      ("nop",       () => false.B))),
+      new freechips.rocketchip.rocket.EventSet((mask, hits) => (mask & hits).orR, Seq(
+        ("I$ blocked", () => icache_blocked),
+        ("nop", () => false.B),
+        ("branch misprediction", () => br_unit.brinfo.mispredict),
+        ("control-flow target misprediction", () => br_unit.brinfo.mispredict &&
+          br_unit.brinfo.is_jr),
+        ("flush", () => rob.io.flush.valid),
+        ("branch resolved", () => br_unit.brinfo.valid))),
 
-    new freechips.rocketchip.rocket.EventSet((mask, hits) => (mask & hits).orR, Seq(
-      ("I$ blocked",                        () => icache_blocked),
-      ("nop",                               () => false.B),
-      ("branch misprediction",              () => br_unit.brinfo.mispredict),
-      ("control-flow target misprediction", () => br_unit.brinfo.mispredict &&
-                                                  br_unit.brinfo.is_jr),
-      ("flush",                             () => rob.io.flush.valid),
-      ("branch resolved",                   () => br_unit.brinfo.valid))),
+      new freechips.rocketchip.rocket.EventSet((mask, hits) => (mask & hits).orR, Seq(
+        ("I$ miss", () => io.ifu.perf.acquire),
+        //      ("D$ miss",     () => io.dmem.perf.acquire),
+        //      ("D$ release",  () => io.dmem.perf.release),
+        ("ITLB miss", () => io.ifu.perf.tlbMiss),
+        //      ("DTLB miss",   () => io.dmem.perf.tlbMiss),
+        ("L2 TLB miss", () => io.ptw.perf.l2miss))),
 
-    new freechips.rocketchip.rocket.EventSet((mask, hits) => (mask & hits).orR, Seq(
-      ("I$ miss",     () => io.ifu.perf.acquire),
-//      ("D$ miss",     () => io.dmem.perf.acquire),
-//      ("D$ release",  () => io.dmem.perf.release),
-      ("ITLB miss",   () => io.ifu.perf.tlbMiss),
-//      ("DTLB miss",   () => io.dmem.perf.tlbMiss),
-      ("L2 TLB miss", () => io.ptw.perf.l2miss)))))
+      new freechips.rocketchip.rocket.EventSet((mask, hits) => (mask & hits).orR, Seq(
+        (("A-Q0"), () => dispatcher.io.lsc_perf.get.aq(0)),
+        (("B-Q0"), () => dispatcher.io.lsc_perf.get.bq(0)),
+        (("A-Q1"), () => dispatcher.io.lsc_perf.get.aq(1)),
+        (("B-Q1"), () => dispatcher.io.lsc_perf.get.bq(1)))),
+    )
+    )
+  } else {
+    new freechips.rocketchip.rocket.EventSets(Seq(
+      new freechips.rocketchip.rocket.EventSet((mask, hits) => (mask & hits).orR, Seq(
+        ("exception", () => rob.io.com_xcpt.valid),
+        ("nop", () => false.B),
+        ("nop", () => false.B),
+        ("nop", () => false.B))),
+
+      new freechips.rocketchip.rocket.EventSet((mask, hits) => (mask & hits).orR, Seq(
+        ("I$ blocked", () => icache_blocked),
+        ("nop", () => false.B),
+        ("branch misprediction", () => br_unit.brinfo.mispredict),
+        ("control-flow target misprediction", () => br_unit.brinfo.mispredict &&
+          br_unit.brinfo.is_jr),
+        ("flush", () => rob.io.flush.valid),
+        ("branch resolved", () => br_unit.brinfo.valid))),
+
+      new freechips.rocketchip.rocket.EventSet((mask, hits) => (mask & hits).orR, Seq(
+        ("I$ miss", () => io.ifu.perf.acquire),
+        //      ("D$ miss",     () => io.dmem.perf.acquire),
+        //      ("D$ release",  () => io.dmem.perf.release),
+        ("ITLB miss", () => io.ifu.perf.tlbMiss),
+        //      ("DTLB miss",   () => io.dmem.perf.tlbMiss),
+        ("L2 TLB miss", () => io.ptw.perf.l2miss)))
+      ))
+  }
+
 
   val csr = Module(new freechips.rocketchip.rocket.CSRFile(perfEvents, boomParams.customCSRs.decls))
   csr.io.inst foreach { c => c := DontCare }
