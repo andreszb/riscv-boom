@@ -5,7 +5,7 @@ import chisel3._
 import chisel3.util._
 import freechips.rocketchip.config.Parameters
 import boom.common._
-import freechips.rocketchip.util.PopCountAtLeast
+import freechips.rocketchip.util.{DescribedSRAM, PopCountAtLeast}
 
 /**
   * Custom commit signals combining ROBs commit signals
@@ -34,7 +34,12 @@ class RdtUpdateSignals(implicit p: Parameters) extends BoomBundle
 
 class RdtSyncMem(implicit p: Parameters) extends RegisterDependencyTable {
 
-  val rdt = SyncReadMem(boomParams.numIntPhysRegisters, UInt(lscParams.ibda_tag_sz.W))
+  val (rdt, _) = DescribedSRAM(
+    name = s"rdt_ram",
+    desc = "RDT Data Array",
+    size = boomParams.numIntPhysRegisters,
+    data = UInt(lscParams.ibda_tag_sz.W)
+  )
   val in_ist = RegInit(VecInit(Seq.fill(boomParams.numIntPhysRegisters)(false.B)))
   val commit_dst_valid = WireInit(VecInit(Seq.fill(decodeWidth)(false.B)))
 

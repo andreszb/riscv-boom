@@ -7,6 +7,7 @@ import chisel3._
 import chisel3.core.Bundle
 import chisel3.util._
 import freechips.rocketchip.config.Parameters
+import freechips.rocketchip.util.DescribedSRAM
 
 class IstCheck (implicit p: Parameters) extends BoomBundle
 {
@@ -37,8 +38,13 @@ class InstructionSliceTableSyncMem(entries: Int=128, ways: Int=2)(implicit p: Pa
   // TODO: Enable bypass from mark->in_ist
 
   // First the actual Cache with tag, valids and lru
-  val tag_table = SyncReadMem(entries, UInt(boomParams.loadSliceCore.get.ibda_tag_sz.W))
-  val tag_valids = RegInit(VecInit(Seq.fill(entries)(false.B))) //TODO: Use SyncReadMem
+  val tag_tables = (0 until ways).map(i => DescribedSRAM(
+    name = s"ist_tag_ram_$i",
+    desc = "IST Tag Array",
+    size = entries/ways,
+    data = UInt(boomParams.loadSliceCore.get.ibda_tag_sz.W)
+  )._1)
+  val tag_valids = (0 until ways).map(_ => RegInit(VecInit(Seq.fill(entries/ways)(false.B)))) //TODO: Use SyncReadMem
   val tag_lru = RegInit(VecInit(Seq.fill(entries/2)(false.B)))
 
   // Stage 1
@@ -92,9 +98,8 @@ class InstructionSliceTableSyncMem(entries: Int=128, ways: Int=2)(implicit p: Pa
     val pc = ist1_check_tag(i)
     val idx = index(pc)
     for (j <- 0 until ways) {
-      val tidx = (idx << log2Up(ways)).asUInt() + j.U
-      ist2_check_sram_tag(i)(j) := tag_table(tidx)
-      ist2_check_sram_valid(i)(j) := tag_valids(tidx)
+      ist2_check_sram_tag(i)(j) := tag_tables(j)(idx)
+      ist2_check_sram_valid(i)(j) := tag_valids(j)(idx)
     }
   }
 
@@ -103,9 +108,13 @@ class InstructionSliceTableSyncMem(entries: Int=128, ways: Int=2)(implicit p: Pa
     when(ist1_mark_valid(i)){
       val idx = index(ist1_mark_tag(i))
       tag_lru(idx) := !tag_lru(idx)
-      val tidx = (idx << log2Up(ways)).asUInt() + !tag_lru(idx)
-      tag_table(tidx) := ist1_mark_tag(i)
-      tag_valids(tidx) := true.B
+      when(tag_lru(idx)){
+        tag_tables(0)(idx) := ist1_mark_tag(i)
+        tag_valids(0)(idx) := true.B
+      }.otherwise{
+        tag_tables(1)(idx) := ist1_mark_tag(i)
+        tag_valids(1)(idx) := true.B
+      }
 
     }
   }
@@ -116,7 +125,6 @@ class InstructionSliceTableSyncMem(entries: Int=128, ways: Int=2)(implicit p: Pa
     ist2_in_ist(i).bits := false.B
     val idx = index(ist2_check_tag(i))
     for(j <- 0 until ways) {
-      val tidx = (idx << log2Up(ways)).asUInt() + j.U
       when(ist2_check_sram_valid(i)(j) && ist2_check_sram_tag(i)(j) === ist2_check_tag(i)) {
         tag_lru(idx) := j.B // TODO: fix LRU hack
         ist2_in_ist(i).bits := true.B
