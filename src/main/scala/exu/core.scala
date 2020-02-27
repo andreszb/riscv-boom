@@ -228,10 +228,10 @@ class BoomCore(implicit p: Parameters) extends BoomModule
         ("L2 TLB miss", () => io.ptw.perf.l2miss))),
 
       new freechips.rocketchip.rocket.EventSet((mask, hits) => (mask & hits).orR, Seq(
-        (("A-Q1"), () => dispatcher.io.lsc_perf.get.aq(0)),
-        (("B-Q1"), () => dispatcher.io.lsc_perf.get.bq(0)),
-        (("A-Q2"), () => dispatcher.io.lsc_perf.get.aq(1)),
-        (("B-Q2"), () => dispatcher.io.lsc_perf.get.bq(1))))
+        (("A-Q0"), () => dispatcher.io.lsc_perf.get.aq(0)),
+        (("B-Q0"), () => dispatcher.io.lsc_perf.get.bq(0)),
+        (("A-Q1"), () => dispatcher.io.lsc_perf.get.aq(1)),
+        (("B-Q1"), () => dispatcher.io.lsc_perf.get.bq(1)))),
     )
     )
   } else {
