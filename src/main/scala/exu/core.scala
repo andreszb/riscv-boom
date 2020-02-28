@@ -599,7 +599,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
         dis_uops(w).is_lsc_b := Mux(has_stalled.get(w), in_ist_reg.get(w), in_ist)
         has_stalled.get(w) := false.B
       }.otherwise {
-        has_stalled.get(w) := true.B
+        has_stalled.get(w) := ist.get.io.check(w).in_ist.valid  // This only counts as a stall when we have valid in_ist
       }
 
     }
