@@ -600,7 +600,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
         has_stalled.get(w) := false.B
       }.otherwise {
         has_stalled.get(w) := (ist.get.io.check(w).in_ist.valid || has_stalled.get(w)) &&
-                              gi!(br_unit.brinfo.mispredict && br_unit.brinfo.valid) // This only counts as a stall when we have valid in_ist
+                              !(br_unit.brinfo.mispredict && br_unit.brinfo.valid) // This only counts as a stall when we have valid in_ist
       }
 
     }
