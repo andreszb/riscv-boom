@@ -84,7 +84,7 @@ class RdtSyncMem(implicit p: Parameters) extends RegisterDependencyTable {
     rdt2_bypass_tag(i) := 0.U
     rdt2_bypass_valid(i) := false.B
     rdt2_bypass_in_ist(i) := true.B
-    rdt2_bypass_select(i) := false.B
+    rdt2_bypass_select(i) := true.B
 
   }
 

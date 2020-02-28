@@ -103,22 +103,6 @@ class InstructionSliceTableSyncMem(entries: Int=128, ways: Int=2)(implicit p: Pa
     }
   }
 
-  // mark - later so mark lrus get priority
-  for(i <- 0 until lscParams.rdtIstMarkWidth){
-    when(ist1_mark_valid(i)){
-      val idx = index(ist1_mark_tag(i))
-      tag_lru(idx) := !tag_lru(idx)
-      when(tag_lru(idx)){
-        tag_tables(0)(idx) := ist1_mark_tag(i)
-        tag_valids(0)(idx) := true.B
-      }.otherwise{
-        tag_tables(1)(idx) := ist1_mark_tag(i)
-        tag_valids(1)(idx) := true.B
-      }
-
-    }
-  }
-
   // Stage 2
   for (i <- 0 until decodeWidth) {
     ist2_in_ist(i).valid := ist2_check_valid(i)
@@ -131,6 +115,22 @@ class InstructionSliceTableSyncMem(entries: Int=128, ways: Int=2)(implicit p: Pa
       }
     }
     io.check(i).in_ist := ist2_in_ist(i)
+  }
+
+  // mark - later so mark lrus get priority
+  for(i <- 0 until lscParams.rdtIstMarkWidth){
+    when(ist1_mark_valid(i)){
+      val idx = index(ist1_mark_tag(i))
+      when(tag_lru(idx)){
+        tag_tables(0)(idx) := ist1_mark_tag(i)
+        tag_valids(0)(idx) := true.B
+        tag_lru(idx) := false.B
+      }.otherwise{
+        tag_tables(1)(idx) := ist1_mark_tag(i)
+        tag_valids(1)(idx) := true.B
+        tag_lru(idx) := true.B
+      }
+    }
   }
 }
 
