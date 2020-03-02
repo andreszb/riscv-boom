@@ -114,6 +114,7 @@ class TagSetTester extends ChiselFlatSpec
 class TagSetTest[R <: TagSet](
   c: R) extends PeekPokeTester(c)
 {
+  // init everything to false
   poke(c.io.s0_add(0).valid, false.B)
   poke(c.io.s0_add(0).bits, 0.U)
   poke(c.io.s0_check(0).bits, 0.U)
@@ -123,16 +124,17 @@ class TagSetTest[R <: TagSet](
   poke(c.io.flush, false.B)
   step(1)
   poke(c.io.s0_add(0).valid, true.B)
-  for(i <- 0 until 64){
+  // add 0-127
+  for(i <- 0 until 128){
+    // check that in_set is only valid when read is ongoing
     expect(c.io.s1_in_set(0).valid, false.B)
     expect(c.io.s1_in_set(1).valid, false.B)
     poke(c.io.s0_add(0).bits, i.U)
     step(1)
-    poke(c.io.s0_add(0).bits, (i+64).U)
-    step(1)
   }
   poke(c.io.s0_add(0).valid, false.B)
   step(5)
+  // check that 0-127 are in set (i and i+64)
   poke(c.io.s0_check(0).valid, true.B)
   poke(c.io.s0_check(1).valid, true.B)
   for(i <- 0 until 64){
@@ -144,6 +146,7 @@ class TagSetTest[R <: TagSet](
     expect(c.io.s1_in_set(0).bits, true.B)
     expect(c.io.s1_in_set(1).bits, true.B)
   }
+  // check that some other numbers are not in set
   for(i <- 128 until 192){
     poke(c.io.s0_check(0).bits, i.U)
     poke(c.io.s0_check(1).bits, (i+64).U)
@@ -154,10 +157,12 @@ class TagSetTest[R <: TagSet](
     expect(c.io.s1_in_set(1).bits, false.B)
   }
   step(5)
+  // flush
   poke(c.io.flush, true.B)
   step(1)
   poke(c.io.flush, false.B)
   step(1)
+  // confirm that flush worked
   for(i <- 0 until 64){
     poke(c.io.s0_check(0).bits, i.U)
     poke(c.io.s0_check(1).bits, (i+64).U)
