@@ -97,12 +97,13 @@ class TagSet(entries: Int=128, ways: Int=2, width: Int=40, writeWidth:Int = 1, r
  */
 class TagSetTester extends ChiselFlatSpec
 {
+  val entries = 128
   for(memType <- "mem_delay_addr" :: "mem_delay_data" :: "sync_mem" :: Nil) {
     it should s"work for $memType" in
       {
-        chisel3.iotesters.Driver(() => new TagSet(memoryType = memType), "verilator")
+        chisel3.iotesters.Driver(() => new TagSet(memoryType = memType, entries=entries), "verilator")
         {
-          (c) => new TagSetTest(c)
+          (c) => new TagSetTest(c, entries)
         } should be (true)
       }
   }
@@ -112,7 +113,7 @@ class TagSetTester extends ChiselFlatSpec
  * Read/writes from register preg0 and make sure that it gets 0
  */
 class TagSetTest[R <: TagSet](
-  c: R) extends PeekPokeTester(c)
+  c: R, entries: Int) extends PeekPokeTester(c)
 {
   // init everything to false
   poke(c.io.s0_add(0).valid, false.B)
@@ -124,8 +125,8 @@ class TagSetTest[R <: TagSet](
   poke(c.io.flush, false.B)
   step(1)
   poke(c.io.s0_add(0).valid, true.B)
-  // add 0-127
-  for(i <- 0 until 128){
+  // add 0-entries
+  for(i <- 0 until entries){
     // check that in_set is only valid when read is ongoing
     expect(c.io.s1_in_set(0).valid, false.B)
     expect(c.io.s1_in_set(1).valid, false.B)
@@ -134,12 +135,12 @@ class TagSetTest[R <: TagSet](
   }
   poke(c.io.s0_add(0).valid, false.B)
   step(5)
-  // check that 0-127 are in set (i and i+64)
+  // check that 0-entries are in set (i and i+entries/2)
   poke(c.io.s0_check(0).valid, true.B)
   poke(c.io.s0_check(1).valid, true.B)
-  for(i <- 0 until 64){
+  for(i <- 0 until entries/2){
     poke(c.io.s0_check(0).bits, i.U)
-    poke(c.io.s0_check(1).bits, (i+64).U)
+    poke(c.io.s0_check(1).bits, (i+entries/2).U)
     step(1)
     expect(c.io.s1_in_set(0).valid, true.B)
     expect(c.io.s1_in_set(1).valid, true.B)
@@ -147,9 +148,9 @@ class TagSetTest[R <: TagSet](
     expect(c.io.s1_in_set(1).bits, true.B)
   }
   // check that some other numbers are not in set
-  for(i <- 128 until 192){
+  for(i <- entries until 2*entries){
     poke(c.io.s0_check(0).bits, i.U)
-    poke(c.io.s0_check(1).bits, (i+64).U)
+    poke(c.io.s0_check(1).bits, (i+entries).U)
     step(1)
     expect(c.io.s1_in_set(0).valid, true.B)
     expect(c.io.s1_in_set(1).valid, true.B)
@@ -163,9 +164,9 @@ class TagSetTest[R <: TagSet](
   poke(c.io.flush, false.B)
   step(1)
   // confirm that flush worked
-  for(i <- 0 until 64){
+  for(i <- 0 until entries/2){
     poke(c.io.s0_check(0).bits, i.U)
-    poke(c.io.s0_check(1).bits, (i+64).U)
+    poke(c.io.s0_check(1).bits, (i+entries/2).U)
     step(1)
     expect(c.io.s1_in_set(0).valid, true.B)
     expect(c.io.s1_in_set(1).valid, true.B)
