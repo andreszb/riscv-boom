@@ -213,7 +213,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
         ("nop", () => false.B),
       )),
 
-      new freechips.rocketchip.rocket.EventSet((mask, hits) => (mask & hits).orR, Seq(("nop", () => false.B),
+      new freechips.rocketchip.rocket.EventSet((mask, hits) => (mask & hits).orR, Seq(
         ("nop", () => false.B),
         ("nop", () => false.B),
         ("nop", () => false.B),
