@@ -5,6 +5,7 @@ import boom.common._
 import boom.exu.{BrResolutionInfo, BusyResp, CommitSignals}
 import chisel3._
 import chisel3.core.Bundle
+import chisel3.internal.naming.chiselName
 import chisel3.util._
 import freechips.rocketchip.config.Parameters
 import freechips.rocketchip.util.DescribedSRAM
@@ -34,16 +35,28 @@ abstract class InstructionSliceTable(entries: Int=128, ways: Int=2)(implicit p: 
   val lscParams = boomParams.loadSliceCore.get
 }
 
+
+
+@chiselName
 class InstructionSliceTableSyncMem(entries: Int=128, ways: Int=2)(implicit p: Parameters) extends InstructionSliceTable {
   // TODO: Enable bypass from mark->in_ist
 
+  require(ways<=2)
   // First the actual Cache with tag, valids and lru
-  val tag_tables = (0 until ways).map(i => DescribedSRAM(
-    name = s"ist_tag_ram_$i",
-    desc = "IST Tag Array",
-    size = entries/ways,
-    data = UInt(boomParams.loadSliceCore.get.ibda_tag_sz.W)
-  )._1)
+  val tag_tables = (0 until ways).map(i =>
+//    DescribedSRAM(
+//    name = s"ist_tag_ram_$i",
+//    desc = "IST Tag Array",
+//    size = entries/ways,
+//    data = UInt(boomParams.loadSliceCore.get.ibda_tag_sz.W)
+//  )._1
+//    Reg(Vec(entries/ways, UInt(boomParams.loadSliceCore.get.ibda_tag_sz.W)))
+//    SyncReadMem(entries/ways, UInt(boomParams.loadSliceCore.get.ibda_tag_sz.W))
+    Mem(entries/ways, UInt(boomParams.loadSliceCore.get.ibda_tag_sz.W))
+  )
+  // TODO: change back when using syncRead
+  val ist2_check_sram_tag = Reg(Vec(decodeWidth, Vec(ways, UInt(lscParams.ibda_tag_sz.W))))
+
   val tag_valids = (0 until ways).map(_ => RegInit(VecInit(Seq.fill(entries/ways)(false.B)))) //TODO: Use SyncReadMem
   val tag_lru = RegInit(VecInit(Seq.fill(entries/2)(false.B)))
 
@@ -52,13 +65,15 @@ class InstructionSliceTableSyncMem(entries: Int=128, ways: Int=2)(implicit p: Pa
   val ist1_check_tag = Wire(Vec(decodeWidth, UInt(lscParams.ibda_tag_sz.W)))
   val ist1_mark_valid  = Wire(Vec(lscParams.rdtIstMarkWidth, Bool()))
   val ist1_mark_tag  = Wire(Vec(lscParams.rdtIstMarkWidth, UInt(lscParams.ibda_tag_sz.W)))
+  dontTouch(ist1_check_tag)
 
   // Stage 2
-  val ist2_check_tag = Reg(Vec(decodeWidth, UInt(lscParams.ibda_tag_sz.W)))
-  val ist2_check_valid = Reg(Vec(decodeWidth, Bool()))
-  val ist2_check_sram_tag = Wire(Vec(decodeWidth, Vec(ways, UInt(lscParams.ibda_tag_sz.W))))
+  val ist2_check_tag = RegNext(ist1_check_tag)
+  val ist2_check_valid = RegNext(ist1_check_valid)
+//  val ist2_check_sram_tag = Wire(Vec(decodeWidth, Vec(ways, UInt(lscParams.ibda_tag_sz.W))))
   val ist2_check_sram_valid = Reg(Vec(decodeWidth, Vec(ways, Bool())))
   val ist2_in_ist = Wire(Vec(decodeWidth, Valid(Bool())))
+  dontTouch(ist2_check_sram_tag)
 
   require(entries == 128)
   require(ways == 2)
@@ -82,10 +97,6 @@ class InstructionSliceTableSyncMem(entries: Int=128, ways: Int=2)(implicit p: Pa
     // Connect to IO
     ist1_check_valid(i) := io.check(i).tag.valid
     ist1_check_tag(i) := io.check(i).tag.bits
-
-    // Latch to stage 2
-    ist2_check_tag(i) := ist1_check_tag(i)
-    ist2_check_valid(i) := ist1_check_valid(i)
   }
 
   for (i <- 0 until lscParams.rdtIstMarkWidth) {
@@ -97,7 +108,10 @@ class InstructionSliceTableSyncMem(entries: Int=128, ways: Int=2)(implicit p: Pa
   for(i <- 0 until decodeWidth) {
     val pc = ist1_check_tag(i)
     val idx = index(pc)
+    idx.suggestName(s"sram_read_addr_$i")
+    dontTouch(idx)
     for (j <- 0 until ways) {
+      // TODO: use read with enable based on valids
       ist2_check_sram_tag(i)(j) := tag_tables(j)(idx)
       ist2_check_sram_valid(i)(j) := tag_valids(j)(idx)
     }
@@ -109,7 +123,7 @@ class InstructionSliceTableSyncMem(entries: Int=128, ways: Int=2)(implicit p: Pa
     ist2_in_ist(i).bits := false.B
     val idx = index(ist2_check_tag(i))
     for(j <- 0 until ways) {
-      when(ist2_check_sram_valid(i)(j) && ist2_check_sram_tag(i)(j) === ist2_check_tag(i)) {
+      when(ist2_check_valid(i) && ist2_check_sram_valid(i)(j) && (ist2_check_sram_tag(i)(j) === ist2_check_tag(i))) {
         tag_lru(idx) := j.B // TODO: fix LRU hack
         ist2_in_ist(i).bits := true.B
       }
