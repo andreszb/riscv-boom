@@ -4,11 +4,10 @@
 //------------------------------------------------------------------------------
 
 import chisel3._
-import chisel3.core.Bundle
 import chisel3.iotesters._
 import chisel3.util.{ValidIO, log2Up}
 
-class TagSet(entries: Int=128, ways: Int=2, width: Int=40, writeWidth:Int = 1, readWidth:Int = 2) extends Module {
+class TagSet(entries: Int=128, ways: Int=2, width: Int=40, writeWidth:Int = 1, readWidth:Int = 2, memoryType:String = "sync_mem") extends Module {
   val io = IO(new Bundle{
     val s0_add = Input(Vec(writeWidth, ValidIO(UInt(width.W))))
     val s0_check  = Input(Vec(readWidth, ValidIO(UInt(width.W))))
@@ -20,20 +19,19 @@ class TagSet(entries: Int=128, ways: Int=2, width: Int=40, writeWidth:Int = 1, r
     val indexBits = log2Up(entries/ways)
     i(indexBits-1, 0)
   }
-  val tag_tables = (0 until ways).map(i =>
-    //    Reg(Vec(entries/ways, UInt(width.W)))
-//    Mem(entries/ways, UInt(width.W))
-    SyncReadMem(entries/ways, UInt(width.W))
+  val tag_tables = (0 until ways).map(i => memoryType match {
+//    case "reg" => Reg(Vec(entries/ways, UInt(width.W)))
+    case "mem_delay_addr" => Mem(entries/ways, UInt(width.W))
+    case "mem_delay_data" => Mem(entries/ways, UInt(width.W))
+    case "sync_mem" => SyncReadMem(entries/ways, UInt(width.W))
+  }
   )
   val tag_valids = (0 until ways).map(_ => RegInit(VecInit(Seq.fill(entries/ways)(false.B))))
   val tag_lru = RegInit(VecInit(Seq.fill(entries/2)(false.B)))
 
   val s1_check = RegNext(io.s0_check)
   val s1_tag_valids = Reg(Vec(readWidth, Vec(ways, Bool())))
-  // reg for mem & reg
-//  val s1_sram_tags = Reg(Vec(readWidth, Vec(ways, UInt(width.W))))
-  // wire for SyncReadMem
-    val s1_sram_tags = Wire(Vec(readWidth, Vec(ways, UInt(width.W))))
+  val s1_sram_tags = Wire(Vec(readWidth, Vec(ways, UInt(width.W))))
 
   // cycle 0
   for(i <- 0 until readWidth) {
@@ -41,8 +39,17 @@ class TagSet(entries: Int=128, ways: Int=2, width: Int=40, writeWidth:Int = 1, r
     idx.suggestName(s"sram_read_addr_$i")
     dontTouch(idx)
     for (j <- 0 until ways) {
-//      s1_sram_tags(i)(j) := tag_tables(j)(RegNext(idx))
-      s1_sram_tags(i)(j) := tag_tables(j)(idx)
+      memoryType match {
+        case "mem_delay_addr" => {
+          s1_sram_tags(i)(j) := tag_tables(j)(RegNext(idx))
+        }
+        case "mem_delay_data" => {
+          s1_sram_tags(i)(j) := RegNext(tag_tables(j)(idx))
+        }
+        case "sync_mem" => {
+          s1_sram_tags(i)(j) := tag_tables(j)(idx)
+        }
+      }
       s1_tag_valids(i)(j) := tag_valids(j)(idx)
     }
   }
@@ -90,13 +97,15 @@ class TagSet(entries: Int=128, ways: Int=2, width: Int=40, writeWidth:Int = 1, r
  */
 class TagSetTester extends ChiselFlatSpec
 {
-    it should s"work" in
+  for(memType <- "mem_delay_addr" :: "mem_delay_data" :: "sync_mem" :: Nil) {
+    it should s"work for $memType" in
       {
-        chisel3.iotesters.Driver(() => new TagSet(), "verilator")
+        chisel3.iotesters.Driver(() => new TagSet(memoryType = memType), "verilator")
         {
           (c) => new TagSetTest(c)
         } should be (true)
       }
+  }
 }
 
 /**
