@@ -216,7 +216,7 @@ class WithSliceBooms extends Config((site, here, up) => {
       gshare = Some(GShareParameters(historyLength=11, numSets=2048)),
       tage = None,
       bpdRandom = None,
-      nPerfCounters = 2,
+      nPerfCounters = 4,
       fpu = Some(freechips.rocketchip.tile.FPUParams(sfmaLatency=4, dfmaLatency=4, divSqrt=true)),
       useAtomics = true,
       usingFPU = true,
@@ -226,6 +226,8 @@ class WithSliceBooms extends Config((site, here, up) => {
         unifiedIssueQueue = true,
         aDispatches = 2,
         bDispatches = 2,
+        ibdaTagType = IBDA_TAG_FULL_PC,
+        rdtIstMarkWidth = 1
       ))
     ),
     dcache = Some(DCacheParams(rowBits = site(SystemBusKey).beatBits,
