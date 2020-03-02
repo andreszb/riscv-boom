@@ -19,10 +19,15 @@ class RdtUpdateSignals(implicit p: Parameters) extends BoomBundle
   val uop = new MicroOp
 }
 
+class RdtPerfCounters(implicit p: Parameters) extends BoomBundle {
+  val mark_used = Vec(4, Bool())
+}
+
 class RdtIO(implicit p: Parameters) extends BoomBundle
 {
   val update = Input(Vec(decodeWidth, new RdtUpdateSignals))
   val mark = Output(new IstMark)
+  val perf_counters = Output(new RdtPerfCounters())
 }
 
 class RegisterDependencyTable(implicit p: Parameters) extends BoomModule{
@@ -76,4 +81,23 @@ class RegisterDependencyTable(implicit p: Parameters) extends BoomModule{
       }
     }
   }
+
+  val cnt = PopCount(io.mark.mark.map(_.valid))
+  when (cnt === 0.U) {
+    io.perf_counters.mark_used.map(_ := false.B)
+  }. elsewhen(cnt === 1.U) {
+    io.perf_counters.mark_used.map(_ := false.B)
+    io.perf_counters.mark_used(0) := true.B
+  }. elsewhen(cnt === 2.U) {
+    io.perf_counters.mark_used.map(_ := false.B)
+    io.perf_counters.mark_used(1) := true.B
+  }. elsewhen(cnt === 3.U) {
+    io.perf_counters.mark_used.map(_ := false.B)
+    io.perf_counters.mark_used(2) := true.B
+  }. elsewhen(cnt === 4.U) {
+    io.perf_counters.mark_used.map(_ := false.B)
+    io.perf_counters.mark_used(3) := true.B
+  }
+
+
 }
