@@ -321,6 +321,14 @@ case class LoadSliceCoreParams(
     tag
   }
 
+  def rdtIstMarkSz: Int = {
+    if (rdtIstMarkWidth == 1) {
+      1
+    } else {
+      log2Ceil(rdtIstMarkWidth)
+    }
+  }
+
   // Get tag size.
   def ibda_tag_sz(): Int = {
     ibdaTagType match {
