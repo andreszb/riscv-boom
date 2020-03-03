@@ -38,6 +38,17 @@ class DispatchIO(implicit p: Parameters) extends BoomBundle
   val slice_flush = if(boomParams.loadSliceMode) Some(Input(Bool())) else None
 
   val tsc_reg = Input(UInt(width=xLen.W))
+
+  val lsc_perf = if(boomParams.loadSliceMode) Some(Output(new LscDispatchPerfCounters)) else None
+}
+
+/**
+  *
+  * Performance counters for LSC
+  */
+class LscDispatchPerfCounters(implicit p: Parameters) extends BoomBundle {
+  val aq = Vec(decodeWidth, Bool()) // Number of insts in A-Q
+  val bq = Vec(decodeWidth, Bool()) // Number of insts on B-Q
 }
 
 abstract class Dispatcher(implicit p: Parameters) extends BoomModule
@@ -125,6 +136,7 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher {
     // enqueue logic
     a_queue.io.enq_uops(w).valid := io.ren_uops(w).fire() && use_a_queue
     b_queue.io.enq_uops(w).valid := io.ren_uops(w).fire() && use_b_queue
+
     val uop_a = WireInit(uop)
     val uop_b = WireInit(uop)
 
@@ -151,6 +163,10 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher {
     b_queue.io.enq_uops(w).bits := uop_b
 
     assert(!(io.ren_uops(w).fire() && use_b_queue && uop_b.is_br_or_jmp), "[Dispatcher] We are puttig a branch/jump on B-Q")
+
+    // Perf counters
+    io.lsc_perf.get.aq(w) := io.ren_uops(w).fire() && use_a_queue
+    io.lsc_perf.get.bq(w) := io.ren_uops(w).fire() && use_b_queue && uop.uopc =/= uopSTA
   }
 
   // annotate heads with busy information

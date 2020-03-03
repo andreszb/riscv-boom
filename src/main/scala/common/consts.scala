@@ -413,6 +413,7 @@ trait LoadSliceCoreConstants
   val LSC_DIS_A_PORT_IDX = 0
   val LSC_DIS_B_PORT_IDX = 1
 
-  val IstFtqPortIdx = 0
-  val RdtFtqPortIdx = 2
+  val IBDA_TAG_FULL_PC = 0
+  val IBDA_TAG_UOPC_LOB = 1
+  val IBDA_TAG_INST_LOB = 2
 }

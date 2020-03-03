@@ -28,22 +28,20 @@
 
 package boom.exu
 
-import java.nio.file.{Paths}
+import java.nio.file.Paths
 
 import chisel3._
 import chisel3.util._
-
 import freechips.rocketchip.config.Parameters
 import freechips.rocketchip.rocket.Instructions._
 import freechips.rocketchip.rocket.{Causes, PRV}
-import freechips.rocketchip.util.{Str, UIntIsOneOf, CoreMonitorBundle}
-import freechips.rocketchip.devices.tilelink.{PLICConsts, CLINTConsts}
-
+import freechips.rocketchip.util.{CoreMonitorBundle, Str, UIntIsOneOf}
+import freechips.rocketchip.devices.tilelink.{CLINTConsts, PLICConsts}
 import boom.common._
 import boom.exu.FUConstants._
 import boom.common.BoomTilesKey
-import boom.util.{RobTypeToChars, BoolToChar, GetNewUopAndBrMask, Sext, WrapInc, BoomCoreStringPrefix, DromajoCosimBlackBox, AlignPCToBoundary}
-import lsc.{InstructionSliceTable, RegisterDependencyTable}
+import boom.util.{AlignPCToBoundary, BoolToChar, BoomCoreStringPrefix, DromajoCosimBlackBox, GetNewUopAndBrMask, RobTypeToChars, Sext, WrapInc}
+import lsc.{InstructionSliceTable, InstructionSliceTableSyncMem, RdtBasic, RdtOneBit, RdtSyncMem}
 
 
 /**
@@ -159,8 +157,8 @@ class BoomCore(implicit p: Parameters) extends BoomModule
                            numIrfWritePorts + numFpWakeupPorts, // +memWidth for ll writebacks
                            numFpWakeupPorts))
 
-  val ist = if(boomParams.loadSliceMode) Some(Module(new InstructionSliceTable())) else None
-  val rdt = if(boomParams.loadSliceMode) Some(Module(new RegisterDependencyTable())) else None
+  val ist = if(boomParams.loadSliceMode) Some(Module(new InstructionSliceTableSyncMem())) else None
+  val rdt = if(boomParams.loadSliceMode) Some(Module(new RdtSyncMem())) else None
   // Used to wakeup registers in rename and issue. ROB needs to listen to something else.
   val int_iss_wakeups  = Wire(Vec(numIntIssueWakeupPorts, Valid(new ExeUnitResp(xLen))))
   val int_ren_wakeups  = Wire(Vec(numIntRenameWakeupPorts, Valid(new ExeUnitResp(xLen))))
@@ -222,30 +220,49 @@ class BoomCore(implicit p: Parameters) extends BoomModule
 
   //-------------------------------------------------------------
   // Uarch Hardware Performance Events (HPEs)
-
   val perfEvents = new freechips.rocketchip.rocket.EventSets(Seq(
-    new freechips.rocketchip.rocket.EventSet((mask, hits) => (mask & hits).orR, Seq(
-      ("exception", () => rob.io.com_xcpt.valid),
-      ("nop",       () => false.B),
-      ("nop",       () => false.B),
-      ("nop",       () => false.B))),
+      new freechips.rocketchip.rocket.EventSet((mask, hits) => (mask & hits).orR, Seq(
+        ("exception", () => rob.io.com_xcpt.valid),
+        ("nop", () => false.B),
+        ("nop", () => false.B),
+        ("nop", () => false.B),
+        ("nop", () => false.B),
+        ("nop", () => false.B),
+        ("branch resolved", () => br_unit.brinfo.valid),
+        ("nop", () => false.B),
+        ("nop", () => false.B),
+      )),
 
-    new freechips.rocketchip.rocket.EventSet((mask, hits) => (mask & hits).orR, Seq(
-      ("I$ blocked",                        () => icache_blocked),
-      ("nop",                               () => false.B),
-      ("branch misprediction",              () => br_unit.brinfo.mispredict),
-      ("control-flow target misprediction", () => br_unit.brinfo.mispredict &&
-                                                  br_unit.brinfo.is_jr),
-      ("flush",                             () => rob.io.flush.valid),
-      ("branch resolved",                   () => br_unit.brinfo.valid))),
+      new freechips.rocketchip.rocket.EventSet((mask, hits) => (mask & hits).orR, Seq(
+        ("nop", () => false.B),
+        ("nop", () => false.B),
+        ("nop", () => false.B),
+        ("I$ blocked", () => icache_blocked),
+        ("nop", () => false.B),
+        ("branch misprediction", () => br_unit.brinfo.mispredict),
+        ("control-flow target misprediction", () => br_unit.brinfo.mispredict &&
+          br_unit.brinfo.is_jr),
+        ("flush", () => rob.io.flush.valid),
+        )),
 
-    new freechips.rocketchip.rocket.EventSet((mask, hits) => (mask & hits).orR, Seq(
-      ("I$ miss",     () => io.ifu.perf.acquire),
-//      ("D$ miss",     () => io.dmem.perf.acquire),
-//      ("D$ release",  () => io.dmem.perf.release),
-      ("ITLB miss",   () => io.ifu.perf.tlbMiss),
-//      ("DTLB miss",   () => io.dmem.perf.tlbMiss),
-      ("L2 TLB miss", () => io.ptw.perf.l2miss)))))
+      new freechips.rocketchip.rocket.EventSet((mask, hits) => (mask & hits).orR, Seq(
+        ("I$ miss", () => io.ifu.perf.acquire),
+        ("nop - D$ miss",     () => false.B),
+        ("nop -'D$ release",  () => false.B),
+        ("ITLB miss", () => io.ifu.perf.tlbMiss),
+        ("nop - DTLB miss",   () => false.B),
+        ("L2 TLB miss", () => io.ptw.perf.l2miss)))
+      ) ++ (if (boomParams.loadSliceCore.isDefined && decodeWidth == 2) Seq(
+      // LSC events
+      new freechips.rocketchip.rocket.EventSet((mask, hits) => (mask & hits).orR, Seq(
+        ("A-Q0", () => dispatcher.io.lsc_perf.get.aq(0)),
+        ("B-Q0", () => dispatcher.io.lsc_perf.get.bq(0)),
+        ("A-Q1", () => dispatcher.io.lsc_perf.get.aq(1)),
+        ("B-Q1", () => dispatcher.io.lsc_perf.get.bq(1)))))
+       else Seq())
+    )
+  perfEvents.print()
+
 
   val csr = Module(new freechips.rocketchip.rocket.CSRFile(perfEvents, boomParams.customCSRs.decls))
   csr.io.inst foreach { c => c := DontCare }
@@ -503,6 +520,45 @@ class BoomCore(implicit p: Parameters) extends BoomModule
 
   branch_mask_full := dec_brmask_logic.io.is_full
 
+
+  //-------------------------------------------------------------
+  // Instruction Slice Lookup
+
+  val ist_pc =  WireInit(VecInit(Seq.fill(decodeWidth) {0.U(vaddrBitsExtended.W)}))
+  if (boomParams.loadSliceMode) {
+    val LscParams = boomParams.loadSliceCore.get
+    // If we want the Full PC we need FTQ ports and etc. This is not
+    //  the preferred way since we need so many ports to FTQ
+    if (LscParams.ibdaTagType == IBDA_TAG_FULL_PC) {
+      val get_pc_slice = io.ifu.get_pc_slice.get
+      for (w <- 0 until coreWidth) {
+
+        // Request fetch_pc from FTQ
+        get_pc_slice(w).ftq_idx := dec_uops(w).ftq_idx
+        // Recreate PC for dispatched uop
+        val block_pc = AlignPCToBoundary(get_pc_slice(w).fetch_pc, icBlockBytes)
+        ist_pc(w) := (block_pc | dec_uops(w).pc_lob) - Mux(dec_uops(w).edge_inst, 2.U, 0.U)
+        ist.get.io.check(w).tag.valid := dec_fire(w)
+        ist.get.io.check(w).tag.bits := ist_pc(w)
+        when(ist.get.io.check(w).in_ist.valid) {
+          dis_uops(w).is_lsc_b := ist.get.io.check(w).in_ist.bits
+        }
+
+        assert(!(dec_fire(w) && (dec_uops(w).debug_pc =/= ist_pc(w))), "[IST] debug_pc and fetch_pc mismatch")
+      }
+    } else {
+      require(false)
+      // We dont want the full PC but rather some hash of the UOP.
+      for (w <- 0 until coreWidth) {
+        ist.get.io.check(w).tag.valid := dec_fire(w)
+        ist.get.io.check(w).tag.bits := LscParams.ibda_get_tag(dec_uops(w))
+
+      }
+    }
+
+  }
+
+
   //-------------------------------------------------------------
   //-------------------------------------------------------------
   // **** Register Rename Stage ****
@@ -533,7 +589,27 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   dis_valids := rename_stage.io.ren2_mask
   ren_stalls := rename_stage.io.ren_stalls
 
+  val in_ist_reg = if (boomParams.loadSliceMode) Some(Reg(Vec(decodeWidth, Bool()))) else None
+  val has_stalled = if (boomParams.loadSliceMode) Some(Reg(Vec(decodeWidth, Bool()))) else None
 
+  if (boomParams.loadSliceMode) {
+    // IST check. We have to deal with pipeline stalls
+    for (w <- 0 until coreWidth) {
+      val in_ist = ist.get.io.check(w).in_ist.bits
+      when(ist.get.io.check(w).in_ist.valid) {
+        in_ist_reg.get(w) := in_ist
+      }
+
+      when(dis_fire(w)) {
+        dis_uops(w).is_lsc_b := Mux(has_stalled.get(w), in_ist_reg.get(w), in_ist)
+        has_stalled.get(w) := false.B
+      }.otherwise {
+        has_stalled.get(w) := (ist.get.io.check(w).in_ist.valid || has_stalled.get(w)) &&
+                              !(br_unit.brinfo.mispredict && br_unit.brinfo.valid) // This only counts as a stall when we have valid in_ist
+      }
+
+    }
+  }
   /**
    * TODO This is a bit nasty, but it's currently necessary to
    * split the INT/FP rename pipelines into separate instantiations.
@@ -560,6 +636,37 @@ class BoomCore(implicit p: Parameters) extends BoomModule
 
     ren_stalls(w) := rename_stage.io.ren_stalls(w) || f_stall
   }
+
+
+  //-------------------------------------------------------------
+  // Register Dependency Table update
+  //-------------------------------------------------------------
+  if (boomParams.loadSliceMode) {
+    val LscParams = boomParams.loadSliceCore.get
+    val rdt_pc = Reg(Vec(decodeWidth, UInt(vaddrBitsExtended.W)))
+    // Connect RDT to IST. Mark new instructions as part of a load slice in IST
+    ist.get.io.mark := rdt.get.io.mark
+
+    // Connect the dispatched instruction to RDT. If we wanna use the full pc also
+    //  get the PC that the IST calculated last CC
+    for (w <- 0 until decodeWidth) {
+      rdt.get.io.update(w).valid := dis_fire(w)
+      rdt.get.io.update(w).uop := dis_uops(w)
+      if (LscParams.ibdaTagType == IBDA_TAG_FULL_PC) {
+        // Only update rdt_pc on next CC when we decode. I.e. when IST does a lookup.
+        when(dec_fire(w)) {
+          rdt_pc(w) := ist_pc(w)
+        }
+        rdt.get.io.update(w).tag :=  rdt_pc(w)
+
+      } else {
+        rdt.get.io.update(w).tag :=  LscParams.ibda_get_tag(dis_uops(w))
+      }
+
+    }
+
+  }
+
 
   //-------------------------------------------------------------
   //-------------------------------------------------------------
@@ -643,29 +750,6 @@ class BoomCore(implicit p: Parameters) extends BoomModule
 
   //-------------------------------------------------------------
   // Dispatch to issue queues
-
-  // ist lookup
-
-  if(boomParams.loadSliceMode) {
-    // Unwrap port to FTQ
-    val get_pc_slice = io.ifu.get_pc_slice.get
-    for (w <- 0 until coreWidth) {
-      // Access only IST ports
-      val idx = w + IstFtqPortIdx
-      // Request fetch_pc from FTQ
-      get_pc_slice(idx).ftq_idx := dis_uops(w).ftq_idx
-      // Recreate PC for dispatched uop
-      val block_pc = AlignPCToBoundary(get_pc_slice(idx).fetch_pc, icBlockBytes)
-      val pc = (block_pc | dis_uops(w).pc_lob) - Mux(dis_uops(w).edge_inst, 2.U, 0.U)
-      ist.get.io.check(w).addr.valid := dis_fire(w)
-      ist.get.io.check(w).addr.bits := pc
-      dis_uops(w).is_lsc_b := ist.get.io.check(w).in_ist
-
-      assert(!(dis_fire(w) && (dis_uops(w).debug_pc =/= pc)), "[IST] debug_pc and fetch_pc mismatch")
-    }
-
-
-  }
 
   // Get uops from rename2
   for (w <- 0 until coreWidth) {
@@ -1215,32 +1299,6 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   assert (!(csr.io.singleStep), "[core] single-step is unsupported.")
 
   rob.io.bxcpt <> br_unit.xcpt
-
-  //-------------------------------------------------------------
-  // **** IBDA ****
-  //-------------------------------------------------------------
-
-  if (boomParams.loadSliceMode) {
-    // Connect RDT and IST and forward the commit signals from ROB to RDT
-    ist.get.io.mark := rdt.get.io.mark
-    rdt.get.io.commit.rob := rob.io.commit
-
-    // Unwrap port to FTQ
-    val get_pc_slice = io.ifu.get_pc_slice.get
-    for (w <- 0 until retireWidth) {
-      val idx = w + RdtFtqPortIdx
-      // Request fetch_pc from ftq_idx
-      get_pc_slice(idx).ftq_idx := rob.io.commit.uops(w).ftq_idx
-      // Recreate PC of this instruction
-      val block_pc = AlignPCToBoundary(get_pc_slice(idx).fetch_pc, icBlockBytes)
-      val pc = (block_pc | rob.io.commit.uops(w).pc_lob) - Mux(rob.io.commit.uops(w).edge_inst, 2.U, 0.U)
-      rdt.get.io.commit.pc(w) := pc
-
-      assert(!(rob.io.commit.valids(w) && (pc =/= rob.io.commit.uops(w).debug_pc)), "[RDT] fetch_pc and debug_pc mismatch")
-    }
-  }
-
-
 
   //-------------------------------------------------------------
   // **** Flush Pipeline ****
