@@ -27,18 +27,15 @@ import boom.util.{BoomCoreStringPrefix}
  */
 class FpPipeline(implicit p: Parameters) extends BoomModule with tile.HasFPUParameters
 {
-  val fpIssueParams = issueParams.find(_.iqType == IQT_FP.litValue).get
-  val dispatchWidth = fpIssueParams.dispatchWidth
+  val dispatchWidth = fpIssueParam.dispatchWidth
   val numLlPorts = memWidth
-  val numWakeupPorts = fpIssueParams.issueWidth + numLlPorts
+  val numWakeupPorts = fpIssueParam.issueWidth + numLlPorts
   val fpPregSz = log2Ceil(numFpPhysRegs)
 
   val io = IO(new Bundle {
     val brinfo           = Input(new BrResolutionInfo())
     val flush_pipeline   = Input(Bool())
     val fcsr_rm          = Input(UInt(width=freechips.rocketchip.tile.FPConstants.RM_SZ.W))
-
-    val dis_uops         = Vec(dispatchWidth, Flipped(Decoupled(new MicroOp)))
 
     // +1 for recoding.
     val ll_wports        = Flipped(Vec(memWidth, Decoupled(new ExeUnitResp(fLen+1))))// from memory unit
@@ -50,21 +47,20 @@ class FpPipeline(implicit p: Parameters) extends BoomModule with tile.HasFPUPara
     val wb_valids        = Input(Vec(numWakeupPorts, Bool()))
     val wb_pdsts         = Input(Vec(numWakeupPorts, UInt(width=fpPregSz.W)))
 
-    val debug_tsc_reg    = Input(UInt(width=xLen.W))
     val debug_wb_wdata   = Output(Vec(numWakeupPorts, UInt((fLen+1).W)))
+
+    val iss = new Bundle() {
+      val iss_valids       = Input(Vec(fpIssueParam.issueWidth, Bool()))
+      val iss_uops         = Input(Vec(fpIssueParam.issueWidth, new MicroOp()))
+      val fu_types         = Output(Vec(fpIssueParam.issueWidth, Bits(FUC_SZ.W)))
+      val wakeup_ports     = Vec(numWakeupPorts, Valid(new IqWakeup(maxPregSz)))
+    }
   })
 
   //**********************************
   // construct all of the modules
 
   val exe_units      = new boom.exu.ExecutionUnits(fpu=true)
-  val issueParam     = issueParams.find(_.iqType == IQT_FP.litValue).get
-  val issue_unit: IssueUnit = if(boomParams.loadSliceMode){
-    Module(new IssueUnitSlice(issueParam, numWakeupPorts))
-  } else{
-    Module(new IssueUnitCollapsing(issueParam, numWakeupPorts))
-  }
-  issue_unit.suggestName("fp_issue_unit")
   val fregfile       = Module(new RegisterFileSynthesizable(numFpPhysRegs,
                          exe_units.numFrfReadPorts,
                          exe_units.numFrfWritePorts + memWidth,
@@ -73,14 +69,14 @@ class FpPipeline(implicit p: Parameters) extends BoomModule with tile.HasFPUPara
                          Seq.fill(exe_units.numFrfWritePorts + memWidth){ false }
                          ))
   val fregister_read = Module(new RegisterRead(
-                         issue_unit.issueWidth,
+                         fpIssueParam.issueWidth,
                          exe_units.withFilter(_.readsFrf).map(_.supportedFuncUnits),
                          exe_units.numFrfReadPorts,
                          exe_units.withFilter(_.readsFrf).map(x => 3),
                          0, // No bypass for FP
                          fLen+1))
 
-  require (exe_units.count(_.readsFrf) == issue_unit.issueWidth)
+  require (exe_units.count(_.readsFrf) == fpIssueParam.issueWidth)
   require (exe_units.numFrfWritePorts + numLlPorts == numWakeupPorts)
 
   //*************************************************************
@@ -89,49 +85,34 @@ class FpPipeline(implicit p: Parameters) extends BoomModule with tile.HasFPUPara
   val iss_valids = Wire(Vec(exe_units.numFrfReaders, Bool()))
   val iss_uops   = Wire(Vec(exe_units.numFrfReaders, new MicroOp()))
 
-  issue_unit.io.tsc_reg := io.debug_tsc_reg
-  issue_unit.io.brinfo := io.brinfo
-  issue_unit.io.flush_pipeline := io.flush_pipeline
-  // Don't support ld-hit speculation to FP window.
-  issue_unit.io.spec_ld_wakeup.valid := false.B
-  issue_unit.io.spec_ld_wakeup.bits := 0.U
-  issue_unit.io.ld_miss := false.B
 
   require (exe_units.numTotalBypassPorts == 0)
-
-  //-------------------------------------------------------------
-  // **** Dispatch Stage ****
-  //-------------------------------------------------------------
-
-  // Input (Dispatch)
-  for (w <- 0 until dispatchWidth) {
-    issue_unit.io.dis_uops(w) <> io.dis_uops(w)
-  }
 
   //-------------------------------------------------------------
   // **** Issue Stage ****
   //-------------------------------------------------------------
 
   // Output (Issue)
-  for (i <- 0 until issue_unit.issueWidth) {
-    iss_valids(i) := issue_unit.io.iss_valids(i)
-    iss_uops(i) := issue_unit.io.iss_uops(i)
+  for (i <- 0 until fpIssueParam.issueWidth) {
+    iss_valids(i) := io.iss.iss_valids(i)
+    iss_uops(i) := io.iss.iss_uops(i)
 
     var fu_types = exe_units(i).io.fu_types
     if (exe_units(i).supportedFuncUnits.fdiv) {
       val fdiv_issued = iss_valids(i) && iss_uops(i).fu_code_is(FU_FDV)
       fu_types = fu_types & RegNext(~Mux(fdiv_issued, FU_FDV, 0.U))
     }
-    issue_unit.io.fu_types(i) := fu_types
+    io.iss.fu_types(i) := fu_types
 
     require (exe_units(i).readsFrf)
   }
 
   // Wakeup
-  for ((writeback, issue_wakeup) <- io.wakeups zip issue_unit.io.wakeup_ports) {
+  for ((writeback, issue_wakeup) <- io.wakeups zip io.iss.wakeup_ports) {
     issue_wakeup.valid := writeback.valid
     issue_wakeup.bits.pdst  := writeback.bits.uop.pdst
     issue_wakeup.bits.poisoned := false.B
+    issue_wakeup.bits.reg_type.map(_ := RT_FLT)
   }
 
   //-------------------------------------------------------------

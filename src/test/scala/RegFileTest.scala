@@ -5,6 +5,16 @@
 //
 //package boom.tests
 //
+
+//import boom.common.BoomTilesKey
+//
+//import scala.util.Random
+//import org.scalatest._
+//import chisel3._
+//import chisel3.util._
+//import chisel3.iotesters._
+//import freechips.rocketchip.config.Parameters
+
 //import scala.util.Random
 //
 //import org.scalatest._
@@ -13,15 +23,19 @@
 //import chisel3.util._
 //import chisel3.iotesters._
 //
-//import freechips.rocketchip.config.{Parameters}
+
 //import freechips.rocketchip.system._
 //import freechips.rocketchip.tile._
 //import freechips.rocketchip.tilelink._
 //import freechips.rocketchip.diplomacy._
 //import freechips.rocketchip.subsystem._
+
+//import boom.exu.{RegisterFile, RegisterFileSeqCustomArray, RegisterFileSynthesizable}
+
 //import boom.system._
 //
 //import boom.exu.{RegisterFile, RegisterFileSynthesizable, RegisterFileSeqCustomArray}
+
 //
 ///**
 // * Main register file tester
