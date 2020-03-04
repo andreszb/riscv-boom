@@ -34,7 +34,6 @@ class RenameBusyTable(
 {
   val pregSz = log2Ceil(numPregs)
   val reqWidth = boomParams.busyLookupParams.map(_.busyTableReqWidth(plWidth)).getOrElse(plWidth)
-
   val io = IO(new BoomBundle()(p) {
     val ren_uops = Input(Vec(plWidth, new MicroOp))
     val rebusy_reqs = Input(Vec(plWidth, Bool()))

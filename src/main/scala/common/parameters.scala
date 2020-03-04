@@ -382,8 +382,7 @@ case class BusyLookupParams(
     if (lookupAtRename) {
       lookupAtDisWidth + plWidth
     } else {
-      plWidth
+      lookupAtDisWidth
     }
   }
-
 }
