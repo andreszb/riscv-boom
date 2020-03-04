@@ -87,7 +87,9 @@ case class BoomCoreParams(
   useRVE: Boolean = false,
   useBPWatch: Boolean = false,
   clockGate: Boolean = false,
-  loadSliceCore: Option[LoadSliceCoreParams] = None
+  loadSliceCore: Option[LoadSliceCoreParams] = None,
+  ibdaParams: Option[IbdaParams] = None,
+  busyLookupParams: Option[BusyLookupParams] = None,
 
 ) extends freechips.rocketchip.tile.CoreParams
 {
@@ -98,6 +100,8 @@ case class BoomCoreParams(
   val retireWidth = decodeWidth
   val jumpInFrontend: Boolean = false // unused in boom
   val loadSliceMode: Boolean = loadSliceCore.isDefined
+  val ibdaMode: Boolean = loadSliceMode
+
   val unifiedIssueQueue: Boolean = loadSliceCore.exists(_.unifiedIssueQueue)
 
   override def customCSRs(implicit p: Parameters) = new BoomCustomCSRs
@@ -314,12 +318,18 @@ case class LoadSliceCoreParams(
                                 numBqEntries: Int = 8,
                                 unifiedIssueQueue: Boolean = false,
                                 aDispatches: Int = 1,
-                                bDispatches: Int = 1,
-                                ibdaTagType: Int = IBDA_TAG_FULL_PC,
-                                rdtIstMarkWidth: Int = 4,
+                                bDispatches: Int = 1
 ){
   def dispatches(): Int = aDispatches+bDispatches
 
+}
+
+/**
+  * IBDA Params, used by LsC and DnB
+ */
+case class IbdaParams( ibdaTagType: Int = IBDA_TAG_FULL_PC,
+                       rdtIstMarkWidth: Int = 4)
+{
   def ibda_get_tag(uop: MicroOp): UInt = {
     val tag = Wire(UInt(ibda_tag_sz.W))
     if (ibdaTagType == IBDA_TAG_FULL_PC) tag := uop.debug_pc
@@ -351,4 +361,15 @@ case class LoadSliceCoreParams(
     }
 
   }
+}
+
+/**
+  * Busy lookup params. Deciding how we read the busy table of the REN stage
+  */
+case class BusyLookupParams(
+                           lookupAtRename: Boolean = true, //Should we do busy-looup at ren2 (default behaviour of boom)
+                           lookupAtDisWidth: Int = 0, // How many read ports should we have to the busy-table from the Dispatch port?
+                           )
+{
+
 }

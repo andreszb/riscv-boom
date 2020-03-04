@@ -225,10 +225,17 @@ class WithSliceBooms extends Config((site, here, up) => {
         numBqEntries = 8,
         unifiedIssueQueue = true,
         aDispatches = 2,
-        bDispatches = 2,
+        bDispatches = 2
+      )),
+      ibdaParams = Some(IbdaParams(
         ibdaTagType = IBDA_TAG_FULL_PC,
         rdtIstMarkWidth = 1
+      )),
+      busyLookupParams = Some(BusyLookupParams(
+        lookupAtRename = false,
+        lookupAtDisWidth = 4
       ))
+
     ),
     dcache = Some(DCacheParams(rowBits = site(SystemBusKey).beatBits,
                                nSets=64, nWays=4, nMSHRs=2, nTLBEntries=8)),
