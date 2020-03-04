@@ -185,7 +185,7 @@ class WithSmallBooms extends Config((site, here, up) => {
   case XLen => 64
   case MaxHartIdBits => log2Up(site(BoomTilesKey).size)
 })
-class WithSliceBooms extends Config((site, here, up) => {
+class WithDnbBooms extends Config((site, here, up) => {
   case BoomTilesKey => up(BoomTilesKey, site) map { b => b.copy(
     core = b.core.copy(
       fetchWidth = 4,

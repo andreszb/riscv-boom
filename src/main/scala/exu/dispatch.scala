@@ -19,6 +19,7 @@ import boom.common.{IQT_MFP, MicroOp, O3PIPEVIEW_PRINTF, uopLD, _}
 import boom.util._
 import chisel3.internal.naming.chiselName
 
+
 class DispatchIO(implicit p: Parameters) extends BoomBundle
 {
   // incoming microops from rename2
@@ -31,16 +32,21 @@ class DispatchIO(implicit p: Parameters) extends BoomBundle
   // io for busy table - used only for LSC
   val busy_req_uops = if(boomParams.busyLookupMode) Some(Output(Vec(boomParams.busyLookupParams.get.busyTableReqWidth(coreWidth), new MicroOp))) else None //TODO: change width
   val busy_resps = if(boomParams.busyLookupMode) Some(Input(Vec(boomParams.busyLookupParams.get.busyTableReqWidth(coreWidth), new BusyResp))) else None
-  val fp_busy_req_uops = if(boomParams.busyLookupMode && usingFPU) Some(Output(Vec(boomParams.busyLookupParams.get.busyTableReqWidth(coreWidth), new MicroOp))) else None
-  val fp_busy_resps = if(boomParams.busyLookupMode && usingFPU) Some(Input(Vec(boomParams.busyLookupParams.get.busyTableReqWidth(coreWidth), new BusyResp))) else None
+  val fp_busy_req_uops = if(boomParams.busyLookupMode && usingFPU && boomParams.loadSliceMode) Some(Output(Vec(boomParams.busyLookupParams.get.busyTableReqWidth(coreWidth), new MicroOp))) else None
+  val fp_busy_resps = if(boomParams.busyLookupMode && usingFPU && boomParams.loadSliceMode) Some(Input(Vec(boomParams.busyLookupParams.get.busyTableReqWidth(coreWidth), new BusyResp))) else None
   // brinfo & flush for LSC
-  val brinfo = if(boomParams.loadSliceMode) Some(Input(new BrResolutionInfo())) else None
-  val flush = if(boomParams.loadSliceMode) Some(Input(Bool())) else None
+  val brinfo = if(boomParams.loadSliceMode || boomParams.dnbMode) Some(Input(new BrResolutionInfo())) else None
+  val flush = if(boomParams.loadSliceMode || boomParams.dnbMode) Some(Input(Bool())) else None
+
+  // DnB ports to UIQ
+  val dlq_head = if(boomParams.dnbMode) Some(DecoupledIO(new MicroOp)) else None
+  val crq_head = if(boomParams.dnbMode) Some(DecoupledIO(new MicroOp)) else None
 
   val tsc_reg = Input(UInt(width=xLen.W))
 
   val lsc_perf = if(boomParams.loadSliceMode) Some(Output(new LscDispatchPerfCounters)) else None
 }
+
 
 /**
   *
@@ -79,6 +85,68 @@ class BasicDispatcher(implicit p: Parameters) extends Dispatcher
     dis(w).bits  := io.ren_uops(w).bits
   }
 }
+
+class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
+  // FIFOs
+  val dnbParams = boomParams.dnbParams.get
+  val dlq = Module(new SliceDispatchQueue(
+    numEntries = dnbParams.numDlqEntries,
+    qName="DLQ",
+    deqWidth=1
+  ))
+  val crq = Module(new SliceDispatchQueue(
+    numEntries = dnbParams.numCrqEntries,
+    qName="CRQ",
+    deqWidth=1
+  ))
+
+  // Route brinfo and flush into the fifos
+  dlq.io.brinfo := io.brinfo.get
+  dlq.io.flush := io.flush.get
+  crq.io.brinfo := io.brinfo.get
+  crq.io.flush  := io.flush.get
+
+  // Are we ready to accept incoming uops
+  // TODO: Enable partial dispatch/stall
+  val dlq_ready = dlq.io.enq_uops.map(_.ready).reduce(_ && _)
+  val crq_ready = crq.io.enq_uops.map(_.ready).reduce(_ && _)
+  val iq_ready = io.dis_uops(LSC_DIS_COMB_PORT_IDX).map(_.ready).reduce(_ && _)
+  val queues_ready = dlq_ready && crq_ready && iq_ready
+  // Handle incoming renamed uops
+  var iq_enq_idx = 0
+  for (i <- 0 until coreWidth) {
+    io.ren_uops(i).ready := queues_ready
+
+    val uop = io.ren_uops(i).bits
+    val uop_critical = uop.is_lsc_b
+    val uop_ready = !(uop.prs1_busy || uop.prs2_busy || uop.prs3_busy)
+
+    when(!uop_critical) {
+      dlq.io.enq_uops(i).valid := io.ren_uops(i).fire
+      dlq.io.enq_uops(i).bits := uop
+    }. elsewhen(uop_critical && !uop_ready) {
+      io.dis_uops(LSC_DIS_COMB_PORT_IDX)(i).valid := io.ren_uops(i).fire
+      io.dis_uops(LSC_DIS_COMB_PORT_IDX)(i).bits := uop
+    }. elsewhen(uop_critical && uop_ready) {
+      crq.io.enq_uops(i).valid := io.ren_uops(i).fire
+      crq.io.enq_uops(i).bits := uop
+    }
+  }
+
+  // Handle CRQ dequeues
+  io.crq_head.get <> crq.io.heads(0)
+
+  // Handle DLQ dequeues
+  //  A little more complicated as we need to pass along the updated ready info
+  io.busy_req_uops.get(0) := dlq.io.heads(0).bits
+  io.dlq_head.get <> dlq.io.heads(0)
+  // Now, update busy info
+  io.dlq_head.get.bits.prs1_busy := io.dlq_head.get.bits.lrs1_rtype === RT_FIX && io.busy_resps.get(0).prs1_busy
+  io.dlq_head.get.bits.prs2_busy := io.dlq_head.get.bits.lrs2_rtype === RT_FIX && io.busy_resps.get(0).prs2_busy
+  io.dlq_head.get.bits.prs3_busy := false.B
+
+}
+
 /**
  * LSC Dispatcher - contains both A and B queues and accesses the busy table at their end.
  */
