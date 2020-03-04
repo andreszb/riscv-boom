@@ -70,8 +70,8 @@ class RenameStageIO(
   val debug = Output(new DebugRenameStageIO(numPhysRegs))
 
   require(coreWidth == plWidth) // make sure we can use coreWidth and plWidth interchangeably
-  val slice_busy_req_uops = if(boomParams.loadSliceMode) Some(Input(Vec(coreWidth, new MicroOp))) else None
-  val slice_busy_resps = if(boomParams.loadSliceMode) Some(Output(Vec(coreWidth, new BusyResp))) else None
+  val slice_busy_req_uops = if(boomParams.loadSliceMode) Some(Input(Vec(boomParams.loadSliceCore.get.dispatches, new MicroOp))) else None
+  val slice_busy_resps = if(boomParams.loadSliceMode) Some(Output(Vec(boomParams.loadSliceCore.get.dispatches, new BusyResp))) else None
 }
 
 /**

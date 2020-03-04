@@ -98,6 +98,7 @@ case class BoomCoreParams(
   val retireWidth = decodeWidth
   val jumpInFrontend: Boolean = false // unused in boom
   val loadSliceMode: Boolean = loadSliceCore.isDefined
+  val unifiedIssueQueue: Boolean = loadSliceCore.exists(_.unifiedIssueQueue)
 
   override def customCSRs(implicit p: Parameters) = new BoomCustomCSRs
 }
@@ -191,12 +192,16 @@ trait HasBoomCoreParameters extends freechips.rocketchip.tile.HasCoreParameters
 
   val intIssueParam = issueParams.find(_.iqType == IQT_INT.litValue).get
   val memIssueParam = issueParams.find(_.iqType == IQT_MEM.litValue).get
+  val fpIssueParam = issueParams.find(_.iqType == IQT_FP.litValue).get
+  val combIssueParam = issueParams.find(_.iqType == IQT_COMB.litValue)
 
   val intWidth = intIssueParam.issueWidth
   val memWidth = memIssueParam.issueWidth
 
 
-  issueParams.map(x => require(x.dispatchWidth <= coreWidth && x.dispatchWidth > 0))
+  if(!boomParams.unifiedIssueQueue){
+    issueParams.map(x => require(x.dispatchWidth <= coreWidth && x.dispatchWidth > 0))
+  }
 
   //************************************
   // Load/Store Unit
@@ -305,11 +310,15 @@ case class DromajoParams(
 //  TODO: Consider moving this to separate file?
 // TODO: case class vs class
 case class LoadSliceCoreParams(
-  numAqEntries: Int = 8,
-  numBqEntries: Int = 8,
-  ibdaTagType: Int = IBDA_TAG_FULL_PC,
-  rdtIstMarkWidth: Int = 4
-                              ) {
+                                numAqEntries: Int = 8,
+                                numBqEntries: Int = 8,
+                                unifiedIssueQueue: Boolean = false,
+                                aDispatches: Int = 1,
+                                bDispatches: Int = 1,
+                                ibdaTagType: Int = IBDA_TAG_FULL_PC,
+                                rdtIstMarkWidth: Int = 4,
+){
+  def dispatches(): Int = aDispatches+bDispatches
 
   def ibda_get_tag(uop: MicroOp): UInt = {
     val tag = Wire(UInt(ibda_tag_sz.W))

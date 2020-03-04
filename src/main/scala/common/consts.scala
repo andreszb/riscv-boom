@@ -68,6 +68,7 @@ trait IQType
   val IQT_FP  = 4.U(IQT_SZ.W)
 
   val IQT_MFP = 6.U(IQT_SZ.W)
+  val IQT_COMB = 0.U(IQT_SZ.W)
 }
 
 
@@ -406,6 +407,7 @@ trait LoadSliceCoreConstants
   val LSC_DIS_INT_PORT_IDX = 0
   val LSC_DIS_MEM_PORT_IDX = 1
   val LSC_DIS_FP_PORT_IDX = 2
+  val LSC_DIS_COMB_PORT_IDX = 3
 
   // Constans for which port belongs to A and wich belongs to B
   val LSC_DIS_A_PORT_IDX = 0

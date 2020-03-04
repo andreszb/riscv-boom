@@ -33,13 +33,14 @@ class RenameBusyTable(
   (implicit p: Parameters) extends BoomModule
 {
   val pregSz = log2Ceil(numPregs)
+  val reqWidth = boomParams.loadSliceCore.map(_.dispatches).getOrElse(plWidth)
 
   val io = IO(new BoomBundle()(p) {
     val ren_uops = Input(Vec(plWidth, new MicroOp))
     val rebusy_reqs = Input(Vec(plWidth, Bool()))
     
-    val req_uops = Input(Vec(plWidth, new MicroOp))
-    val busy_resps = Output(Vec(plWidth, new BusyResp))
+    val req_uops = Input(Vec(reqWidth, new MicroOp))
+    val busy_resps = Output(Vec(reqWidth, new BusyResp))
 
     val wb_pdsts = Input(Vec(numWbPorts, UInt(pregSz.W)))
     val wb_valids = Input(Vec(numWbPorts, Bool()))
@@ -58,7 +59,7 @@ class RenameBusyTable(
   busy_table := busy_table_next
 
   // Read the busy table.
-  for (i <- 0 until plWidth) {
+  for (i <- 0 until reqWidth) {
     // bypass seems to enable marking newly allocated registers as busy
     val prs1_was_bypassed = (0 until plWidth).map(j =>
       io.req_uops(i).lrs1 === io.ren_uops(j).ldst && io.rebusy_reqs(j)).foldLeft(false.B)(_||_)

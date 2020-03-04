@@ -52,8 +52,9 @@ trait IssueUnitConstants
  *
  * @param pregSz size of physical destination register
  */
-class IqWakeup(val pregSz: Int) extends Bundle
+class IqWakeup(val pregSz: Int)(implicit p: Parameters) extends BoomBundle
 {
+  val reg_type = if(boomParams.unifiedIssueQueue) Some(UInt(2.W)) else None //TODO: maybe make this only one bit
   val pdst = UInt(width=pregSz.W)
   val poisoned = Bool()
 }
@@ -80,6 +81,7 @@ class IssueUnitIO(
 
   // tell the issue unit what each execution pipeline has in terms of functional units
   val fu_types         = Input(Vec(issueWidth, Bits(width=FUC_SZ.W)))
+  val iq_types         = if(boomParams.unifiedIssueQueue) Some(Input(Vec(issueWidth, Bits(width=IQT_SZ.W)))) else None
 
   val brinfo           = Input(new BrResolutionInfo())
   val flush_pipeline   = Input(Bool())
@@ -121,27 +123,26 @@ abstract class IssueUnit(
     dis_uops(w).iw_p2_poisoned := false.B
     dis_uops(w).iw_state := s_valid_1
 
-    if (iqType == IQT_MEM.litValue || iqType == IQT_INT.litValue) {
-      // For StoreAddrGen for Int, or AMOAddrGen, we go to addr gen state
-      when ((io.dis_uops(w).bits.uopc === uopSTA && io.dis_uops(w).bits.lrs2_rtype === RT_FIX) ||
-             io.dis_uops(w).bits.uopc === uopAMO_AG) {
-        if(boomParams.loadSliceMode) {
-          dis_uops(w).iw_state := s_valid_1 // Dont do the store splitting in the same Issue Slot
-        } else {
+    // all of the store splitting logic is handled in dispatch for the LSC
+    require(!(iqType == IQT_COMB.litValue()) || boomParams.loadSliceMode, "combined issue queue only in lsc mode")
+    if(!boomParams.loadSliceMode) {
+      if (iqType == IQT_MEM.litValue || iqType == IQT_INT.litValue) {
+        // For StoreAddrGen for Int, or AMOAddrGen, we go to addr gen state
+        when((io.dis_uops(w).bits.uopc === uopSTA && io.dis_uops(w).bits.lrs2_rtype === RT_FIX) ||
+          io.dis_uops(w).bits.uopc === uopAMO_AG) {
           dis_uops(w).iw_state := s_valid_2
+          // For store addr gen for FP, rs2 is the FP register, and we don't wait for that here
+        }.elsewhen(io.dis_uops(w).bits.uopc === uopSTA && io.dis_uops(w).bits.lrs2_rtype =/= RT_FIX) {
+          dis_uops(w).lrs2_rtype := RT_X
+          dis_uops(w).prs2_busy := false.B
         }
-
-        // For store addr gen for FP, rs2 is the FP register, and we don't wait for that here
-      } .elsewhen (io.dis_uops(w).bits.uopc === uopSTA && io.dis_uops(w).bits.lrs2_rtype =/= RT_FIX) {
-        dis_uops(w).lrs2_rtype := RT_X
-        dis_uops(w).prs2_busy  := false.B
-      }
-      dis_uops(w).prs3_busy := false.B
-    } else if (iqType == IQT_FP.litValue) {
-      // FP "StoreAddrGen" is really storeDataGen, and rs1 is the integer address register
-      when (io.dis_uops(w).bits.uopc === uopSTA) {
-        dis_uops(w).lrs1_rtype := RT_X
-        dis_uops(w).prs1_busy  := false.B
+        dis_uops(w).prs3_busy := false.B
+      } else if (iqType == IQT_FP.litValue) {
+        // FP "StoreAddrGen" is really storeDataGen, and rs1 is the integer address register
+        when(io.dis_uops(w).bits.uopc === uopSTA) {
+          dis_uops(w).lrs1_rtype := RT_X
+          dis_uops(w).prs1_busy := false.B
+        }
       }
     }
   }
@@ -207,5 +208,6 @@ abstract class IssueUnit(
     if (iqType == IQT_INT.litValue) "int"
     else if (iqType == IQT_MEM.litValue) "mem"
     else if (iqType == IQT_FP.litValue) " fp"
+    else if (iqType == IQT_COMB.litValue) " uni"
     else "unknown"
 }
