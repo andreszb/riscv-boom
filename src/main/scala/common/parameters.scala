@@ -101,6 +101,12 @@ case class BoomCoreParams(
   val jumpInFrontend: Boolean = false // unused in boom
   val loadSliceMode: Boolean = loadSliceCore.isDefined
   val ibdaMode: Boolean = loadSliceMode
+  val busyLookupMode: Boolean = loadSliceMode
+
+  // Make sure we have enough lookup ports to the Busy Table
+  if(busyLookupMode && loadSliceMode) {
+    require(busyLookupParams.get.lookupAtDisWidth == loadSliceCore.get.dispatches())
+  }
 
   val unifiedIssueQueue: Boolean = loadSliceCore.exists(_.unifiedIssueQueue)
 
@@ -371,5 +377,13 @@ case class BusyLookupParams(
                            lookupAtDisWidth: Int = 0, // How many read ports should we have to the busy-table from the Dispatch port?
                            )
 {
+  // Unfortunate that we have to pass the coreWidth into this function. But we dont have that parameter accessible here.
+  def busyTableReqWidth(plWidth: Int): Int = {
+    if (lookupAtRename) {
+      lookupAtDisWidth + plWidth
+    } else {
+      plWidth
+    }
+  }
 
 }
