@@ -90,6 +90,7 @@ case class BoomCoreParams(
   loadSliceCore: Option[LoadSliceCoreParams] = None,
   ibdaParams: Option[IbdaParams] = None,
   busyLookupParams: Option[BusyLookupParams] = None,
+  dnbParams: Option[DnbParams] = None
 
 ) extends freechips.rocketchip.tile.CoreParams
 {
@@ -100,13 +101,20 @@ case class BoomCoreParams(
   val retireWidth = decodeWidth
   val jumpInFrontend: Boolean = false // unused in boom
   val loadSliceMode: Boolean = loadSliceCore.isDefined
-  val ibdaMode: Boolean = loadSliceMode
-  val busyLookupMode: Boolean = loadSliceMode
+  val dnbMode: Boolean = dnbParams.isDefined
+  val ibdaMode: Boolean = loadSliceMode || dnbMode
+  val busyLookupMode: Boolean = loadSliceMode || dnbMode
 
   // Make sure we have enough lookup ports to the Busy Table
-  if(busyLookupMode && loadSliceMode) {
-    require(busyLookupParams.get.lookupAtDisWidth == loadSliceCore.get.dispatches())
+  if(busyLookupMode) {
+    if (loadSliceMode) {
+      require(busyLookupParams.get.lookupAtDisWidth == loadSliceCore.get.dispatches())
+    }
+    if (dnbMode) {
+      require(busyLookupParams.get.lookupAtDisWidth == 1)
+    }
   }
+
 
   val unifiedIssueQueue: Boolean = loadSliceCore.exists(_.unifiedIssueQueue)
 
@@ -315,6 +323,13 @@ case class DromajoParams(
   plicParams: Option[PLICParams] = None
 )
 
+
+// Class for DnB Parameters
+case class DnbParams(
+                                numCrqEntries: Int = 8,
+                                numDlqEntries: Int = 8
+                              ){
+}
 
 // Case class for LoadSliceCore parameters.
 //  TODO: Consider moving this to separate file?
