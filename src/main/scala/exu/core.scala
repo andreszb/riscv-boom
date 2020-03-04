@@ -757,15 +757,15 @@ class BoomCore(implicit p: Parameters) extends BoomModule
     dispatcher.io.ren_uops(w).bits  := dis_uops(w)
   }
   // connect dispatch to busy table in LSC mode
-  if(boomParams.loadSliceMode){
-    rename_stage.io.slice_busy_req_uops.get := dispatcher.io.slice_busy_req_uops.get
-    dispatcher.io.slice_busy_resps.get := rename_stage.io.slice_busy_resps.get
+  if(boomParams.busyLookupMode){
+    rename_stage.io.dis_busy_req_uops.get := dispatcher.io.busy_req_uops.get
+    dispatcher.io.busy_resps.get := rename_stage.io.dis_busy_resps.get
     if(usingFPU){
-      fp_rename_stage.io.slice_busy_req_uops.get := dispatcher.io.slice_fp_busy_req_uops.get
-      dispatcher.io.slice_fp_busy_resps.get := fp_rename_stage.io.slice_busy_resps.get
+      fp_rename_stage.io.dis_busy_req_uops.get := dispatcher.io.fp_busy_req_uops.get
+      dispatcher.io.fp_busy_resps.get := fp_rename_stage.io.dis_busy_resps.get
     }
-    dispatcher.io.slice_brinfo.get := br_unit.brinfo
-    dispatcher.io.slice_flush.get := rob.io.flush.valid
+    dispatcher.io.brinfo.get := br_unit.brinfo
+    dispatcher.io.flush.get := rob.io.flush.valid
   }
   dispatcher.io.tsc_reg := debug_tsc_reg // needed for pipeview
 

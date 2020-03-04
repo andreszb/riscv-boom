@@ -29,13 +29,13 @@ class DispatchIO(implicit p: Parameters) extends BoomBundle
   // dispatchWidth may vary between issue queues
   val dis_uops = MixedVec(issueParams.map(ip=>Vec(ip.dispatchWidth, DecoupledIO(new MicroOp))))
   // io for busy table - used only for LSC
-  val slice_busy_req_uops = if(boomParams.loadSliceMode) Some(Output(Vec(boomParams.loadSliceCore.get.dispatches, new MicroOp))) else None //TODO: change width
-  val slice_busy_resps = if(boomParams.loadSliceMode) Some(Input(Vec(boomParams.loadSliceCore.get.dispatches, new BusyResp))) else None
-  val slice_fp_busy_req_uops = if(boomParams.loadSliceMode && usingFPU) Some(Output(Vec(boomParams.loadSliceCore.get.dispatches, new MicroOp))) else None
-  val slice_fp_busy_resps = if(boomParams.loadSliceMode && usingFPU) Some(Input(Vec(boomParams.loadSliceCore.get.dispatches, new BusyResp))) else None
+  val busy_req_uops = if(boomParams.busyLookupMode) Some(Output(Vec(boomParams.busyLookupParams.get.busyTableReqWidth(coreWidth), new MicroOp))) else None //TODO: change width
+  val busy_resps = if(boomParams.busyLookupMode) Some(Input(Vec(boomParams.busyLookupParams.get.busyTableReqWidth(coreWidth), new BusyResp))) else None
+  val fp_busy_req_uops = if(boomParams.busyLookupMode && usingFPU) Some(Output(Vec(boomParams.busyLookupParams.get.busyTableReqWidth(coreWidth), new MicroOp))) else None
+  val fp_busy_resps = if(boomParams.busyLookupMode && usingFPU) Some(Input(Vec(boomParams.busyLookupParams.get.busyTableReqWidth(coreWidth), new BusyResp))) else None
   // brinfo & flush for LSC
-  val slice_brinfo = if(boomParams.loadSliceMode) Some(Input(new BrResolutionInfo())) else None
-  val slice_flush = if(boomParams.loadSliceMode) Some(Input(Bool())) else None
+  val brinfo = if(boomParams.loadSliceMode) Some(Input(new BrResolutionInfo())) else None
+  val flush = if(boomParams.loadSliceMode) Some(Input(Bool())) else None
 
   val tsc_reg = Input(UInt(width=xLen.W))
 
@@ -106,10 +106,10 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher {
     numEntries = boomParams.loadSliceCore.get.numBqEntries,
     qName = "b_queue",
     deqWidth = boomParams.loadSliceCore.get.bDispatches))
-  a_queue.io.flush := io.slice_flush.get
-  b_queue.io.flush := io.slice_flush.get
-  a_queue.io.brinfo := io.slice_brinfo.get
-  b_queue.io.brinfo := io.slice_brinfo.get
+  a_queue.io.flush := io.flush.get
+  b_queue.io.flush := io.flush.get
+  a_queue.io.brinfo := io.brinfo.get
+  b_queue.io.brinfo := io.brinfo.get
   a_queue.io.tsc_reg := io.tsc_reg
   b_queue.io.tsc_reg := io.tsc_reg
 
@@ -171,8 +171,8 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher {
 
   // annotate heads with busy information
   for ((uop, idx) <- (a_heads ++ b_heads).zipWithIndex) {
-    io.slice_busy_req_uops.get(idx) := uop
-    val busy_resp = io.slice_busy_resps.get(idx)
+    io.busy_req_uops.get(idx) := uop
+    val busy_resp = io.busy_resps.get(idx)
 
     uop.prs1_busy := uop.lrs1_rtype === RT_FIX && busy_resp.prs1_busy
     uop.prs2_busy := uop.lrs2_rtype === RT_FIX && busy_resp.prs2_busy
@@ -181,8 +181,8 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher {
     //    assert(!(a_valid && busy_resp.prs1_busy && uop.lrs1_rtype === RT_FIX & uop.lrs1 === 0.U), "[rename] x0 is busy??")
     //    assert(!(a_valid && busy_resp.prs2_busy && uop.lrs2_rtype === RT_FIX & uop.lrs2 === 0.U), "[rename] x0 is busy??")
     if (usingFPU) {
-      io.slice_fp_busy_req_uops.get(idx) := uop
-      val flt_busy_resp = io.slice_fp_busy_resps.get(idx)
+      io.fp_busy_req_uops.get(idx) := uop
+      val flt_busy_resp = io.fp_busy_resps.get(idx)
       // fp busy info
       when(uop.lrs1_rtype === RT_FLT) {
         uop.prs1_busy := flt_busy_resp.prs1_busy

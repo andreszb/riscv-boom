@@ -70,8 +70,8 @@ class RenameStageIO(
   val debug = Output(new DebugRenameStageIO(numPhysRegs))
 
   require(coreWidth == plWidth) // make sure we can use coreWidth and plWidth interchangeably
-  val slice_busy_req_uops = if(boomParams.busyLookupMode) Some(Input(Vec(boomParams.busyLookupParams.get.lookupAtDisWidth, new MicroOp))) else None
-  val slice_busy_resps = if(boomParams.busyLookupMode) Some(Output(Vec(boomParams.busyLookupParams.get.lookupAtDisWidth, new BusyResp))) else None
+  val dis_busy_req_uops = if(boomParams.busyLookupMode) Some(Input(Vec(boomParams.busyLookupParams.get.lookupAtDisWidth, new MicroOp))) else None
+  val dis_busy_resps = if(boomParams.busyLookupMode) Some(Output(Vec(boomParams.busyLookupParams.get.lookupAtDisWidth, new BusyResp))) else None
 }
 
 /**
@@ -321,8 +321,8 @@ class RenameStage(
     // Additional ports for busyLookup at Dispatch. Used by LSC and later DNB
     // The busytable_req_idx counter is used for combining lookupAtRename AND dispatch
     for(i <- 0 until boomParams.busyLookupParams.get.lookupAtDisWidth) {
-      busytable.io.req_uops(busytable_req_idx) := io.slice_busy_req_uops.get(i)
-      io.slice_busy_resps.get(i) := busytable.io.busy_resps(busytable_req_idx)
+      busytable.io.req_uops(busytable_req_idx) := io.dis_busy_req_uops.get(i)
+      io.dis_busy_resps.get(i) := busytable.io.busy_resps(busytable_req_idx)
       busytable_req_idx += 1
     }
   }
