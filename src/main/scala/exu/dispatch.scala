@@ -128,45 +128,76 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher {
     io.ren_uops(w).ready := queues_ready
     val uop = io.ren_uops(w).bits
     // check if b queue can actually process insn
-    // TODO: Analyse: Is it necessary to add a guard protecting agains branches on B-Q? (In case of aliasing in IST)
-    val can_use_b_alu = uop.fu_code_is(FUConstants.FU_ALU | FUConstants.FU_MUL | FUConstants.FU_DIV | (FUConstants.FU_BRU)) && !uop.is_br_or_jmp
-    val use_b_queue = (uop.uopc === uopLD) || uop.uopc === uopSTA || (uop.is_lsc_b && can_use_b_alu)
-    val use_a_queue = (uop.uopc =/= uopLD) && (!uop.is_lsc_b || !can_use_b_alu)
+    if(boomParams.loadSliceCore.get.inOrder){
+      require(boomParams.unifiedIssueQueue)
+      a_queue.io.enq_uops(w).valid := io.ren_uops(w).fire()
+      b_queue.io.enq_uops(w).valid := false.B
+      //TODO: confirm that stores work (splitting)
+      val uop_a = WireInit(uop)
+      val uop_b = WireInit(uop)
 
-    // enqueue logic
-    a_queue.io.enq_uops(w).valid := io.ren_uops(w).fire() && use_a_queue
-    b_queue.io.enq_uops(w).valid := io.ren_uops(w).fire() && use_b_queue
+      assert(!io.ren_uops(w).fire() || (a_queue.io.enq_uops(w).fire()), "op from rename was swallowed")
 
-    val uop_a = WireInit(uop)
-    val uop_b = WireInit(uop)
+      a_queue.io.enq_uops(w).bits := uop_a
+      b_queue.io.enq_uops(w).bits := uop_b
+      when(uop.uopc === uopSTA && uop.iq_type === IQT_MFP) {
+        // In case of splitting stores. We need to put data generation in A (uopSTD) and
+        //  address generation (uopSTA) in B. We X out the opposite lrs by assigning RT_X to the rtype
+        // fsw and fsd fix - they need to go to a -> fp and b -> mem
+        uop_a.uopc := uopSTD
+        uop_a.iq_type := IQT_FP
+        uop_a.lrs1_rtype := RT_X
 
-    assert(!io.ren_uops(w).fire() || (a_queue.io.enq_uops(w).fire() || b_queue.io.enq_uops(w).fire()), "op from rename was swallowed")
-
-    when(uop.uopc === uopSTA) {
-      // In case of splitting stores. We need to put data generation in A (uopSTD) and
-      //  address generation (uopSTA) in B. We X out the opposite lrs by assigning RT_X to the rtype
-      uop_a.uopc := uopSTD
-      uop_a.lrs1_rtype := RT_X
-
-      uop_b.uopc := uopSTA
-      uop_b.lrs2_rtype := RT_X
-      // fsw and fsd fix - they need to go to a -> fp and b -> mem
-      when(uop.iq_type === IQT_MFP) {
+        uop_b.uopc := uopSTA
         uop_b.iq_type := IQT_MEM
         uop_b.lrs2_rtype := RT_X
-        uop_a.iq_type := IQT_FP
-        uop_a.uopc := uopSTA
-        uop_a.lrs1_rtype := RT_X
+        b_queue.io.enq_uops(w).valid := true.B
       }
+
+      // Perf counters
+      io.lsc_perf.get.aq(w) := io.ren_uops(w).fire()
+      io.lsc_perf.get.bq(w) := false.B
+    } else {
+      // TODO: Analyse: Is it necessary to add a guard protecting agains branches on B-Q? (In case of aliasing in IST)
+      val can_use_b_alu = uop.fu_code_is(FUConstants.FU_ALU | FUConstants.FU_MUL | FUConstants.FU_DIV | (FUConstants.FU_BRU)) && !uop.is_br_or_jmp
+      val use_b_queue = (uop.uopc === uopLD) || uop.uopc === uopSTA || (uop.is_lsc_b && can_use_b_alu)
+      val use_a_queue = (uop.uopc =/= uopLD) && (!uop.is_lsc_b || !can_use_b_alu)
+
+      // enqueue logic
+      a_queue.io.enq_uops(w).valid := io.ren_uops(w).fire() && use_a_queue
+      b_queue.io.enq_uops(w).valid := io.ren_uops(w).fire() && use_b_queue
+
+      val uop_a = WireInit(uop)
+      val uop_b = WireInit(uop)
+
+      assert(!io.ren_uops(w).fire() || (a_queue.io.enq_uops(w).fire() || b_queue.io.enq_uops(w).fire()), "op from rename was swallowed")
+
+      when(uop.uopc === uopSTA) {
+        // In case of splitting stores. We need to put data generation in A (uopSTD) and
+        //  address generation (uopSTA) in B. We X out the opposite lrs by assigning RT_X to the rtype
+        uop_a.uopc := uopSTD
+        uop_a.lrs1_rtype := RT_X
+
+        uop_b.uopc := uopSTA
+        uop_b.lrs2_rtype := RT_X
+        // fsw and fsd fix - they need to go to a -> fp and b -> mem
+        when(uop.iq_type === IQT_MFP) {
+          uop_b.iq_type := IQT_MEM
+          uop_b.lrs2_rtype := RT_X
+          uop_a.iq_type := IQT_FP
+          uop_a.uopc := uopSTA
+          uop_a.lrs1_rtype := RT_X
+        }
+      }
+      a_queue.io.enq_uops(w).bits := uop_a
+      b_queue.io.enq_uops(w).bits := uop_b
+
+      assert(!(io.ren_uops(w).fire() && use_b_queue && uop_b.is_br_or_jmp), "[Dispatcher] We are puttig a branch/jump on B-Q")
+
+      // Perf counters
+      io.lsc_perf.get.aq(w) := io.ren_uops(w).fire() && use_a_queue
+      io.lsc_perf.get.bq(w) := io.ren_uops(w).fire() && use_b_queue && uop.uopc =/= uopSTA
     }
-    a_queue.io.enq_uops(w).bits := uop_a
-    b_queue.io.enq_uops(w).bits := uop_b
-
-    assert(!(io.ren_uops(w).fire() && use_b_queue && uop_b.is_br_or_jmp), "[Dispatcher] We are puttig a branch/jump on B-Q")
-
-    // Perf counters
-    io.lsc_perf.get.aq(w) := io.ren_uops(w).fire() && use_a_queue
-    io.lsc_perf.get.bq(w) := io.ren_uops(w).fire() && use_b_queue && uop.uopc =/= uopSTA
   }
 
   // annotate heads with busy information
@@ -202,11 +233,6 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher {
   }
 
   if(boomParams.unifiedIssueQueue){
-//    io.dis_uops(LSC_DIS_MEM_PORT_IDX) := DontCare
-//    io.dis_uops(3) := DontCare // TODO: clean up
-//    if (usingFPU) {
-//      io.dis_uops(LSC_DIS_FP_PORT_IDX) := DontCare
-//    }
     var dis_idx = 0
     for(i <- 0 until boomParams.loadSliceCore.get.aDispatches){
       val dis = io.dis_uops(LSC_DIS_COMB_PORT_IDX)(dis_idx)

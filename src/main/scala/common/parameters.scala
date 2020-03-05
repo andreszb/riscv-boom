@@ -317,6 +317,7 @@ case class LoadSliceCoreParams(
   unifiedIssueQueue: Boolean = false,
   aDispatches: Int = 1,
   bDispatches: Int = 1,
+  inOrder: Boolean = false,
 ){
   def dispatches(): Int = aDispatches+bDispatches
 

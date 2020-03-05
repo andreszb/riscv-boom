@@ -198,10 +198,10 @@ class WithSliceBooms extends Config((site, here, up) => {
       decodeWidth = 2,
       numRobEntries = 32,
       issueParams = Seq(
-        IssueParams(issueWidth=2, numEntries=2, iqType=IQT_INT.litValue, dispatchWidth=2), // INT
+        IssueParams(issueWidth=1, numEntries=2, iqType=IQT_INT.litValue, dispatchWidth=2), // INT
         IssueParams(issueWidth=1, numEntries=2, iqType=IQT_MEM.litValue, dispatchWidth=2), // MEM
         IssueParams(issueWidth=1, numEntries=1, iqType=IQT_FP.litValue , dispatchWidth=1), // FP
-        IssueParams(issueWidth=4, numEntries=4, iqType=IQT_COMB.litValue, dispatchWidth=4), // combined
+        IssueParams(issueWidth=3, numEntries=4, iqType=IQT_COMB.litValue, dispatchWidth=4), // combined
       ),
       numIntPhysRegisters = 52,
       numFpPhysRegisters = 48,
@@ -227,7 +227,8 @@ class WithSliceBooms extends Config((site, here, up) => {
         aDispatches = 2,
         bDispatches = 2,
         ibdaTagType = IBDA_TAG_FULL_PC,
-        rdtIstMarkWidth = 1
+        rdtIstMarkWidth = 1,
+        inOrder = true,
       ))
     ),
     dcache = Some(DCacheParams(rowBits = site(SystemBusKey).beatBits,
