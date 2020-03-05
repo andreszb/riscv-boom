@@ -131,7 +131,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
 
   val issue_units      = if(boomParams.unifiedIssueQueue) Seq(unified_iss_unit)else Seq(mem_iss_unit,int_iss_unit)
 
-  val dispatcher       = if(boomParams.loadSliceMode) Module(new SliceDispatcher) else Module(new BasicDispatcher)
+  val dispatcher       = if(boomParams.loadSliceMode) Module(new SliceDispatcher) else if(boomParams.dnbMode) Module(new DnbDispatcher) else Module(new BasicDispatcher)
 
   val iregfile         = Module(new RegisterFileSynthesizable(
                              numIntPhysRegs,
@@ -252,14 +252,23 @@ class BoomCore(implicit p: Parameters) extends BoomModule
         ("ITLB miss", () => io.ifu.perf.tlbMiss),
         ("nop - DTLB miss",   () => false.B),
         ("L2 TLB miss", () => io.ptw.perf.l2miss)))
-      ) ++ (if (boomParams.ibdaMode && decodeWidth == 2) Seq(
+      ) ++ (if (boomParams.loadSliceMode && decodeWidth == 2) Seq(
       // LSC events
       new freechips.rocketchip.rocket.EventSet((mask, hits) => (mask & hits).orR, Seq(
         ("A-Q0", () => dispatcher.io.lsc_perf.get.aq(0)),
         ("B-Q0", () => dispatcher.io.lsc_perf.get.bq(0)),
         ("A-Q1", () => dispatcher.io.lsc_perf.get.aq(1)),
         ("B-Q1", () => dispatcher.io.lsc_perf.get.bq(1)))))
-       else Seq())
+    else if (boomParams.dnbMode && decodeWidth == 2) Seq(
+      // DNB events
+      new freechips.rocketchip.rocket.EventSet((mask, hits) => (mask & hits).orR, Seq(
+      ("DLQ0", () => dispatcher.io.dnb_perf.get.dlq(0)),
+      ("CRQ0", () => dispatcher.io.dnb_perf.get.crq(0)),
+      ("IQ0", () => dispatcher.io.dnb_perf.get.iq(0)),
+      ("DLQ1", () => dispatcher.io.dnb_perf.get.dlq(1)),
+      ("CRQ1", () => dispatcher.io.dnb_perf.get.crq(1)),
+      ("IQ1", () => dispatcher.io.dnb_perf.get.iq(1)))))
+    else Seq())
     )
   perfEvents.print()
 
