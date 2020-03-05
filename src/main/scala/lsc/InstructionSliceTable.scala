@@ -44,15 +44,7 @@ class InstructionSliceTableSyncMem(entries: Int=128, ways: Int=2)(implicit p: Pa
   require(ways<=2)
   // First the actual Cache with tag, valids and lru
   val tag_tables = (0 until ways).map(i =>
-//    DescribedSRAM(
-//    name = s"ist_tag_ram_$i",
-//    desc = "IST Tag Array",
-//    size = entries/ways,
-//    data = UInt(boomParams.ibdaParams.get.ibda_tag_sz.W)
-//  )._1
-//    Reg(Vec(entries/ways, UInt(boomParams.ibdaParams.get.ibda_tag_sz.W)))
-//    SyncReadMem(entries/ways, UInt(boomParams.ibdaParams.get.ibda_tag_sz.W))
-    Mem(entries/ways, UInt(boomParams.ibdaParams.get.ibda_tag_sz.W))
+    SyncReadMem(entries/ways, UInt(boomParams.loadSliceCore.get.ibda_tag_sz.W))
   )
   // TODO: change back when using syncRead
   val ist2_check_sram_tag = Reg(Vec(decodeWidth, Vec(ways, UInt(ibdaParams.ibda_tag_sz.W))))
@@ -107,7 +99,8 @@ class InstructionSliceTableSyncMem(entries: Int=128, ways: Int=2)(implicit p: Pa
   // Do a cache read
   for(i <- 0 until decodeWidth) {
     val pc = ist1_check_tag(i)
-    val idx = index(pc)
+    // needs to be a wire as per https://github.com/freechipsproject/chisel3/issues/1366
+    val idx = WireInit(index(pc))
     idx.suggestName(s"sram_read_addr_$i")
     dontTouch(idx)
     for (j <- 0 until ways) {
