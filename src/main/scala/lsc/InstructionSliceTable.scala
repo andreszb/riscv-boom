@@ -44,7 +44,7 @@ class InstructionSliceTableSyncMem(entries: Int=128, ways: Int=2)(implicit p: Pa
   require(ways<=2)
   // First the actual Cache with tag, valids and lru
   val tag_tables = (0 until ways).map(i =>
-    SyncReadMem(entries/ways, UInt(boomParams.loadSliceCore.get.ibda_tag_sz.W))
+    SyncReadMem(entries/ways, UInt(boomParams.ibdaParams.get.ibda_tag_sz.W))
   )
   // TODO: change back when using syncRead
   val ist2_check_sram_tag = Reg(Vec(decodeWidth, Vec(ways, UInt(ibdaParams.ibda_tag_sz.W))))

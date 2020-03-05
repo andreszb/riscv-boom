@@ -22,10 +22,10 @@ import freechips.rocketchip.config.Parameters
   * @param params issue queue params
   * @param numWakeupPorts number of wakeup ports for the issue queue
   */
-class IssueUnitUnified(
+class IssueUnitSliceUnified(
                            params: IssueParams,
                            numWakeupPorts: Int)
-                      (implicit p: Parameters)
+                           (implicit p: Parameters)
   extends IssueUnit(params.numEntries, params.issueWidth, numWakeupPorts, params.iqType, params.dispatchWidth)
 {
   require(params.dispatchWidth == numIssueSlots, "one slot per dispatch port!")
