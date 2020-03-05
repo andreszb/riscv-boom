@@ -157,8 +157,8 @@ class BoomCore(implicit p: Parameters) extends BoomModule
                            numIrfWritePorts + numFpWakeupPorts, // +memWidth for ll writebacks
                            numFpWakeupPorts))
 
-  val ist = if(boomParams.loadSliceMode) Some(Module(new InstructionSliceTableSyncMem())) else None
-  val rdt = if(boomParams.loadSliceMode) Some(Module(new RdtSyncMem())) else None
+  val ist = if(boomParams.ibdaMode) Some(Module(new InstructionSliceTableSyncMem())) else None
+  val rdt = if(boomParams.ibdaMode) Some(Module(new RdtSyncMem())) else None
   // Used to wakeup registers in rename and issue. ROB needs to listen to something else.
   val int_iss_wakeups  = Wire(Vec(numIntIssueWakeupPorts, Valid(new ExeUnitResp(xLen))))
   val int_ren_wakeups  = Wire(Vec(numIntRenameWakeupPorts, Valid(new ExeUnitResp(xLen))))
@@ -252,7 +252,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
         ("ITLB miss", () => io.ifu.perf.tlbMiss),
         ("nop - DTLB miss",   () => false.B),
         ("L2 TLB miss", () => io.ptw.perf.l2miss)))
-      ) ++ (if (boomParams.loadSliceCore.isDefined && decodeWidth == 2) Seq(
+      ) ++ (if (boomParams.ibdaMode && decodeWidth == 2) Seq(
       // LSC events
       new freechips.rocketchip.rocket.EventSet((mask, hits) => (mask & hits).orR, Seq(
         ("A-Q0", () => dispatcher.io.lsc_perf.get.aq(0)),
@@ -525,11 +525,11 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   // Instruction Slice Lookup
 
   val ist_pc =  WireInit(VecInit(Seq.fill(decodeWidth) {0.U(vaddrBitsExtended.W)}))
-  if (boomParams.loadSliceMode) {
-    val LscParams = boomParams.loadSliceCore.get
+  if (boomParams.ibdaMode) {
+    val ibdaParams = boomParams.ibdaParams.get
     // If we want the Full PC we need FTQ ports and etc. This is not
     //  the preferred way since we need so many ports to FTQ
-    if (LscParams.ibdaTagType == IBDA_TAG_FULL_PC) {
+    if (ibdaParams.ibdaTagType == IBDA_TAG_FULL_PC) {
       val get_pc_slice = io.ifu.get_pc_slice.get
       for (w <- 0 until coreWidth) {
 
@@ -551,7 +551,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
       // We dont want the full PC but rather some hash of the UOP.
       for (w <- 0 until coreWidth) {
         ist.get.io.check(w).tag.valid := dec_fire(w)
-        ist.get.io.check(w).tag.bits := LscParams.ibda_get_tag(dec_uops(w))
+        ist.get.io.check(w).tag.bits := ibdaParams.ibda_get_tag(dec_uops(w))
 
       }
     }
@@ -589,10 +589,10 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   dis_valids := rename_stage.io.ren2_mask
   ren_stalls := rename_stage.io.ren_stalls
 
-  val in_ist_reg = if (boomParams.loadSliceMode) Some(Reg(Vec(decodeWidth, Bool()))) else None
-  val has_stalled = if (boomParams.loadSliceMode) Some(Reg(Vec(decodeWidth, Bool()))) else None
+  val in_ist_reg = if (boomParams.ibdaMode) Some(Reg(Vec(decodeWidth, Bool()))) else None
+  val has_stalled = if (boomParams.ibdaMode) Some(Reg(Vec(decodeWidth, Bool()))) else None
 
-  if (boomParams.loadSliceMode) {
+  if (boomParams.ibdaMode) {
     // IST check. We have to deal with pipeline stalls
     for (w <- 0 until coreWidth) {
       val in_ist = ist.get.io.check(w).in_ist.bits
@@ -641,8 +641,8 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   //-------------------------------------------------------------
   // Register Dependency Table update
   //-------------------------------------------------------------
-  if (boomParams.loadSliceMode) {
-    val LscParams = boomParams.loadSliceCore.get
+  if (boomParams.ibdaMode) {
+    val ibdaParams = boomParams.ibdaParams.get
     val rdt_pc = Reg(Vec(decodeWidth, UInt(vaddrBitsExtended.W)))
     // Connect RDT to IST. Mark new instructions as part of a load slice in IST
     ist.get.io.mark := rdt.get.io.mark
@@ -652,7 +652,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
     for (w <- 0 until decodeWidth) {
       rdt.get.io.update(w).valid := dis_fire(w)
       rdt.get.io.update(w).uop := dis_uops(w)
-      if (LscParams.ibdaTagType == IBDA_TAG_FULL_PC) {
+      if (ibdaParams.ibdaTagType == IBDA_TAG_FULL_PC) {
         // Only update rdt_pc on next CC when we decode. I.e. when IST does a lookup.
         when(dec_fire(w)) {
           rdt_pc(w) := ist_pc(w)
@@ -660,7 +660,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
         rdt.get.io.update(w).tag :=  rdt_pc(w)
 
       } else {
-        rdt.get.io.update(w).tag :=  LscParams.ibda_get_tag(dis_uops(w))
+        rdt.get.io.update(w).tag :=  ibdaParams.ibda_get_tag(dis_uops(w))
       }
 
     }
@@ -769,6 +769,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   }
   dispatcher.io.tsc_reg := debug_tsc_reg // needed for pipeview
 
+  // Connect Dispatcher to IQ
   if (boomParams.loadSliceMode) {
     if(boomParams.unifiedIssueQueue){
       // TODO: maybe two for a and B?
