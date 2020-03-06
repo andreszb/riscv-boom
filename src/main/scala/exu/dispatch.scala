@@ -173,7 +173,7 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
         if (i == 0) {
           idx := 0.U
         } else {
-          idx := PopCount(iq_enq_count.asUInt()(0,i))
+          idx := PopCount(iq_enq_count.asUInt()(i,0))
         }
         dis_stall(i) := !io.dis_uops(LSC_DIS_COMB_PORT_IDX)(idx).ready
         io.dis_uops(LSC_DIS_COMB_PORT_IDX)(idx).valid := uop_valid && !propagated_stall
@@ -181,7 +181,7 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
         val fire = !dis_stall(i) && !propagated_stall && uop_valid
         io.dnb_perf.get.iq(i) := fire
         io.ren_uops(i).ready := fire
-        iq_enq_count(i) := fire.asUInt
+        iq_enq_count(i) := fire
 
       }. elsewhen(uop_critical && !uop_busy) {
         dis_stall(i) := !crq_ready
@@ -216,7 +216,7 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
       if (i == 0) {
         idx := 0.U
       } else {
-        idx := PopCount(iq_enq_count.asUInt()(0,i))
+        idx := PopCount(iq_enq_count.asUInt()(i,0))
       }
 
       dis_stall(i) := !(dlq_ready && io.dis_uops(LSC_DIS_COMB_PORT_IDX)(idx).ready)
@@ -231,7 +231,7 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
         io.dnb_perf.get.dlq(i) := fire
         io.dnb_perf.get.iq(i) := fire
         io.ren_uops(i).ready := fire
-        iq_enq_count(i) := fire.asUInt()
+        iq_enq_count(i) := fire
       }.otherwise {
         io.ren_uops(i).ready := false.B
       }
