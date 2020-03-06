@@ -161,7 +161,7 @@ abstract class ExecutionUnit(
     hasRocc, hasBrUnit, hasFpu || hasIfpu || hasFdiv, hasMem,
     numBypassStages, dataWidth))
 
-  if(boomParams.loadSliceMode){
+  if(boomParams.loadSliceMode||boomParams.dnbMode){
     assert(!io.req.valid || io.req.bits.uop.iq_type === iqType.U, "wrong IQ-Type for exu")
   }
 

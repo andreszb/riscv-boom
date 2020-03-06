@@ -96,6 +96,7 @@ class BasicDispatcher(implicit p: Parameters) extends Dispatcher
   }
 }
 
+@chiselName
 class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
   // FIFOs
   val dnbParams = boomParams.dnbParams.get
@@ -120,39 +121,20 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
   dlq.io.tsc_reg := io.tsc_reg
   crq.io.tsc_reg := io.tsc_reg
 
-
   // Initialize the perf counters
   io.dnb_perf.get.dlq.map(_ := false.B)
   io.dnb_perf.get.crq.map(_ := false.B)
   io.dnb_perf.get.iq.map(_ := false.B)
 
 
-  // Initialize t
-
-  // Handle incoming renamed uops
-  // Are the FIFOs ready to accept incoming uops? Currently we only accept enqueues to the FIFOs
-  //  if we have room for the full coreWidth. Its an "all-or-nothing" deal. But we only stall if
-  //  the dispatcher actually wants to put them in those FIFOs
-
-  val dlq_ready = dlq.io.enq_uops.map(_.ready).reduce(_ && _)
-  val crq_ready = crq.io.enq_uops.map(_.ready).reduce(_ && _)
-
-  // Add a counter for IQ enq idx. We want to enqueue port0 first always
-  //  We can use this in the IQ to set ports not-ready based on how many uops it can receive
-  //  If IQ has 2 free slots and also want to enqueue the DLQ head. Then set port0=ready and port1=not ready
-
-  val iq_enq_count = WireInit(VecInit(Seq.fill(coreWidth) (false.B)))
   val dis_stall = WireInit(VecInit(Seq.fill(coreWidth)(false.B)))
+  var previous_ready = true.B
   for (i <- 0 until coreWidth) {
     // Just get uop bits, valid and critical/busy info
     val uop = io.ren_uops(i).bits
-    val uop_valid = io.ren_uops(i).valid
     val uop_critical = uop.is_lsc_b
     val uop_iq = uop.uopc === uopLD || uop.uopc === uopSTA || uop.uopc === uopSTD //TODO: FP STW?
     val uop_busy = (uop.prs1_busy || uop.prs2_busy || uop.prs3_busy)
-
-    // Check whether we have to stall on this ren2 since prior uops have been stalled
-    val propagated_stall  = dis_stall.scanLeft(false.B)((s,h) => s || h).apply(i)
 
     // Check if this uop must be split into 2 which creates some extra corner cases
     val uop_split = uop.uopc === uopSTA
@@ -165,87 +147,69 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
     crq.io.enq_uops(i).bits := uop
     crq.io.enq_uops(i).valid := false.B
 
-    when(!uop_split) {
-      // Normal non-splitting case
-      // Based on critical/busy which FIFO/IQ do we wanna use?
-      //  Then we check whether that port is ready. If its not we update dis_stall
-      //  To propagate the stall to the next uops in this decode packet.
-      when(!uop_critical) {
-        dis_stall(i) := !dlq_ready
-        dlq.io.enq_uops(i).valid := uop_valid && !propagated_stall
-        val fire = !dis_stall(i) && !propagated_stall && uop_valid
-        io.dnb_perf.get.dlq(i) := fire
-        io.ren_uops(i).ready := fire
+    //ready logic - only ready if all lower rename ports and all possible target ports are ready
+    io.ren_uops(i).ready := previous_ready &&
+      dlq.io.enq_uops(i).ready &&
+      io.dis_uops(LSC_DIS_COMB_PORT_IDX)(i).ready &&
+      crq.io.enq_uops(i).ready
+    previous_ready = io.ren_uops(i).ready
 
-      }. elsewhen((uop_critical && uop_busy) || uop_iq) {
-        val idx = Wire(UInt())
-        if (i == 0) {
-          idx := 0.U
-        } else {
-          idx := PopCount(iq_enq_count.asUInt()(i,0))
+    when(io.ren_uops(i).fire()) {
+      when(!uop_split) {
+        // Normal non-splitting case
+        // Based on critical/busy which FIFO/IQ do we wanna use?
+        when(!uop_critical && !uop_iq) {
+          //dlq
+          dlq.io.enq_uops(i).valid := true.B
+          io.dnb_perf.get.dlq(i) := true.B
+        }.elsewhen((uop_critical && uop_busy) || uop_iq) {
+          //iq
+          io.dis_uops(LSC_DIS_COMB_PORT_IDX)(i).valid := true.B
+          io.dnb_perf.get.iq(i) := true.B
+
+        }.elsewhen(uop_critical && !uop_busy) {
+          //crq
+          crq.io.enq_uops(i).valid := true.B
+          io.dnb_perf.get.crq(i) := true.B
         }
-        dis_stall(i) := !io.dis_uops(LSC_DIS_COMB_PORT_IDX)(idx).ready
-        io.dis_uops(LSC_DIS_COMB_PORT_IDX)(idx).valid := uop_valid && !propagated_stall
-        io.dis_uops(LSC_DIS_COMB_PORT_IDX)(idx).bits := uop
-        val fire = !dis_stall(i) && !propagated_stall && uop_valid
-        io.dnb_perf.get.iq(i) := fire
-        io.ren_uops(i).ready := fire
-        iq_enq_count(i) := fire
 
-      }. elsewhen(uop_critical && !uop_busy) {
-        dis_stall(i) := !crq_ready
-        crq.io.enq_uops(i).valid := uop_valid && !propagated_stall
-        val fire = !dis_stall(i) && !propagated_stall && uop_valid
-        io.dnb_perf.get.crq(i) := fire
-        io.ren_uops(i).ready := fire
+      }.otherwise { // Uop splitting case
+        // Currently 2 cases. STORE and FP STORE. We want the uopSTD to go in the DLQ and the uopSTA on the IQ
+        //  If we dont have place for both, i.e. in DLQ and IQ we will stall
+        val uop_sta = WireInit(uop)
+        val uop_std = WireInit(uop)
+
+        when(uop.iq_type === IQT_MEM) {
+          // INT stores
+          uop_sta.uopc := uopSTA
+          uop_sta.lrs2_rtype := RT_X
+          uop_std.uopc := uopSTD
+          uop_std.lrs1_rtype := RT_X
+        }.otherwise {
+          // FP stores
+          uop_sta.iq_type := IQT_MEM
+          uop_sta.lrs2_rtype := RT_X
+          uop_std.iq_type := IQT_FP
+          uop_std.lrs1_rtype := RT_X
+        }
+        io.dis_uops(LSC_DIS_COMB_PORT_IDX)(i).valid := true.B
+        io.dis_uops(LSC_DIS_COMB_PORT_IDX)(i).bits := uop_sta
+
+        dlq.io.enq_uops(i).valid := true.B
+        dlq.io.enq_uops(i).bits := uop_std
+
+        io.dnb_perf.get.dlq(i) := true.B
+        io.dnb_perf.get.iq(i) := true.B
       }
-
-    }. otherwise { // Uop splitting case
-      // Currently 2 cases. STORE and FP STORE. We want the uopSTD to go in the DLQ and the uopSTA on the IQ
-      //  If we dont have place for both, i.e. in DLQ and IQ we will stall
-      val uop_sta = WireInit(uop)
-      val uop_std = WireInit(uop)
-
-      when(uop.iq_type === IQT_MEM) {
-        // INT stores
-        uop_sta.uopc := uopSTA
-        uop_sta.lrs2_rtype := RT_X
-        uop_std.uopc := uopSTD
-        uop_std.lrs1_rtype := RT_X
-      }.otherwise {
-        // FP stores
-        uop_sta.iq_type := IQT_MEM
-        uop_sta.lrs2_rtype := RT_X
-        uop_std.iq_type := IQT_FP
-        uop_std.lrs1_rtype := RT_X
-      }
-      // Calculate the IQ enq index. And stall unless IQ port + DLQ FIFO is ready
-      val idx = Wire(UInt())
-      if (i == 0) {
-        idx := 0.U
-      } else {
-        idx := PopCount(iq_enq_count.asUInt()(i,0))
-      }
-
-      dis_stall(i) := !(dlq_ready && io.dis_uops(LSC_DIS_COMB_PORT_IDX)(idx).ready)
-      when(!dis_stall(i) && !propagated_stall) { // Here wee
-        io.dis_uops(LSC_DIS_COMB_PORT_IDX)(idx).valid := uop_valid && !propagated_stall
-        io.dis_uops(LSC_DIS_COMB_PORT_IDX)(idx).bits := uop
-
-        dlq.io.enq_uops(i).valid := uop_valid && !propagated_stall
-        dlq.io.enq_uops(i).bits := uop
-
-        val fire = uop_valid && !propagated_stall && !dis_stall(i)
-        io.dnb_perf.get.dlq(i) := fire
-        io.dnb_perf.get.iq(i) := fire
-        io.ren_uops(i).ready := fire
-        iq_enq_count(i) := fire
-      }.otherwise {
-        io.ren_uops(i).ready := false.B
-      }
-
     }
+  }
 
+  if(O3PIPEVIEW_PRINTF){ // dispatch is here because it only happens for IQ and not dlq/crq
+    io.dis_uops(LSC_DIS_COMB_PORT_IDX).foreach( port =>{
+      when (port.fire()) {
+        printf("%d; O3PipeView:dispatch: %d\n", port.bits.debug_events.fetch_seq, io.tsc_reg)
+      }
+    })
   }
 
   // Handle CRQ dequeues
@@ -260,21 +224,18 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
   io.dlq_head.get <> dlq.io.heads(0)
   // Now, update busy info
   when(io.dlq_head.get.bits.lrs1_rtype === RT_FLT) {
-    io.dlq_head.get.bits.prs1_busy := io.dlq_head.get.bits.lrs1_rtype === RT_FIX && io.fp_busy_resps.get(0).prs1_busy
+    io.dlq_head.get.bits.prs1_busy := io.fp_busy_resps.get(0).prs1_busy
   }.otherwise {
-    io.dlq_head.get.bits.prs1_busy := io.dlq_head.get.bits.lrs1_rtype === RT_FIX && io.busy_resps.get(0).prs1_busy
+    io.dlq_head.get.bits.prs1_busy := io.busy_resps.get(0).prs1_busy
   }
 
   when(io.dlq_head.get.bits.lrs2_rtype === RT_FLT) {
-    io.dlq_head.get.bits.prs2_busy := io.dlq_head.get.bits.lrs2_rtype === RT_FLT && io.fp_busy_resps.get(0).prs2_busy
+    io.dlq_head.get.bits.prs2_busy := io.fp_busy_resps.get(0).prs2_busy
   }.otherwise {
-    io.dlq_head.get.bits.prs2_busy := io.dlq_head.get.bits.lrs2_rtype === RT_FIX && io.busy_resps.get(0).prs2_busy
+    io.dlq_head.get.bits.prs2_busy := io.busy_resps.get(0).prs2_busy
   }
 
-
-  io.dlq_head.get.bits.prs3_busy := false.B
-
-
+  io.dlq_head.get.bits.prs3_busy := io.dlq_head.get.bits.frs3_en && io.fp_busy_resps.get(0).prs3_busy
 }
 
 /**

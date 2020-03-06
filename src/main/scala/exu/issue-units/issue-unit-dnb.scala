@@ -15,7 +15,7 @@ import boom.common._
 import boom.util.WrapInc
 import chisel3._
 import chisel3.internal.naming.chiselName
-import chisel3.util.PopCount
+import chisel3.util.{PopCount, isPow2, log2Ceil}
 import freechips.rocketchip.config.Parameters
 
 /**
@@ -32,10 +32,26 @@ class IssueUnitDnbUnified(
 {
   //TODO: figure out how to allocate some issue port explicitly fro DLQ and CRQ?
   //TODO: allow non-urgent dlq insns if fu is available?
-
+  // we need this so we can enqueue it
+  val dlq_uop = WireInit(io.dlq_head.get.bits)
+  dlq_uop.iw_p1_poisoned := false.B
+  dlq_uop.iw_p2_poisoned := false.B
+  dlq_uop.iw_state := s_valid_1
+  val dlq_head_dist = Wire(UInt(robAddrSz.W))
   // rob_head_idx + dlqRobUrgentDist >= dlq_head.rob_idx
-  val dlq_urgent = io.dlq_head.get.valid && (WrapInc(io.rob_head_idx.get, boomParams.dnbParams.get.dlqRobUrgentDist) >= io.dlq_head.get.bits.rob_idx)
+  when(io.rob_head_idx.get <= dlq_uop.rob_idx){
+    dlq_head_dist := dlq_uop.rob_idx - io.rob_head_idx.get
+  }.otherwise{
+    // wrap around case
+    val max_rob_head = (numRobRows << log2Ceil(coreWidth)).U
+    dlq_head_dist := (dlq_uop.rob_idx +& max_rob_head) - io.rob_head_idx.get
+  }
+  val dlq_near_head = WireInit(dlq_head_dist  < boomParams.dnbParams.get.dlqRobUrgentDist.U)
+  val dlq_urgent = io.dlq_head.get.valid && dlq_near_head
+  val dlq_busy = (dlq_uop.prs1_busy || dlq_uop.prs2_busy || dlq_uop.prs3_busy)
+  val dlq_request = io.dlq_head.get.valid && !dlq_busy
   val dlq_grant = WireInit(false.B)
+  val dlq_will_be_valid = dlq_urgent && !dlq_grant
   val dlq_to_slot = WireInit(false.B)
   io.dlq_head.get.ready := dlq_grant || dlq_to_slot
   //-------------------------------------------------------------
@@ -66,7 +82,7 @@ class IssueUnitDnbUnified(
 
   // which entries' uops will still be next cycle? (not being issued and vacated)
   val will_be_valid = (0 until numIssueSlots).map(i => issue_slots(i).will_be_valid) ++
-    Seq(io.dlq_head.get.valid && !dlq_grant) ++
+    Seq(dlq_will_be_valid) ++
     (0 until dispatchWidth).map(i => io.dis_uops(i).valid &&
       !dis_uops(i).exception &&
       !dis_uops(i).is_fence &&
@@ -75,7 +91,7 @@ class IssueUnitDnbUnified(
   val queue_added = WireInit(VecInit(Seq.fill(maxShift)(false.B)))
   dontTouch(queue_added)
   val uops = issue_slots.map(s=>s.out_uop) ++
-    Seq(io.dlq_head.get.bits) ++
+    Seq(dlq_uop) ++
     dis_uops.map(s=>s)
   for (i <- 0 until numIssueSlots) {
     issue_slots(i).in_uop.valid := false.B
@@ -100,14 +116,15 @@ class IssueUnitDnbUnified(
   //-------------------------------------------------------------
   // Dispatch/Entry Logic
   // did we find a spot to slide the new dispatched uops into?
-  //TODO: DLQ
-//  val will_be_available = (0 until numIssueSlots).map(i =>
-//    (!issue_slots(i).will_be_valid || issue_slots(i).clear) && !(issue_slots(i).in_uop.valid))
-//  val num_available = PopCount(will_be_available)
-  dlq_to_slot := queue_added(0)
+  val will_be_available = (0 until numIssueSlots).map(i =>
+    (!issue_slots(i).will_be_valid || issue_slots(i).clear) && !(issue_slots(i).in_uop.valid))
+  //TODO: maybe also change behavior for DLQ
+  val num_available = PopCount(will_be_available)
+  dlq_to_slot := queue_added(0) && dlq_will_be_valid
   for (w <- 0 until dispatchWidth) {
-    // TODO: figure out if this might increase the critical path
-    io.dis_uops(w).ready := queue_added(w+1) // RegNext(num_available > w.U)
+    assert(!queue_added(w+1) || io.dis_uops(w).ready, f"IQ: dispatch $w had ready logic error")
+    assert(!io.dis_uops(w).fire() || queue_added(w), f"IQ: dispatch $w had ready logic error")
+    io.dis_uops(w).ready := RegNext(num_available > (w+1).U)
   }
   //-------------------------------------------------------------
   // Issue Select Logic
@@ -126,17 +143,21 @@ class IssueUnitDnbUnified(
 
   val port_issued = Array.fill(issueWidth){false.B}
   // urgent_dlq > slots > crq
-  val requests = Seq(dlq_urgent)++
+  val requests = Seq(dlq_urgent && dlq_request)++
     issue_slots.map(s => s.request)++
     Seq(io.crq_head.get.valid)
   val grants = Seq(dlq_grant)++
     issue_slots.map(s => s.grant)++
     Seq(io.crq_head.get.ready)
-  val candidate_uops = Seq(io.dlq_head.get.bits)++
+  val candidate_uops = Seq(dlq_uop)++
     issue_slots.map(s => s.uop)++
     Seq(io.crq_head.get.bits)
 
-  for (i <- 0 until numIssueSlots) {
+  require(requests.length == numIssueSlots+2)
+  require(grants.length == numIssueSlots+2)
+  require(candidate_uops.length == numIssueSlots+2)
+
+  for (i <- 0 until numIssueSlots+2) {
     grants(i) := false.B
     var uop_issued = false.B
 
