@@ -129,7 +129,7 @@ abstract class IssueUnit(
     dis_uops(w).iw_state := s_valid_1
 
     // all of the store splitting logic is handled in dispatch for the LSC
-    require(!(iqType == IQT_COMB.litValue()) || boomParams.loadSliceMode, "combined issue queue only in lsc mode")
+    require(!(iqType == IQT_COMB.litValue()) || boomParams.loadSliceMode || boomParams.dnbMode, "combined issue queue only in lsc mode")
     if(!boomParams.loadSliceMode) {
       if (iqType == IQT_MEM.litValue || iqType == IQT_INT.litValue) {
         // For StoreAddrGen for Int, or AMOAddrGen, we go to addr gen state
