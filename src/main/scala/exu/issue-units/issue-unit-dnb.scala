@@ -72,7 +72,7 @@ class IssueUnitDnbUnified(
       !dis_uops(i).is_fence &&
       !dis_uops(i).is_fencei)
 
-  val queue_added = WireInit(VecInit(Seq.fill(dispatchWidth)(false.B)))
+  val queue_added = WireInit(VecInit(Seq.fill(maxShift)(false.B)))
   dontTouch(queue_added)
   val uops = issue_slots.map(s=>s.out_uop) ++
     Seq(io.dlq_head.get.bits) ++
