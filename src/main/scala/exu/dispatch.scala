@@ -182,7 +182,7 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
         if (i == 0) {
           idx := 0.U
         } else {
-          idx := PopCount(iq_enq_count.asUInt()(i,0))
+          idx := PopCount(iq_enq_count.slice(0,i-1))
         }
         dis_stall(i) := !io.dis_uops(LSC_DIS_COMB_PORT_IDX)(idx).ready
         io.dis_uops(LSC_DIS_COMB_PORT_IDX)(idx).valid := uop_valid && !propagated_stall
@@ -224,7 +224,7 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
       if (i == 0) {
         idx := 0.U
       } else {
-        idx := PopCount(iq_enq_count.asUInt()(i,0))
+        idx := PopCount(iq_enq_count.slice(0,i-1))
       }
 
       dis_stall(i) := !(dlq_ready && io.dis_uops(LSC_DIS_COMB_PORT_IDX)(idx).ready)

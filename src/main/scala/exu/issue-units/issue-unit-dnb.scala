@@ -136,7 +136,10 @@ class IssueUnitDnbUnified(
     issue_slots.map(s => s.uop)++
     Seq(io.crq_head.get.bits)
 
-  for (i <- 0 until numIssueSlots) {
+  require(requests.length == numIssueSlots+2)
+  require(grants.length == numIssueSlots+2)
+  require(candidate_uops.length == numIssueSlots+2)
+  for (i <- 0 until numIssueSlots+2) {
     grants(i) := false.B
     var uop_issued = false.B
 
