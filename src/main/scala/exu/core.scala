@@ -113,9 +113,13 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   var unified_iss_unit:IssueUnit = null
   if(boomParams.unifiedIssueQueue){
     require(combIssueParam.isDefined)
-    // TODO: use something other than intIssueParam??
-    unified_iss_unit = Module(new IssueUnitUnified(combIssueParam.get, numIntIssueWakeupPorts+numFpWakeupPorts))
-    unified_iss_unit.suggestName("unified_issue_unit")
+    if(boomParams.dnbMode){
+      unified_iss_unit = Module(new IssueUnitDnbUnified(combIssueParam.get, numIntIssueWakeupPorts+numFpWakeupPorts))
+      unified_iss_unit.suggestName("dnb_issue_unit")
+    } else {
+      unified_iss_unit = Module(new IssueUnitSliceUnified(combIssueParam.get, numIntIssueWakeupPorts+numFpWakeupPorts))
+      unified_iss_unit.suggestName("unified_slice_issue_unit")
+    }
   } else {
     mem_iss_unit = if (boomParams.loadSliceMode) Module(new IssueUnitSlice(memIssueParam, numIntIssueWakeupPorts)) else Module(new IssueUnitCollapsing(memIssueParam, numIntIssueWakeupPorts))
     mem_iss_unit.suggestName("mem_issue_unit")
@@ -778,32 +782,29 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   }
   dispatcher.io.tsc_reg := debug_tsc_reg // needed for pipeview
 
+  if(boomParams.dnbMode){
+    unified_iss_unit.io.dlq_head.get := dispatcher.io.dlq_head.get
+    unified_iss_unit.io.crq_head.get := dispatcher.io.crq_head.get
+    unified_iss_unit.io.rob_head_idx.get := rob.io.rob_head_idx
+  }
   // Connect Dispatcher to IQ
-  if (boomParams.loadSliceMode) {
-    if(boomParams.unifiedIssueQueue){
-      // TODO: maybe two for a and B?
-      dispatcher.io.dis_uops.map(_.map(_.ready := false.B))
-      unified_iss_unit.io.dis_uops <> dispatcher.io.dis_uops(LSC_DIS_COMB_PORT_IDX)
-//      dispatcher.io.dis_uops(LSC_DIS_INT_PORT_IDX).map(_.ready := false.B)
-//      dispatcher.io.dis_uops(LSC_DIS_MEM_PORT_IDX).map(_.ready := false.B)
-//      dispatcher.io.dis_uops(LSC_DIS_FP_PORT_IDX).map(_.ready := false.B)
-//      dispatcher.io.dis_uops(3).map(_.ready := false.B) //TODO: replace magic number
-    } else{
-      for (i <- 0 until issueParams.size){
-        // TODO: why is this a loop??
-        if (issueParams(i).iqType == IQT_FP.litValue) {
-          fp_issue_unit.io.dis_uops <> dispatcher.io.dis_uops(LSC_DIS_FP_PORT_IDX)
-        } else if (issueParams(i).iqType == IQT_INT.litValue) {
-          int_iss_unit.io.dis_uops <> dispatcher.io.dis_uops(LSC_DIS_INT_PORT_IDX)
-        } else if (issueParams(i).iqType == IQT_MEM.litValue) {
-          mem_iss_unit.io.dis_uops <> dispatcher.io.dis_uops(LSC_DIS_MEM_PORT_IDX)
-        } else {
-          assert(false.B, "[Core] Unsupported IssueQueue Type")
-        }
+  if(boomParams.unifiedIssueQueue){
+    // TODO: maybe two for a and B?
+    dispatcher.io.dis_uops.map(_.map(_.ready := false.B))
+    unified_iss_unit.io.dis_uops <> dispatcher.io.dis_uops(LSC_DIS_COMB_PORT_IDX)
+  } else if (boomParams.loadSliceMode){
+    for (i <- 0 until issueParams.size){
+      // TODO: why is this a loop??
+      if (issueParams(i).iqType == IQT_FP.litValue) {
+        fp_issue_unit.io.dis_uops <> dispatcher.io.dis_uops(LSC_DIS_FP_PORT_IDX)
+      } else if (issueParams(i).iqType == IQT_INT.litValue) {
+        int_iss_unit.io.dis_uops <> dispatcher.io.dis_uops(LSC_DIS_INT_PORT_IDX)
+      } else if (issueParams(i).iqType == IQT_MEM.litValue) {
+        mem_iss_unit.io.dis_uops <> dispatcher.io.dis_uops(LSC_DIS_MEM_PORT_IDX)
+      } else {
+        assert(false.B, "[Core] Unsupported IssueQueue Type")
       }
     }
-
-
   } else {
     var iu_idx = 0
     // Send dispatched uops to correct issue queues

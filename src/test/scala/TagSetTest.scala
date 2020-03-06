@@ -35,7 +35,7 @@ class TagSet(entries: Int=128, ways: Int=2, width: Int=40, writeWidth:Int = 1, r
 
   // cycle 0
   for(i <- 0 until readWidth) {
-    val idx = index(io.s0_check(i).bits)
+    val idx = WireDefault(index(io.s0_check(i).bits))
     idx.suggestName(s"sram_read_addr_$i")
     dontTouch(idx)
     for (j <- 0 until ways) {

@@ -90,6 +90,11 @@ class IssueUnitIO(
   val event_empty      = Output(Bool()) // used by HPM events; is the issue unit empty?
 
   val tsc_reg          = Input(UInt(width=xLen.W))
+
+  // DnB ports to Dispatch
+  val dlq_head = if(boomParams.dnbMode) Some(Flipped(DecoupledIO(new MicroOp))) else None
+  val crq_head = if(boomParams.dnbMode) Some(Flipped(DecoupledIO(new MicroOp))) else None
+  val rob_head_idx = if(boomParams.dnbMode) Some(Input(UInt(robAddrSz.W))) else None
 }
 
 /**

@@ -116,7 +116,7 @@ case class BoomCoreParams(
   }
 
 
-  val unifiedIssueQueue: Boolean = loadSliceCore.exists(_.unifiedIssueQueue)
+  val unifiedIssueQueue: Boolean = loadSliceCore.exists(_.unifiedIssueQueue) || dnbMode
 
   override def customCSRs(implicit p: Parameters) = new BoomCustomCSRs
 }
@@ -327,7 +327,8 @@ case class DromajoParams(
 // Class for DnB Parameters
 case class DnbParams(
                                 numCrqEntries: Int = 8,
-                                numDlqEntries: Int = 8
+                                numDlqEntries: Int = 8,
+                                dlqRobUrgentDist: Int = 2,
                               ){
 }
 
