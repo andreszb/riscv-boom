@@ -32,8 +32,8 @@ class DispatchIO(implicit p: Parameters) extends BoomBundle
   // io for busy table - used only for LSC
   val busy_req_uops = if(boomParams.busyLookupMode) Some(Output(Vec(boomParams.busyLookupParams.get.lookupAtDisWidth, new MicroOp))) else None //TODO: change width
   val busy_resps = if(boomParams.busyLookupMode) Some(Input(Vec(boomParams.busyLookupParams.get.lookupAtDisWidth, new BusyResp))) else None
-  val fp_busy_req_uops = if(boomParams.busyLookupMode && usingFPU && boomParams.loadSliceMode) Some(Output(Vec(boomParams.busyLookupParams.get.lookupAtDisWidth, new MicroOp))) else None
-  val fp_busy_resps = if(boomParams.busyLookupMode && usingFPU && boomParams.loadSliceMode) Some(Input(Vec(boomParams.busyLookupParams.get.lookupAtDisWidth, new BusyResp))) else None
+  val fp_busy_req_uops = if(boomParams.busyLookupMode && usingFPU) Some(Output(Vec(boomParams.busyLookupParams.get.lookupAtDisWidth, new MicroOp))) else None
+  val fp_busy_resps = if(boomParams.busyLookupMode && usingFPU) Some(Input(Vec(boomParams.busyLookupParams.get.lookupAtDisWidth, new BusyResp))) else None
   // brinfo & flush for LSC
   val brinfo = if(boomParams.loadSliceMode || boomParams.dnbMode) Some(Input(new BrResolutionInfo())) else None
   val flush = if(boomParams.loadSliceMode || boomParams.dnbMode) Some(Input(Bool())) else None
@@ -245,11 +245,25 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
 
   // Handle DLQ dequeues
   //  A little more complicated as we need to pass along the updated ready info
+  //  Connect uop to both FP and INT busy table. Pick the resp based on the lrs-types
   io.busy_req_uops.get(0) := dlq.io.heads(0).bits
+  io.fp_busy_req_uops.get(0) := dlq.io.heads(0).bits
+
   io.dlq_head.get <> dlq.io.heads(0)
   // Now, update busy info
-  io.dlq_head.get.bits.prs1_busy := io.dlq_head.get.bits.lrs1_rtype === RT_FIX && io.busy_resps.get(0).prs1_busy
-  io.dlq_head.get.bits.prs2_busy := io.dlq_head.get.bits.lrs2_rtype === RT_FIX && io.busy_resps.get(0).prs2_busy
+  when(io.dlq_head.get.bits.lrs1_rtype === RT_FLT) {
+    io.dlq_head.get.bits.prs1_busy := io.dlq_head.get.bits.lrs1_rtype === RT_FIX && io.fp_busy_resps.get(0).prs1_busy
+  }.otherwise {
+    io.dlq_head.get.bits.prs1_busy := io.dlq_head.get.bits.lrs1_rtype === RT_FIX && io.busy_resps.get(0).prs1_busy
+  }
+
+  when(io.dlq_head.get.bits.lrs2_rtype === RT_FLT) {
+    io.dlq_head.get.bits.prs2_busy := io.dlq_head.get.bits.lrs2_rtype === RT_FLT && io.fp_busy_resps.get(0).prs2_busy
+  }.otherwise {
+    io.dlq_head.get.bits.prs2_busy := io.dlq_head.get.bits.lrs2_rtype === RT_FIX && io.busy_resps.get(0).prs2_busy
+  }
+
+
   io.dlq_head.get.bits.prs3_busy := false.B
 
 
