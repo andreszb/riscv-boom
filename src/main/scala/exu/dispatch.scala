@@ -127,6 +127,8 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
   io.dnb_perf.get.iq.map(_ := false.B)
 
 
+  // Initialize t
+
   // Handle incoming renamed uops
   // Are the FIFOs ready to accept incoming uops? Currently we only accept enqueues to the FIFOs
   //  if we have room for the full coreWidth. Its an "all-or-nothing" deal. But we only stall if
@@ -155,6 +157,14 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
     // Check if this uop must be split into 2 which creates some extra corner cases
     val uop_split = uop.uopc === uopSTA
 
+    // Initialize the ports to false and just add the uop
+    dlq.io.enq_uops(i).bits := uop
+    dlq.io.enq_uops(i).valid := false.B
+    io.dis_uops(LSC_DIS_COMB_PORT_IDX)(i).bits := uop
+    io.dis_uops(LSC_DIS_COMB_PORT_IDX)(i).valid := false.B
+    crq.io.enq_uops(i).bits := uop
+    crq.io.enq_uops(i).valid := false.B
+
     when(!uop_split) {
       // Normal non-splitting case
       // Based on critical/busy which FIFO/IQ do we wanna use?
@@ -163,7 +173,6 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
       when(!uop_critical) {
         dis_stall(i) := !dlq_ready
         dlq.io.enq_uops(i).valid := uop_valid && !propagated_stall
-        dlq.io.enq_uops(i).bits := uop
         val fire = !dis_stall(i) && !propagated_stall && uop_valid
         io.dnb_perf.get.dlq(i) := fire
         io.ren_uops(i).ready := fire
@@ -186,7 +195,6 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
       }. elsewhen(uop_critical && !uop_busy) {
         dis_stall(i) := !crq_ready
         crq.io.enq_uops(i).valid := uop_valid && !propagated_stall
-        crq.io.enq_uops(i).bits := uop
         val fire = !dis_stall(i) && !propagated_stall && uop_valid
         io.dnb_perf.get.crq(i) := fire
         io.ren_uops(i).ready := fire
