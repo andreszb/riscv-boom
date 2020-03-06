@@ -139,7 +139,7 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
   //  We can use this in the IQ to set ports not-ready based on how many uops it can receive
   //  If IQ has 2 free slots and also want to enqueue the DLQ head. Then set port0=ready and port1=not ready
 
-  var iq_enq_idx = 0
+  val iq_enq_count = WireInit(0.U(coreWidth.W))
   val dis_stall = WireInit(VecInit(Seq.fill(coreWidth)(false.B)))
   for (i <- 0 until coreWidth) {
     // Just get uop bits, valid and critical/busy info
@@ -152,32 +152,81 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
     // Check whether we have to stall on this ren2 since prior uops have been stalled
     val propagated_stall  = dis_stall.scanLeft(false.B)((s,h) => s || h).apply(i)
 
-    // Based on critical/busy which FIFO/IQ do we wanna use?
-    //  Then we check whether that port is ready. If its not we update dis_stall
-    //  To propagate the stall to the next uops in this decode packet.
+    // Check if this uop must be split into 2 which creates some extra corner cases
+    val uop_split = uop.uopc === uopSTA
 
-    when(!uop_critical) {
-      dis_stall(i) := !dlq_ready
-      dlq.io.enq_uops(i).valid := uop_valid && !propagated_stall
-      dlq.io.enq_uops(i).bits := uop
-      io.dnb_perf.get.dlq(i) := true.B
-    }. elsewhen((uop_critical && uop_busy) || uop_iq) {
-      dis_stall(i) := !io.dis_uops(LSC_DIS_COMB_PORT_IDX)(iq_enq_idx).ready
-      io.dis_uops(LSC_DIS_COMB_PORT_IDX)(iq_enq_idx).valid := uop_valid && !propagated_stall
-      io.dis_uops(LSC_DIS_COMB_PORT_IDX)(iq_enq_idx).bits := uop
-      iq_enq_idx +=1
-      io.dnb_perf.get.iq(i) := true.B
-    }. elsewhen(uop_critical && !uop_busy) {
-      dis_stall(i) := !crq_ready
-      crq.io.enq_uops(i).valid := uop_valid && !propagated_stall
-      crq.io.enq_uops(i).bits := uop
-      io.dnb_perf.get.crq(i) := true.B
+    when(!uop_split) {
+      // Normal non-splitting case
+      // Based on critical/busy which FIFO/IQ do we wanna use?
+      //  Then we check whether that port is ready. If its not we update dis_stall
+      //  To propagate the stall to the next uops in this decode packet.
+      when(!uop_critical) {
+        dis_stall(i) := !dlq_ready
+        dlq.io.enq_uops(i).valid := uop_valid && !propagated_stall
+        dlq.io.enq_uops(i).bits := uop
+        val fire = !dis_stall(i) && !propagated_stall && uop_valid
+        io.dnb_perf.get.dlq(i) := fire
+        io.ren_uops(i).ready := fire
+
+      }. elsewhen((uop_critical && uop_busy) || uop_iq) {
+        val idx = PopCount(iq_enq_count(0,i))
+        dis_stall(i) := !io.dis_uops(LSC_DIS_COMB_PORT_IDX)(idx).ready
+        io.dis_uops(LSC_DIS_COMB_PORT_IDX)(idx).valid := uop_valid && !propagated_stall
+        io.dis_uops(LSC_DIS_COMB_PORT_IDX)(idx).bits := uop
+        val fire = !dis_stall(i) && !propagated_stall && uop_valid
+        io.dnb_perf.get.iq(i) := fire
+        io.ren_uops(i).ready := fire
+        iq_enq_count(i) := fire.asUInt()
+
+      }. elsewhen(uop_critical && !uop_busy) {
+        dis_stall(i) := !crq_ready
+        crq.io.enq_uops(i).valid := uop_valid && !propagated_stall
+        crq.io.enq_uops(i).bits := uop
+        val fire = !dis_stall(i) && !propagated_stall && uop_valid
+        io.dnb_perf.get.crq(i) := fire
+        io.ren_uops(i).ready := fire
+      }
+
+    }. otherwise { // Uop splitting case
+      // Currently 2 cases. STORE and FP STORE. We want the uopSTD to go in the DLQ and the uopSTA on the IQ
+      //  If we dont have place for both, i.e. in DLQ and IQ we will stall
+      val uop_sta = WireInit(uop)
+      val uop_std = WireInit(uop)
+
+      when(uop.iq_type === IQT_MEM) {
+        // INT stores
+        uop_sta.uopc := uopSTA
+        uop_sta.lrs2_rtype := RT_X
+        uop_std.uopc := uopSTD
+        uop_std.lrs1_rtype := RT_X
+      }.otherwise {
+        // FP stores
+        uop_sta.iq_type := IQT_MEM
+        uop_sta.lrs2_rtype := RT_X
+        uop_std.iq_type := IQT_FP
+        uop_std.lrs1_rtype := RT_X
+      }
+      // Calculate the IQ enq index. And stall unless IQ port + DLQ FIFO is ready
+      val iq_idx = PopCount(iq_enq_count(0,i))
+      dis_stall(i) := !(dlq_ready && io.dis_uops(LSC_DIS_COMB_PORT_IDX)(iq_idx).ready)
+      when(!dis_stall(i) && !propagated_stall) { // Here wee
+        io.dis_uops(LSC_DIS_COMB_PORT_IDX)(iq_idx).valid := uop_valid && !propagated_stall
+        io.dis_uops(LSC_DIS_COMB_PORT_IDX)(iq_idx).bits := uop
+
+        dlq.io.enq_uops(i).valid := uop_valid && !propagated_stall
+        dlq.io.enq_uops(i).bits := uop
+
+        val fire = uop_valid && !propagated_stall && !dis_stall(i)
+        io.dnb_perf.get.dlq(i) := fire
+        io.dnb_perf.get.iq(i) := fire
+        io.ren_uops(i).ready := fire
+        iq_enq_count(i) := fire.asUInt()
+      }.otherwise {
+        io.ren_uops(i).ready := false.B
+      }
+
     }
 
-    // Finally we inform the ren2 if we actually are gonna take this uop
-    //  propagated_stall == We have a stall in prior uops that should block this uop
-    //  dis_stall(i) == This uop has to stall because the wanted queue is not ready for it.
-    io.ren_uops(i).ready := !(propagated_stall || dis_stall(i))
   }
 
   // Handle CRQ dequeues
