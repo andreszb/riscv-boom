@@ -30,10 +30,10 @@ class DispatchIO(implicit p: Parameters) extends BoomBundle
   // dispatchWidth may vary between issue queues
   val dis_uops = MixedVec(issueParams.map(ip=>Vec(ip.dispatchWidth, DecoupledIO(new MicroOp))))
   // io for busy table - used only for LSC
-  val busy_req_uops = if(boomParams.busyLookupMode) Some(Output(Vec(boomParams.busyLookupParams.get.busyTableReqWidth(coreWidth), new MicroOp))) else None //TODO: change width
-  val busy_resps = if(boomParams.busyLookupMode) Some(Input(Vec(boomParams.busyLookupParams.get.busyTableReqWidth(coreWidth), new BusyResp))) else None
-  val fp_busy_req_uops = if(boomParams.busyLookupMode && usingFPU && boomParams.loadSliceMode) Some(Output(Vec(boomParams.busyLookupParams.get.busyTableReqWidth(coreWidth), new MicroOp))) else None
-  val fp_busy_resps = if(boomParams.busyLookupMode && usingFPU && boomParams.loadSliceMode) Some(Input(Vec(boomParams.busyLookupParams.get.busyTableReqWidth(coreWidth), new BusyResp))) else None
+  val busy_req_uops = if(boomParams.busyLookupMode) Some(Output(Vec(boomParams.busyLookupParams.get.lookupAtDisWidth, new MicroOp))) else None //TODO: change width
+  val busy_resps = if(boomParams.busyLookupMode) Some(Input(Vec(boomParams.busyLookupParams.get.lookupAtDisWidth, new BusyResp))) else None
+  val fp_busy_req_uops = if(boomParams.busyLookupMode && usingFPU && boomParams.loadSliceMode) Some(Output(Vec(boomParams.busyLookupParams.get.lookupAtDisWidth, new MicroOp))) else None
+  val fp_busy_resps = if(boomParams.busyLookupMode && usingFPU && boomParams.loadSliceMode) Some(Input(Vec(boomParams.busyLookupParams.get.lookupAtDisWidth, new BusyResp))) else None
   // brinfo & flush for LSC
   val brinfo = if(boomParams.loadSliceMode || boomParams.dnbMode) Some(Input(new BrResolutionInfo())) else None
   val flush = if(boomParams.loadSliceMode || boomParams.dnbMode) Some(Input(Bool())) else None
@@ -139,7 +139,7 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
   //  We can use this in the IQ to set ports not-ready based on how many uops it can receive
   //  If IQ has 2 free slots and also want to enqueue the DLQ head. Then set port0=ready and port1=not ready
 
-  val iq_enq_count = WireInit(0.U(coreWidth.W))
+  val iq_enq_count = WireInit(VecInit(Seq.fill(coreWidth) (false.B)))
   val dis_stall = WireInit(VecInit(Seq.fill(coreWidth)(false.B)))
   for (i <- 0 until coreWidth) {
     // Just get uop bits, valid and critical/busy info
@@ -169,14 +169,19 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
         io.ren_uops(i).ready := fire
 
       }. elsewhen((uop_critical && uop_busy) || uop_iq) {
-        val idx = PopCount(iq_enq_count(0,i))
+        val idx = Wire(UInt())
+        if (i == 0) {
+          idx := 0.U
+        } else {
+          idx := PopCount(iq_enq_count.asUInt()(0,i))
+        }
         dis_stall(i) := !io.dis_uops(LSC_DIS_COMB_PORT_IDX)(idx).ready
         io.dis_uops(LSC_DIS_COMB_PORT_IDX)(idx).valid := uop_valid && !propagated_stall
         io.dis_uops(LSC_DIS_COMB_PORT_IDX)(idx).bits := uop
         val fire = !dis_stall(i) && !propagated_stall && uop_valid
         io.dnb_perf.get.iq(i) := fire
         io.ren_uops(i).ready := fire
-        iq_enq_count(i) := fire.asUInt()
+        iq_enq_count(i) := fire.asUInt
 
       }. elsewhen(uop_critical && !uop_busy) {
         dis_stall(i) := !crq_ready
@@ -207,11 +212,17 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
         uop_std.lrs1_rtype := RT_X
       }
       // Calculate the IQ enq index. And stall unless IQ port + DLQ FIFO is ready
-      val iq_idx = PopCount(iq_enq_count(0,i))
-      dis_stall(i) := !(dlq_ready && io.dis_uops(LSC_DIS_COMB_PORT_IDX)(iq_idx).ready)
+      val idx = Wire(UInt())
+      if (i == 0) {
+        idx := 0.U
+      } else {
+        idx := PopCount(iq_enq_count.asUInt()(0,i))
+      }
+
+      dis_stall(i) := !(dlq_ready && io.dis_uops(LSC_DIS_COMB_PORT_IDX)(idx).ready)
       when(!dis_stall(i) && !propagated_stall) { // Here wee
-        io.dis_uops(LSC_DIS_COMB_PORT_IDX)(iq_idx).valid := uop_valid && !propagated_stall
-        io.dis_uops(LSC_DIS_COMB_PORT_IDX)(iq_idx).bits := uop
+        io.dis_uops(LSC_DIS_COMB_PORT_IDX)(idx).valid := uop_valid && !propagated_stall
+        io.dis_uops(LSC_DIS_COMB_PORT_IDX)(idx).bits := uop
 
         dlq.io.enq_uops(i).valid := uop_valid && !propagated_stall
         dlq.io.enq_uops(i).bits := uop
