@@ -783,8 +783,8 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   dispatcher.io.tsc_reg := debug_tsc_reg // needed for pipeview
 
   if(boomParams.dnbMode){
-    unified_iss_unit.io.dlq_head.get := dispatcher.io.dlq_head.get
-    unified_iss_unit.io.crq_head.get := dispatcher.io.crq_head.get
+    unified_iss_unit.io.dlq_head.get <> dispatcher.io.dlq_head.get
+    unified_iss_unit.io.crq_head.get <> dispatcher.io.crq_head.get
     unified_iss_unit.io.rob_head_idx.get := rob.io.rob_head_idx
   }
   // Connect Dispatcher to IQ
