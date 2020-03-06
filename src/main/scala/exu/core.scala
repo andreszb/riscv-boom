@@ -609,12 +609,13 @@ class BoomCore(implicit p: Parameters) extends BoomModule
     // IST check. We have to deal with pipeline stalls
     for (w <- 0 until coreWidth) {
       val in_ist = ist.get.io.check(w).in_ist.bits
+      dis_uops(w).is_lsc_b := Mux(has_stalled.get(w), in_ist_reg.get(w), in_ist)
       when(ist.get.io.check(w).in_ist.valid) {
         in_ist_reg.get(w) := in_ist
       }
 
       when(dis_fire(w)) {
-        dis_uops(w).is_lsc_b := Mux(has_stalled.get(w), in_ist_reg.get(w), in_ist)
+
         has_stalled.get(w) := false.B
       }.otherwise {
         has_stalled.get(w) := (ist.get.io.check(w).in_ist.valid || has_stalled.get(w)) &&
@@ -766,7 +767,12 @@ class BoomCore(implicit p: Parameters) extends BoomModule
 
   // Get uops from rename2
   for (w <- 0 until coreWidth) {
-    dispatcher.io.ren_uops(w).valid := dis_fire(w)
+    if(boomParams.dnbMode) {
+      dispatcher.io.ren_uops(w).valid := rename_stage.io.ren2_uops
+    } else {
+      dispatcher.io.ren_uops(w).valid := dis_fire(w)
+    }
+
     dispatcher.io.ren_uops(w).bits  := dis_uops(w)
   }
   // connect dispatch to busy table in LSC mode
