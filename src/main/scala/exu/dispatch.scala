@@ -179,18 +179,22 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
         val uop_sta = WireInit(uop)
         val uop_std = WireInit(uop)
 
+        // address
+        uop_sta.lrs2_rtype := RT_X
+        uop_sta.prs2_busy := false.B
+        // data
+        uop_std.lrs1_rtype := RT_X
+        uop_std.prs1_busy := false.B
+
         when(uop.iq_type === IQT_MEM) {
           // INT stores
           uop_sta.uopc := uopSTA
-          uop_sta.lrs2_rtype := RT_X
           uop_std.uopc := uopSTD
-          uop_std.lrs1_rtype := RT_X
         }.otherwise {
           // FP stores
+          uop_sta.uopc := uopSTA
           uop_sta.iq_type := IQT_MEM
-          uop_sta.lrs2_rtype := RT_X
           uop_std.iq_type := IQT_FP
-          uop_std.lrs1_rtype := RT_X
         }
         io.dis_uops(LSC_DIS_COMB_PORT_IDX)(i).valid := true.B
         io.dis_uops(LSC_DIS_COMB_PORT_IDX)(i).bits := uop_sta
@@ -225,14 +229,18 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
   // Now, update busy info
   when(io.dlq_head.get.bits.lrs1_rtype === RT_FLT) {
     io.dlq_head.get.bits.prs1_busy := io.fp_busy_resps.get(0).prs1_busy
-  }.otherwise {
+  }.elsewhen(io.dlq_head.get.bits.lrs1_rtype === RT_FIX) {
     io.dlq_head.get.bits.prs1_busy := io.busy_resps.get(0).prs1_busy
+  }.otherwise{
+    io.dlq_head.get.bits.prs1_busy := false.B
   }
 
   when(io.dlq_head.get.bits.lrs2_rtype === RT_FLT) {
     io.dlq_head.get.bits.prs2_busy := io.fp_busy_resps.get(0).prs2_busy
-  }.otherwise {
+  }.elsewhen(io.dlq_head.get.bits.lrs2_rtype === RT_FIX) {
     io.dlq_head.get.bits.prs2_busy := io.busy_resps.get(0).prs2_busy
+  }.otherwise{
+    io.dlq_head.get.bits.prs2_busy := false.B
   }
 
   io.dlq_head.get.bits.prs3_busy := io.dlq_head.get.bits.frs3_en && io.fp_busy_resps.get(0).prs3_busy

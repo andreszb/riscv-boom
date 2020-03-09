@@ -101,7 +101,7 @@ class IssueUnitDnbUnified(
         issue_slots(i).in_uop.valid := will_be_valid(i+j)
         issue_slots(i).in_uop.bits  := uops(i+j)
         if(i+j >= numIssueSlots){
-          queue_added(i+j-numIssueSlots) := true.B
+          queue_added(i+j-numIssueSlots) := will_be_valid(i+j)
         }
       }
     }
@@ -122,8 +122,8 @@ class IssueUnitDnbUnified(
   val num_available = PopCount(will_be_available)
   dlq_to_slot := queue_added(0) && dlq_will_be_valid
   for (w <- 0 until dispatchWidth) {
-    assert(!queue_added(w+1) || io.dis_uops(w).ready, f"IQ: dispatch $w had ready logic error")
-    assert(!io.dis_uops(w).fire() || queue_added(w), f"IQ: dispatch $w had ready logic error")
+//    assert(!queue_added(w+1) || io.dis_uops(w).ready, f"IQ: dispatch $w had ready logic error")
+//    assert(!io.dis_uops(w).fire() || queue_added(w), f"IQ: dispatch $w had ready logic error")
     io.dis_uops(w).ready := RegNext(num_available > (w+1).U)
   }
   //-------------------------------------------------------------
