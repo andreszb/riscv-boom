@@ -51,10 +51,11 @@ class IssueUnitDnbUnified(
   val dlq_urgent = io.dlq_head.get.valid && dlq_near_head
   val dlq_busy = (dlq_uop.prs1_busy || dlq_uop.prs2_busy || dlq_uop.prs3_busy)
   val dlq_request = io.dlq_head.get.valid && !dlq_busy
+  val dlq_grant_urgent = WireInit(false.B)
   val dlq_grant = WireInit(false.B)
-  val dlq_will_be_valid = dlq_urgent && !dlq_grant
+  val dlq_will_be_valid = dlq_urgent && !dlq_grant_urgent
   val dlq_to_slot = WireInit(false.B)
-  io.dlq_head.get.ready := dlq_grant || dlq_to_slot
+  io.dlq_head.get.ready := dlq_grant_urgent || dlq_to_slot || dlq_grant
   //-------------------------------------------------------------
   // Figure out how much to shift entries by
 
@@ -149,19 +150,22 @@ class IssueUnitDnbUnified(
   // urgent_dlq > slots > crq
   val requests = Seq(dlq_urgent && dlq_request)++
     issue_slots.map(s => s.request)++
-    Seq(io.crq_head.get.valid)
-  val grants = Seq(dlq_grant)++
+    Seq(io.crq_head.get.valid)++
+    Seq(dlq_request && !dlq_urgent)
+  val grants = Seq(dlq_grant_urgent)++
     issue_slots.map(s => s.grant)++
-    Seq(io.crq_head.get.ready)
+    Seq(io.crq_head.get.ready)++
+    Seq(dlq_grant)
   val candidate_uops = Seq(dlq_uop)++
     issue_slots.map(s => s.uop)++
-    Seq(io.crq_head.get.bits)
+    Seq(io.crq_head.get.bits)++
+    Seq(dlq_uop)
 
-  require(requests.length == numIssueSlots+2)
-  require(grants.length == numIssueSlots+2)
-  require(candidate_uops.length == numIssueSlots+2)
+  require(requests.length == numIssueSlots+3)
+  require(grants.length == numIssueSlots+3)
+  require(candidate_uops.length == numIssueSlots+3)
 
-  for (i <- 0 until numIssueSlots+2) {
+  for (i <- 0 until numIssueSlots+3) {
     grants(i) := false.B
     var uop_issued = false.B
 
