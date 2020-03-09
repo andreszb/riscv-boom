@@ -24,6 +24,7 @@ import freechips.rocketchip.config.Parameters
   * @param params issue queue params
   * @param numWakeupPorts number of wakeup ports for the issue queue
   */
+@chiselName
 class IssueUnitDnbUnified(
                            params: IssueParams,
                            numWakeupPorts: Int)
@@ -57,10 +58,10 @@ class IssueUnitDnbUnified(
   //-------------------------------------------------------------
   // Figure out how much to shift entries by
 
-  // need to be able ot shift by one mor in order to incorporate dlq
+  // need to be able to shift by one mor in order to incorporate dlq
   val maxShift = dispatchWidth+1
   // TODO: figure out if this might increase the critical path
-  val vacants = issue_slots.map(s => !(s.valid)) ++ Seq(dlq_urgent && !dlq_grant) ++ io.dis_uops.map(_.valid).map(!_.asBool)
+  val vacants = issue_slots.map(s => !(s.valid)) ++ Seq(!dlq_urgent) ++ io.dis_uops.map(_.valid).map(!_.asBool)
   val shamts_oh = Array.fill(numIssueSlots+maxShift) {Wire(UInt(width=maxShift.W))}
   // track how many to shift up this entry by by counting previous vacant spots
   def SaturatingCounterOH(count_oh:UInt, inc: Bool, max: Int): UInt = {
@@ -88,6 +89,8 @@ class IssueUnitDnbUnified(
       !dis_uops(i).is_fence &&
       !dis_uops(i).is_fencei)
 
+  val debug_shift_src = WireInit(VecInit(Seq.fill(numIssueSlots)(0.U(10.W))))
+  dontTouch(debug_shift_src)
   val queue_added = WireInit(VecInit(Seq.fill(maxShift)(false.B)))
   dontTouch(queue_added)
   val uops = issue_slots.map(s=>s.out_uop) ++
@@ -103,6 +106,7 @@ class IssueUnitDnbUnified(
         if(i+j >= numIssueSlots){
           queue_added(i+j-numIssueSlots) := will_be_valid(i+j)
         }
+        debug_shift_src(i) := (i+j).U
       }
     }
     issue_slots(i).wakeup_ports := io.wakeup_ports
