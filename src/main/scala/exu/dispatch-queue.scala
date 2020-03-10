@@ -116,7 +116,7 @@ class SramDispatchQueue (params: DispatchQueueParams,
   //  Init all outputs to invalids
   //  A little hacking to assign a possible wider set of FIFOs to a narrower set of deq ports
   io.heads.map(_.valid := false.B)
-  io.heads.map(_.bits := io.enq_uops(0).bits) //TODO: Connect to NOP?
+  io.heads.map(_.bits := DontCare) //TODO: Connect to NOP?
   val deqPortUsed = WireInit(VecInit(Seq.fill(enqWidth)(false.B)))
   for(i <- 0 until enqWidth) {
     val idx = Wire(UInt(log2Ceil(enqWidth).W))
