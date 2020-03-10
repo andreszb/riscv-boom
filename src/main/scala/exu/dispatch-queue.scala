@@ -55,18 +55,20 @@ class SramDispatchQueue (params: DispatchQueueParams,
   // enqWidth has to be bigger than deqWidth
   require(enqWidth >= deqWidth)
 
-  val q_uop = (0 until enqWidth).map(i => SyncReadMem(numEntries, new MicroOp))
-  // Queue state
+  val sram_fifo = (0 until enqWidth).map(i => SyncReadMem(numEntries, new MicroOp))
 
+  // Branch mask and valid bits are still stored in Regs
   val br_mask = Reg(Vec(numEntries, Vec(enqWidth,UInt(maxBrCount.W) )))
   val valids = RegInit(VecInit(Seq.fill(numEntries)(VecInit(Seq.fill(enqWidth)(false.B)))))
   val head = RegInit(0.U(qAddrSz.W))
   val tail = RegInit(0.U(qAddrSz.W))
-  val deq_ptr = WireInit(VecInit(Seq.fill(enqWidth)(0.U(log2Ceil(deqWidth).W))))
   val full = WireInit(false.B)
   val empty = WireInit(true.B)
 
-  // Stage 1 enqueues stored for bypassing
+  // Deqeueue pointer maps dequeue port (io.heads) to FIFO-lane.
+  val deq_ptr = WireInit(VecInit(Seq.fill(enqWidth)(0.U(log2Ceil(deqWidth).W))))
+
+  // Stage 1 enqueues stored for bypassing.
   val s1_enq_uops = Reg(Vec(enqWidth, new MicroOp()))
   val s1_enq_valids = Reg(Vec(enqWidth, Bool()))
   val s1_bypass = RegInit(false.B)
@@ -87,7 +89,7 @@ class SramDispatchQueue (params: DispatchQueueParams,
   // Handle enqueues
   for (w <- 0 until enqWidth) {
     when(io.enq_uops(w).fire) {
-      q_uop(w)(tail) := WireInit(io.enq_uops(w).bits) //TODO: WireInit necessary?
+      sram_fifo(w)(tail) := WireInit(io.enq_uops(w).bits) //TODO: WireInit necessary?
       valids(tail)(w) := io.enq_uops(w).valid
       br_mask(tail)(w) := io.enq_uops(w).bits.br_mask
 
@@ -99,7 +101,7 @@ class SramDispatchQueue (params: DispatchQueueParams,
     s1_enq_valids(w) := io.enq_uops(w).valid
   }
 
-  s1_bypass := empty && io.enq_uops.map(_.valid).reduce(_||_)
+  s1_bypass := empty && io.enq_uops.map(_.valid).reduce(_||_) //Bypass next CC if we enqueue to an empty FIFO
 
   // Update tail
   //  We only update the tail for the next CC if there was a fire
@@ -107,7 +109,7 @@ class SramDispatchQueue (params: DispatchQueueParams,
 
   // Read from SRAM
   for(i <- 0 until enqWidth) {
-    s2_sram_read(i) := q_uop(i)(head_next)
+    s2_sram_read(i) := sram_fifo(i)(head_next)
   }
 
   // Pass out the head
@@ -130,10 +132,15 @@ class SramDispatchQueue (params: DispatchQueueParams,
                               !entry_killed(head)(i) &&
                               !io.flush
 
-      io.heads(idx).bits := s2_sram_read(i)
-      // If we have a branch resolution this cycle. Be sure to pass out the updated Brmask and not the old
-      //  TODO: Can this affect the Critical Path?
-      io.heads(idx).bits.br_mask := Mux(updated_brmask(head)(i), br_mask(head)(i) & ~io.brinfo.mask, br_mask(head)(i))
+      when(s1_bypass) {
+        io.heads(idx).bits := s1_enq_uops(i)
+      }.otherwise {
+        io.heads(idx).bits := s2_sram_read(i)
+        // If we have a branch resolution this cycle. Be sure to pass out the updated Brmask and not the old
+        //  TODO: Can this affect the Critical Path?
+        io.heads(idx).bits.br_mask := Mux(updated_brmask(head)(i), br_mask(head)(i) & ~io.brinfo.mask, br_mask(head)(i))
+
+      }
 
       deqPortUsed(i) := true.B
       deq_ptr(idx) := i.U
