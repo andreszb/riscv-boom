@@ -46,8 +46,6 @@ class InstructionSliceTableSyncMem(entries: Int=128, ways: Int=2)(implicit p: Pa
   val tag_tables = (0 until ways).map(i =>
     SyncReadMem(entries/ways, UInt(boomParams.ibdaParams.get.ibda_tag_sz.W))
   )
-  // TODO: change back when using syncRead
-  val ist2_check_sram_tag = Reg(Vec(decodeWidth, Vec(ways, UInt(ibdaParams.ibda_tag_sz.W))))
 
   val tag_valids = (0 until ways).map(_ => RegInit(VecInit(Seq.fill(entries/ways)(false.B)))) //TODO: Use SyncReadMem
   val tag_lru = RegInit(VecInit(Seq.fill(entries/2)(false.B)))
@@ -62,7 +60,7 @@ class InstructionSliceTableSyncMem(entries: Int=128, ways: Int=2)(implicit p: Pa
   // Stage 2
   val ist2_check_tag = RegNext(ist1_check_tag)
   val ist2_check_valid = RegNext(ist1_check_valid)
-//  val ist2_check_sram_tag = Wire(Vec(decodeWidth, Vec(ways, UInt(ibdaParams.ibda_tag_sz.W))))
+  val ist2_check_sram_tag = Wire(Vec(decodeWidth, Vec(ways, UInt(ibdaParams.ibda_tag_sz.W))))
   val ist2_check_sram_valid = Reg(Vec(decodeWidth, Vec(ways, Bool())))
   val ist2_in_ist = Wire(Vec(decodeWidth, Valid(Bool())))
   dontTouch(ist2_check_sram_tag)

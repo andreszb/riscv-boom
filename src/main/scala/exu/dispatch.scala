@@ -162,17 +162,18 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
           //dlq
           dlq.io.enq_uops(i).valid := true.B
           io.dnb_perf.get.dlq(i) := true.B
-        }.elsewhen((uop_critical && uop_busy) || uop_iq) {
-          //iq
-          io.dis_uops(LSC_DIS_COMB_PORT_IDX)(i).valid := true.B
-          io.dnb_perf.get.iq(i) := true.B
+        }.otherwise {
+          when(uop_busy || uop_iq) {
+            //iq
+            io.dis_uops(LSC_DIS_COMB_PORT_IDX)(i).valid := true.B
+            io.dnb_perf.get.iq(i) := true.B
 
-        }.elsewhen(uop_critical && !uop_busy) {
-          //crq
-          crq.io.enq_uops(i).valid := true.B
-          io.dnb_perf.get.crq(i) := true.B
+          }.otherwise {
+            //crq
+            crq.io.enq_uops(i).valid := true.B
+            io.dnb_perf.get.crq(i) := true.B
+          }
         }
-
       }.otherwise { // Uop splitting case
         // Currently 2 cases. STORE and FP STORE. We want the uopSTD to go in the DLQ and the uopSTA on the IQ
         //  If we dont have place for both, i.e. in DLQ and IQ we will stall

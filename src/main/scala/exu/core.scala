@@ -247,7 +247,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
         ("control-flow target misprediction", () => br_unit.brinfo.mispredict &&
           br_unit.brinfo.is_jr),
         ("flush", () => rob.io.flush.valid),
-        )),
+      )),
 
       new freechips.rocketchip.rocket.EventSet((mask, hits) => (mask & hits).orR, Seq(
         ("I$ miss", () => io.ifu.perf.acquire),
@@ -255,25 +255,26 @@ class BoomCore(implicit p: Parameters) extends BoomModule
         ("nop -'D$ release",  () => false.B),
         ("ITLB miss", () => io.ifu.perf.tlbMiss),
         ("nop - DTLB miss",   () => false.B),
-        ("L2 TLB miss", () => io.ptw.perf.l2miss)))
-      ) ++ (if (boomParams.loadSliceMode && decodeWidth == 2) Seq(
-      // LSC events
-      new freechips.rocketchip.rocket.EventSet((mask, hits) => (mask & hits).orR, Seq(
-        ("A-Q0", () => dispatcher.io.lsc_perf.get.aq(0)),
-        ("B-Q0", () => dispatcher.io.lsc_perf.get.bq(0)),
-        ("A-Q1", () => dispatcher.io.lsc_perf.get.aq(1)),
-        ("B-Q1", () => dispatcher.io.lsc_perf.get.bq(1)))))
-    else if (boomParams.dnbMode && decodeWidth == 2) Seq(
-      // DNB events
-      new freechips.rocketchip.rocket.EventSet((mask, hits) => (mask & hits).orR, Seq(
-      ("DLQ0", () => dispatcher.io.dnb_perf.get.dlq(0)),
-      ("CRQ0", () => dispatcher.io.dnb_perf.get.crq(0)),
-      ("IQ0", () => dispatcher.io.dnb_perf.get.iq(0)),
-      ("DLQ1", () => dispatcher.io.dnb_perf.get.dlq(1)),
-      ("CRQ1", () => dispatcher.io.dnb_perf.get.crq(1)),
-      ("IQ1", () => dispatcher.io.dnb_perf.get.iq(1)))))
-    else Seq())
-    )
+        ("L2 TLB miss", () => io.ptw.perf.l2miss),
+      ))) ++ (0 until coreWidth).map { i =>
+        // queue events
+        new freechips.rocketchip.rocket.EventSet((mask, hits) => (mask & hits).orR,
+          if (boomParams.loadSliceMode) Seq(
+            //lsc
+            (f"A-Q$i", () => dispatcher.io.lsc_perf.get.aq(i)),
+            (f"B-Q$i", () => dispatcher.io.lsc_perf.get.bq(i)),
+            ("nop", () => false.B),
+          ) else if (boomParams.dnbMode) Seq(
+            // DNB events
+            (f"DLQ$i", () => dispatcher.io.dnb_perf.get.dlq(i)),
+            (f"CRQ$i", () => dispatcher.io.dnb_perf.get.crq(i)),
+            (f"IQ$i", () => dispatcher.io.dnb_perf.get.iq(i)),
+          ) else Seq(
+            (f"DIS$i", () => dispatcher.io.ren_uops(i).fire()),
+            ("nop", () => false.B),
+            ("nop", () => false.B),
+          ))
+    })
   perfEvents.print()
 
 
