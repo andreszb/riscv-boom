@@ -58,11 +58,11 @@ class SramDispatchQueue (params: DispatchQueueParams,
   val q_uop = (0 until enqWidth).map(i => SyncReadMem(numEntries, new MicroOp))
   // Queue state
 
-  val br_mask = Reg(Vec(enqWidth, Vec(numEntries,UInt(maxBrCount.W) )))
-  val valids = RegInit(VecInit(Seq.fill(enqWidth)(VecInit(Seq.fill(numEntries)(false.B)))))
+  val br_mask = Reg(Vec(numEntries, Vec(enqWidth,UInt(maxBrCount.W) )))
+  val valids = RegInit(VecInit(Seq.fill(numEntries)(VecInit(Seq.fill(enqWidth)(false.B)))))
   val head = RegInit(0.U(qAddrSz.W))
   val tail = RegInit(0.U(qAddrSz.W))
-  val deq_ptr = WireInit(VecInit(Seq.fill(deqWidth)(0.U(log2Ceil(enqWidth).W))))
+  val deq_ptr = WireInit(VecInit(Seq.fill(enqWidth)(0.U(log2Ceil(deqWidth).W))))
   val full = WireInit(false.B)
   val empty = WireInit(true.B)
 
@@ -80,19 +80,19 @@ class SramDispatchQueue (params: DispatchQueueParams,
   val tail_next = Wire(UInt(qAddrSz.W))
 
   // Wires for branch resolutions
-  val updated_brmask = WireInit(false.B)//VecInit(Seq.fill(numEntries)(false.B))) //This wire decides if we should block the deque from head because of a branch resolution
-  val entry_killed = WireInit(VecInit(Seq.fill(enqWidth)(VecInit(Seq.fill(numEntries)(false.B)))))
+  val updated_brmask = WireInit(VecInit(Seq.fill(numEntries)(VecInit(Seq.fill(enqWidth)(false.B))))) //This wire decides if we should block the deque from head because of a branch resolution
+  val entry_killed = WireInit(VecInit(Seq.fill(numEntries)(VecInit(Seq.fill(enqWidth)(false.B)))))
 
 
   // Handle enqueues
   for (w <- 0 until enqWidth) {
     when(io.enq_uops(w).fire) {
       q_uop(w)(tail) := WireInit(io.enq_uops(w).bits) //TODO: WireInit necessary?
-      valids(w)(tail) := io.enq_uops(w).valid
-      br_mask(w)(tail) := io.enq_uops(w).bits.br_mask
+      valids(tail)(w) := io.enq_uops(w).valid
+      br_mask(tail)(w) := io.enq_uops(w).bits.br_mask
 
       // Here we assume that we dont try to enqueue anything to a full queue
-      assert(!valids(w)(tail), "[dis-q] tyring to enqueue to a full queue")
+      assert(!valids(tail)(w), "[dis-q] tyring to enqueue to a full queue")
     }
     // Latch this for potential bypass
     s1_enq_uops(w) := io.enq_uops(w).bits
@@ -125,14 +125,16 @@ class SramDispatchQueue (params: DispatchQueueParams,
       idx := PopCount(deqPortUsed.slice(0,i))
     }
 
-    when(valids(i)(head) && idx < deqWidth.U) {
-      io.heads(idx).valid :=  valids(i)(head) &&
-                              !updated_brmask  && //TODO: this might lead to poor performance
-                              !entry_killed(i)(head) &&
-                              !io.flush // TODO: handle flush
+    when(valids(head)(i) && idx < deqWidth.U) {
+      io.heads(idx).valid :=  valids(head)(i) &&
+                              !entry_killed(head)(i) &&
+                              !io.flush
 
-      io.heads(idx).bits := s2_sram_read(i) //TODO: Forwarding
-      io.heads(idx).bits.br_mask := br_mask(i)(head) // TODO: Mux if updated
+      io.heads(idx).bits := s2_sram_read(i)
+      // If we have a branch resolution this cycle. Be sure to pass out the updated Brmask and not the old
+      //  TODO: Can this affect the Critical Path?
+      io.heads(idx).bits.br_mask := Mux(updated_brmask(head)(i), br_mask(head)(i) & ~io.brinfo.mask, br_mask(head)(i))
+
       deqPortUsed(i) := true.B
       deq_ptr(idx) := i.U
     }
@@ -143,14 +145,14 @@ class SramDispatchQueue (params: DispatchQueueParams,
   // Handle dequeues
   for (i <- 0 until deqWidth) {
     when(io.heads(i).fire) {
-      valids(deq_ptr(i))(head) := false.B
-      assert(valids(deq_ptr(i))(head), "[dis-q] Dequeued invalid uop from head")
-      assert(!entry_killed(deq_ptr(i))(head), "[dis-q] Dequeued killed uop from head")
+      valids(head)(deq_ptr(i)) := false.B
+      assert(valids(head)(deq_ptr(i)), "[dis-q] Dequeued invalid uop from head")
+      assert(!entry_killed(head)(deq_ptr(i)), "[dis-q] Dequeued killed uop from head")
     }
   }
 
   // Calculate next head
-  when(valids.map(_(head)).reduce(_ || _)) {
+  when(valids(head).reduce(_ || _)) {
     // Case 1: We entered this CC with some valid uops at head
     //  Either those were dequeded this CC and we move head_pointer or w stay at this head
     //  This double loop is a clonky way of checking it. It checks wether all of the valids at head
@@ -159,13 +161,12 @@ class SramDispatchQueue (params: DispatchQueueParams,
     for (i <- 0 until enqWidth) {
       val uop_done = WireInit(false.B)
       for(j <- 0 until deqWidth) {
-        when(!valids(i)(head) || (io.heads(j).fire && deq_ptr(j) === i.U )) {
+        when(!valids(head)(i) || (io.heads(j).fire && deq_ptr(j) === i.U )) {
           uop_done := true.B
         }
       }
       when(!uop_done) {
         proceed := false.B
-
       }
     }
     head_next := Mux(proceed, WrapInc(head, numEntries), head)
@@ -184,13 +185,13 @@ class SramDispatchQueue (params: DispatchQueueParams,
   when(io.brinfo.valid) {
     for (idx <- 0 until numEntries) {
       for(lane <- 0 until enqWidth) {
-        val entry_match = valids(lane)(idx) && maskMatch(io.brinfo.mask, br_mask(lane)(idx))
+        val entry_match = valids(idx)(lane) && maskMatch(io.brinfo.mask, br_mask(idx)(lane))
         when (entry_match && io.brinfo.mispredict) { // Mispredict
-          entry_killed(lane)(idx) := true.B
-          valids(lane)(idx) := false.B
+          entry_killed(idx)(lane) := true.B
+          valids(idx)(lane) := false.B
         }.elsewhen(entry_match && !io.brinfo.mispredict) { // Resolved
-          br_mask(lane)(idx) := (br_mask(lane)(idx) & ~io.brinfo.mask)
-          updated_brmask := true.B
+          br_mask(idx)(lane) := (br_mask(idx)(lane) & ~io.brinfo.mask)
+          updated_brmask(idx)(lane) := true.B
         }
       }
     }
@@ -201,11 +202,11 @@ class SramDispatchQueue (params: DispatchQueueParams,
       // treat it as a circular structure
       val previous_killed =
       if (i == 0) {
-        width_killed(VecInit(entry_killed.map(_(numEntries - 1))) ,VecInit(valids.map(_(numEntries - 1))))
+        width_killed(entry_killed(numEntries - 1) ,valids(numEntries - 1))
       } else {
-        width_killed(VecInit(entry_killed.map(_(i-1))) ,VecInit(valids.map(_(i-1))))
+        width_killed(entry_killed(i-1) ,valids(i-1))
       }
-      val this_killed = width_killed(VecInit(entry_killed.map(_(i))) ,VecInit(valids.map(_(i))))
+      val this_killed = width_killed(entry_killed(i) ,valids(i))
 
       // transition from not killed to killed - there should be one at maximum
       when(!previous_killed && this_killed){
@@ -217,8 +218,8 @@ class SramDispatchQueue (params: DispatchQueueParams,
     }
   }
 
-  assert(! (io.brinfo.mispredict && io.brinfo.valid &&  width_killed(VecInit(entry_killed.map(_(head))), VecInit(valids.map(_(head)))) && (head_next =/= tail_next)), "[dis-q] branch resolution with head flushed but head and tail_next not reset")
-  assert(! (RegNext(io.brinfo.mispredict && io.brinfo.valid && width_killed(VecInit(entry_killed.map(_(head))), VecInit(valids.map(_(head))))) && (full =/= false.B || empty =/= true.B )), "[dis-q] branch resolution with head flushed but empty, full not reset")
+  assert(! (io.brinfo.mispredict && io.brinfo.valid &&  width_killed(entry_killed(head), valids(head)) && (head_next =/= tail_next)), "[dis-q] branch resolution with head flushed but head and tail_next not reset")
+  assert(! (RegNext(io.brinfo.mispredict && io.brinfo.valid && width_killed(entry_killed(head), valids(head))) && (full =/= false.B || empty =/= true.B )), "[dis-q] branch resolution with head flushed but empty, full not reset")
 
 
 
@@ -232,14 +233,12 @@ class SramDispatchQueue (params: DispatchQueueParams,
   }
 
 
-
-
   // Full/Empty
   when(head === tail) {
     full := true.B
     empty := false.B
     for (i <- 0 until numEntries) {
-      when(!valids.map(_(i)).reduce(_||_)) {
+      when(!valids(i).reduce(_||_)) {
         full := false.B
         empty := true.B
       }
