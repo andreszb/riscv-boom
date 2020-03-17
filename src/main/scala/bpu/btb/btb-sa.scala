@@ -79,6 +79,7 @@ class BTBsa(val bankBytes: Int)(implicit p: Parameters) extends BoomBTB
   val s1_resp_bits = Wire(new BoomBTBResp)
   s1_resp_bits := DontCare
   val hits_oh = Wire(Vec(nWays, Bool()))
+  val w_hits_oh = Wire(Vec(nWays, Bool()))
   val data_out = Wire(Vec(nWays, new BTBSetData()))
   val s1_req_tag = RegEnable(getTag(io.req.bits.addr), !stall)
 
@@ -87,9 +88,14 @@ class BTBsa(val bankBytes: Int)(implicit p: Parameters) extends BoomBTB
   val update_valid = r_btb_update.valid && !io.status_debug
   val widx = getIdx(r_btb_update.bits.pc)
   val wtag = getTag(r_btb_update.bits.pc)
+  val w1_idx = RegNext(widx)
+  val w1_tag = RegNext(wtag)
   // TODO: currently a not-very-clever way to choose a replacement way
-  val next_replace = Counter(r_btb_update.valid, nWays)._1
-  val way_wen = UIntToOH(next_replace)
+  val next_replace = Counter(r_btb_update.valid, nWays)._1 // LFSR(16, r_btb_update.valid)(log2Up(nWays)-1, 0)
+  val way_wen = WireInit(UIntToOH(next_replace))
+  when(w_hits_oh.reduce(_||_)){
+    way_wen := w_hits_oh.asUInt()
+  }
 
   // clear entries (e.g., multiple tag hits, which is an invalid variant)
   val clear_valid = WireInit(false.B)
@@ -98,43 +104,45 @@ class BTBsa(val bankBytes: Int)(implicit p: Parameters) extends BoomBTB
    if (DEBUG_PRINTF) {
      printf("BTB-SA:\n")
    }
-
+  val newdata = Wire(new BTBSetData())
+  newdata.target   := r_btb_update.bits.target(vaddrBits-1, log2Ceil(coreInstBytes))
+  newdata.cfi_idx  := r_btb_update.bits.cfi_idx
+  newdata.bpd_type := r_btb_update.bits.bpd_type
+  newdata.cfi_type := r_btb_update.bits.cfi_type
+  newdata.is_rvc   := r_btb_update.bits.is_rvc
+  newdata.is_edge  := r_btb_update.bits.is_edge
+  val w1_newdata = RegNext(newdata)
   for (w <- 0 until nWays) {
-    val wen = update_valid && way_wen(w)
+    val wen = RegNext(update_valid) && way_wen(w)
 
     val valids   = RegInit(0.U(nSets.W))
     val tags     = SyncReadMem(nSets, UInt(tagSz.W))
     val data     = SyncReadMem(nSets, new BTBSetData())
 
     valids.suggestName(s"btb_valids_$w")
-    tags.suggestName("btb_tag_array")
-    data.suggestName("btb_data_array")
+    tags.suggestName(s"btb_tag_array_$w")
+    data.suggestName(s"btb_data_array_$w")
 
-    val is_valid = (valids >> s1_idx)(0) && RegNext(!wen)
-    val rout     = data.read(s0_idx, !wen)
-    val rtag     = tags.read(s0_idx, !wen)
+    val read_en = true.B //!wen
+    val is_valid = (valids >> s1_idx)(0) && RegNext(read_en)
+    val rout     = data.read(s0_idx, read_en)
+    val rtag     = tags.read(s0_idx, read_en)
+    val wrtag     = tags.read(widx, update_valid)
     hits_oh(w)   := is_valid && (rtag === s1_req_tag)
+    w_hits_oh(w)   := (wrtag === w1_tag)
     data_out(w)  := rout
 
     when (wen) {
-      valids := valids.bitSet(widx, true.B)
-
-      val newdata = Wire(new BTBSetData())
-      newdata.target   := r_btb_update.bits.target(vaddrBits-1, log2Ceil(coreInstBytes))
-      newdata.cfi_idx  := r_btb_update.bits.cfi_idx
-      newdata.bpd_type := r_btb_update.bits.bpd_type
-      newdata.cfi_type := r_btb_update.bits.cfi_type
-      newdata.is_rvc   := r_btb_update.bits.is_rvc
-      newdata.is_edge  := r_btb_update.bits.is_edge
-
-      tags(widx) := wtag
-      data(widx) := newdata
+      valids := valids.bitSet(w1_idx, true.B)
+      tags(w1_idx) := w1_tag
+      data(w1_idx) := w1_newdata
     }
 
+    assert(!clear_valid)
     // if multiple ways hit, clear the set last read
-    when (clear_valid) {
-      valids := valids.bitSet(clear_idx, false.B)
-    }
+//    when (clear_valid) {
+//      valids := valids.bitSet(clear_idx, false.B)
+//    }
 
     if (DEBUG_PRINTF) {
       printf("    Write (%c): (TAG[%d][%d] <- 0x%x) (PC:0x%x TARG:0x%x)\n",
