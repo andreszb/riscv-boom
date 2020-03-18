@@ -71,7 +71,7 @@ class BTBsa(val bankBytes: Int)(implicit p: Parameters) extends BoomBTB
   val stall = !io.req.valid
 
   // index into the tag/data arrays
-  val s0_idx = getIdx(io.req.bits.addr)(idxSz-1,0)
+  val s0_idx = WireInit(getIdx(io.req.bits.addr)(idxSz-1,0))
   val s1_idx = RegEnable(s0_idx, !stall)
 
   // prediction
@@ -86,7 +86,7 @@ class BTBsa(val bankBytes: Int)(implicit p: Parameters) extends BoomBTB
   // updates
   val r_btb_update = Pipe(io.btb_update)
   val update_valid = r_btb_update.valid && !io.status_debug
-  val widx = getIdx(r_btb_update.bits.pc)
+  val widx = WireInit(getIdx(r_btb_update.bits.pc))
   val wtag = getTag(r_btb_update.bits.pc)
   val w1_idx = RegNext(widx)
   val w1_tag = RegNext(wtag)
