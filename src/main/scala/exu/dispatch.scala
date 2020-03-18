@@ -280,10 +280,10 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher {
     deqWidth = boomParams.loadSliceCore.get.bDispatches,
     enqWidth = coreWidth))
   )
-  a_queue.io.flush := io.slice_flush.get
-  b_queue.io.flush := io.slice_flush.get
-  a_queue.io.brinfo := io.slice_brinfo.get
-  b_queue.io.brinfo := io.slice_brinfo.get
+  a_queue.io.flush := io.flush.get
+  b_queue.io.flush := io.flush.get
+  a_queue.io.brinfo := io.brinfo.get
+  b_queue.io.brinfo := io.brinfo.get
 
   a_queue.io.tsc_reg := io.tsc_reg
   b_queue.io.tsc_reg := io.tsc_reg
