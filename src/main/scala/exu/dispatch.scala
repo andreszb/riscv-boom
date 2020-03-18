@@ -267,7 +267,7 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher {
     require(issueParams(2).dispatchWidth == 1)
   }
 
-  //slice queues
+  // slice queues
   val a_queue = Module(new SramDispatchQueue( DispatchQueueParams(
     numEntries = boomParams.loadSliceCore.get.numAqEntries,
     qName = "a_queue",
