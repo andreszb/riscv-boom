@@ -110,11 +110,11 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
   val crq = Module(new SliceDispatchQueue( DispatchQueueParams(
     numEntries = dnbParams.numCrqEntries,
     qName="CRQ",
-    deqWidth=crqDispatches,
+    deqWidth=dnbParams.crqDispatches,
     enqWidth = coreWidth)))
 
   // DLQ is the only FIFO doing Busy lookup. Its deq width must match the width of the ports to Busy table
-  require(dnbParams.dlqDispatches === boomParams.busyLookupParams.get.lookupAtDisWidth)
+  require(dnbParams.dlqDispatches == boomParams.busyLookupParams.get.lookupAtDisWidth)
 
   // Route brinfo and flush into the fifos
   dlq.io.brinfo := io.brinfo.get
