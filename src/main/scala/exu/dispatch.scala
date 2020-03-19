@@ -39,8 +39,8 @@ class DispatchIO(implicit p: Parameters) extends BoomBundle
   val flush = if(boomParams.loadSliceMode || boomParams.dnbMode) Some(Input(Bool())) else None
 
   // DnB ports to UIQ
-  val dlq_head = if(boomParams.dnbMode) Some(DecoupledIO(new MicroOp)) else None
-  val crq_head = if(boomParams.dnbMode) Some(DecoupledIO(new MicroOp)) else None
+  val dlq_head = if(boomParams.dnbMode) Some(Vec(boomParams.dnbParams.get.dlqDispatches, DecoupledIO(new MicroOp))) else None
+  val crq_head = if(boomParams.dnbMode) Some(Vec(boomParams.dnbParams.get.crqDispatches, DecoupledIO(new MicroOp))) else None
 
   val tsc_reg = Input(UInt(width=xLen.W))
 
@@ -103,15 +103,18 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
   val dlq = Module(new SliceDispatchQueue( DispatchQueueParams(
     numEntries = dnbParams.numDlqEntries,
     qName="DLQ",
-    deqWidth=1,
+    deqWidth=dnbParams.dlqDispatches,
     enqWidth= coreWidth)))
 
 
   val crq = Module(new SliceDispatchQueue( DispatchQueueParams(
     numEntries = dnbParams.numCrqEntries,
     qName="CRQ",
-    deqWidth=1,
+    deqWidth=crqDispatches,
     enqWidth = coreWidth)))
+
+  // DLQ is the only FIFO doing Busy lookup. Its deq width must match the width of the ports to Busy table
+  require(dnbParams.dlqDispatches === boomParams.busyLookupParams.get.lookupAtDisWidth)
 
   // Route brinfo and flush into the fifos
   dlq.io.brinfo := io.brinfo.get
@@ -219,34 +222,38 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
     })
   }
 
-  // Handle CRQ dequeues
-  io.crq_head.get <> crq.io.heads(0)
+  // Handle CRQ dequeue
+  io.crq_head.get <> crq.io.heads
 
   // Handle DLQ dequeues
   //  A little more complicated as we need to pass along the updated ready info
   //  Connect uop to both FP and INT busy table. Pick the resp based on the lrs-types
-  io.busy_req_uops.get(0) := dlq.io.heads(0).bits
-  io.fp_busy_req_uops.get(0) := dlq.io.heads(0).bits
 
-  io.dlq_head.get <> dlq.io.heads(0)
-  // Now, update busy info
-  when(io.dlq_head.get.bits.lrs1_rtype === RT_FLT) {
-    io.dlq_head.get.bits.prs1_busy := io.fp_busy_resps.get(0).prs1_busy
-  }.elsewhen(io.dlq_head.get.bits.lrs1_rtype === RT_FIX) {
-    io.dlq_head.get.bits.prs1_busy := io.busy_resps.get(0).prs1_busy
-  }.otherwise{
-    io.dlq_head.get.bits.prs1_busy := false.B
+  for (i <- 0 until dnbParams.dlqDispatches) {
+    io.busy_req_uops.get(i) := dlq.io.heads(i).bits
+    io.fp_busy_req_uops.get(i) := dlq.io.heads(i).bits
+
+    io.dlq_head.get(i) <> dlq.io.heads(i)
+    // Now, update busy info
+    when(io.dlq_head.get(i).bits.lrs1_rtype === RT_FLT) {
+      io.dlq_head.get(i).bits.prs1_busy := io.fp_busy_resps.get(i).prs1_busy
+    }.elsewhen(io.dlq_head.get(i).bits.lrs1_rtype === RT_FIX) {
+      io.dlq_head.get(i).bits.prs1_busy := io.busy_resps.get(i).prs1_busy
+    }.otherwise{
+      io.dlq_head.get(i).bits.prs1_busy := false.B
+    }
+
+    when(io.dlq_head.get(i).bits.lrs2_rtype === RT_FLT) {
+      io.dlq_head.get(i).bits.prs2_busy := io.fp_busy_resps.get(i).prs2_busy
+    }.elsewhen(io.dlq_head.get(i).bits.lrs2_rtype === RT_FIX) {
+      io.dlq_head.get(i).bits.prs2_busy := io.busy_resps.get(i).prs2_busy
+    }.otherwise{
+      io.dlq_head.get(i).bits.prs2_busy := false.B
+    }
+
+    io.dlq_head.get(i).bits.prs3_busy := io.dlq_head.get(i).bits.frs3_en && io.fp_busy_resps.get(i).prs3_busy
   }
 
-  when(io.dlq_head.get.bits.lrs2_rtype === RT_FLT) {
-    io.dlq_head.get.bits.prs2_busy := io.fp_busy_resps.get(0).prs2_busy
-  }.elsewhen(io.dlq_head.get.bits.lrs2_rtype === RT_FIX) {
-    io.dlq_head.get.bits.prs2_busy := io.busy_resps.get(0).prs2_busy
-  }.otherwise{
-    io.dlq_head.get.bits.prs2_busy := false.B
-  }
-
-  io.dlq_head.get.bits.prs3_busy := io.dlq_head.get.bits.frs3_en && io.fp_busy_resps.get(0).prs3_busy
 }
 
 /**

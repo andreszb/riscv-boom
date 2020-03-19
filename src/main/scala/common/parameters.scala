@@ -329,7 +329,10 @@ case class DnbParams(
                                 numCrqEntries: Int = 8,
                                 numDlqEntries: Int = 8,
                                 dlqRobUrgentDist: Int = 2,
+                                crqDispatches: Int = 1,
+                                dlqDispatches: Int = 1
                               ){
+  def dispatches(): Int = crqDispatches + dlqDispatches
 }
 
 // Case class for LoadSliceCore parameters.
