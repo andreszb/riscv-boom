@@ -137,11 +137,12 @@ class SramDispatchQueue (params: DispatchQueueParams,
 
         // If we have a branch resolution this CC we need to update the bypassed instruction as well
         when(io.brinfo.valid) {
-          val entry_match =  maskMatch(io.brinfo.mask, s1_enq_uops(i).br_mask)
-          when (entry_match && io.brinfo.mispredict) { // Mispredict
+          val entry_match = maskMatch(io.brinfo.mask, s1_enq_uops(i).br_mask)
+          when(entry_match && io.brinfo.mispredict) { // Mispredict
             io.heads(idx).valid := false.B
           }.elsewhen(entry_match && !io.brinfo.mispredict) { // Resolved
             s1_enq_uops(i).br_mask := s1_enq_uops(i).br_mask & ~io.brinfo.mask
+          }
         }
 
       }.otherwise {
