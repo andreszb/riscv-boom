@@ -136,15 +136,7 @@ class SramDispatchQueue (params: DispatchQueueParams,
 
         io.heads(idx).bits := s1_enq_uops(i)
         // If we have a branch resolution this CC we need to update the bypassed instruction as well
-        when(io.brinfo.valid) {
-          val entry_match = maskMatch(io.brinfo.mask, s1_enq_uops(i).br_mask)
-          when(entry_match && io.brinfo.mispredict) { // Mispredict
-            io.heads(idx).valid := false.B
-          }.elsewhen(entry_match && !io.brinfo.mispredict) { // Resolved
-            io.heads(idx).bits.br_mask := s1_enq_uops(i).br_mask & ~io.brinfo.mask
-          }
-        }
-
+        io.heads(idx).bits.br_mask := Mux(updated_brmask(head)(i), br_mask(head)(i) & ~io.brinfo.mask, br_mask(head)(i))
 
 
       }.otherwise {
