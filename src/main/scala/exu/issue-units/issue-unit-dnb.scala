@@ -67,6 +67,10 @@ class IssueUnitDnbUnified(
     dlq_will_be_valid(i) := dlq_urgent(i) && !dlq_grant_urgent(i)
     dlq_to_slot(i) := false.B
     io.dlq_head.get(i).ready := dlq_grant_urgent(i) || dlq_to_slot(i) || dlq_grant(i)
+
+    assert(!((dlq_grant(i) || dlq_grant_urgent(i)) && dlq_to_slot(i) && io.dlq_head.get(i).valid), "[dnb-iu] DLQ head is both issued and added to IQ")
+    assert(!( io.dlq_head.get(i).valid && dlq_urgent(i) && !dlq_busy(i) && !dlq_grant_urgent(i)), "[dnb-iu] DLQ head is urgent, !busy and still not granted issue")
+    assert(!( io.dlq_head.get(i).valid && dlq_urgent(i) && !(dlq_to_slot(i) || dlq_grant_urgent(i))), "[dnb-iu] DLQ head is urgent but is not added to IQ nor granted")
   }
 
 
@@ -167,7 +171,7 @@ class IssueUnitDnbUnified(
   val requests = (dlq_urgent zip dlq_request).map {case (a,b) => a && b} ++
     issue_slots.map(s => s.request)++
     io.crq_head.get.map(h => h.valid)++
-    (dlq_urgent zip dlq_request).map {case (a,b) => a && !b}
+    (dlq_urgent zip dlq_request).map {case (a,b) => !a && b}
   val grants = dlq_grant_urgent ++
     issue_slots.map(s => s.grant)++
     io.crq_head.get.map(h => h.ready)++
