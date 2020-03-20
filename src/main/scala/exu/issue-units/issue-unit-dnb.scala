@@ -45,7 +45,7 @@ class IssueUnitDnbUnified(
 
 
   for(i <- 0 until dnbParams.dlqDispatches) {
-    dlq_uop(i) := io.dlq_head.get(i)
+    dlq_uop(i) := io.dlq_head.get(i).bits
     dlq_uop(i).iw_p1_poisoned := false.B
     dlq_uop(i).iw_p2_poisoned := false.B
     dlq_uop(i).iw_state := s_valid_1
