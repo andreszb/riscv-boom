@@ -69,7 +69,7 @@ class IssueUnitDnbUnified(
     io.dlq_head.get(i).ready := dlq_grant_urgent(i) || dlq_to_slot(i) || dlq_grant(i)
 
     assert(!((dlq_grant(i) || dlq_grant_urgent(i)) && dlq_to_slot(i) && io.dlq_head.get(i).valid), "[dnb-iu] DLQ head is both issued and added to IQ")
-    assert(!( io.dlq_head.get(i).valid && dlq_urgent(i) && !dlq_busy(i) && !dlq_grant_urgent(i)), "[dnb-iu] DLQ head is urgent, !busy and still not granted issue")
+    assert(!( io.dlq_head.get(i).valid && dlq_urgent(i) && !dlq_busy && !dlq_grant_urgent(i)), "[dnb-iu] DLQ head is urgent, !busy and still not granted issue")
     assert(!( io.dlq_head.get(i).valid && dlq_urgent(i) && !(dlq_to_slot(i) || dlq_grant_urgent(i))), "[dnb-iu] DLQ head is urgent but is not added to IQ nor granted")
   }
 
