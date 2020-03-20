@@ -338,7 +338,7 @@ class SliceDispatchQueue(params: DispatchQueueParams,
   for (i <- 0 until deqWidth+1) {
     val previous_deq = if(i==0) true.B else io.heads(i-1).fire()
     val current_deq =  if(i==deqWidth) false.B else io.heads(i).fire()
-    assert(!(!previous_deq && current_deq), "deq only possible in order!")
+    assert(!(boomParams.loadSliceMode.asBool && !previous_deq && current_deq), "deq only possible in order!")
     // transition from deq to not deq - there should be exactly one
     // TODO: maybe do this in a smarter way so the compiler knows this and can optimize?
     when(previous_deq && !current_deq){
