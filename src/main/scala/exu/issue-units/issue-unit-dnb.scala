@@ -109,7 +109,7 @@ class IssueUnitDnbUnified(
   val queue_added = WireInit(VecInit(Seq.fill(maxShift)(false.B)))
   dontTouch(queue_added)
   val uops = issue_slots.map(s=>s.out_uop) ++
-    Seq(dlq_uop) ++
+    dlq_uop ++
     dis_uops.map(s=>s)
   for (i <- 0 until numIssueSlots) {
     issue_slots(i).in_uop.valid := false.B
