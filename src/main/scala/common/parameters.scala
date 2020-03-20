@@ -111,7 +111,7 @@ case class BoomCoreParams(
       require(busyLookupParams.get.lookupAtDisWidth == loadSliceCore.get.dispatches())
     }
     if (dnbMode) {
-      require(busyLookupParams.get.lookupAtDisWidth == 1)
+      require(busyLookupParams.get.lookupAtDisWidth == dnbParams.get.dlqDispatches)
     }
   }
 
