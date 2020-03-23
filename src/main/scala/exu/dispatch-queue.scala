@@ -73,6 +73,11 @@ class SramDispatchQueueCompacting(params: DispatchQueueParams,
   val full = WireInit(false.B)
   val empty = WireInit(true.B)
 
+  // To support multiple dequeues we need to decouple the heads from the queues and use regs
+  val heads_uop = Reg(Vec(deqWidth, new MicroOp()))
+  val heads_brmask = Reg(Vec(deqWidth, UInt(maxBrCount.W)))
+  val heads_valid = RegInit(VecInit(Seq.fill(deqWidth)(false.B)))
+
   // Deqeueue pointer maps dequeue port (io.heads) to FIFO-lane.
   val deq_ptr = WireInit(VecInit(Seq.fill(enqWidth)(0.U(log2Ceil(deqWidth).W))))
 
@@ -83,8 +88,10 @@ class SramDispatchQueueCompacting(params: DispatchQueueParams,
   val s1_enq_row = Reg(Vec(enqWidth, UInt(qAddrSz.W)))
   val s1_enq_col = Reg(Vec(deqWidth, UInt(qWidthSz.W)))
 
-  // Stage 2f read-outs from SRAM
-  val s2_sram_read = Wire(Vec(enqWidth, new MicroOp()))
+  // Stage 2 read-outs from SRAM
+  val s2_sram_read_uop = Wire(Vec(enqWidth, new MicroOp()))
+  val s2_sram_read_col = Reg(Vec(enqWidth, UInt(qWidthSz.W)))
+  val s2_sram_read_row = Reg(Vec(enqWidth,UInt(qAddrSz.W)))
 
 
   // Wires for calculating state in next CC
@@ -92,136 +99,28 @@ class SramDispatchQueueCompacting(params: DispatchQueueParams,
   val head_col_next = WireInit(head_col)
   val tail_row_next = WireInit(tail_row)
   val tail_col_next = WireInit(tail_col)
+  val deqs = WireInit(VecInit(Seq.fill(enqWidth)(false.B)))
 
   // Wires for branch resolutions
   val updated_brmask = WireInit(VecInit(Seq.fill(numEntries)(VecInit(Seq.fill(enqWidth)(false.B))))) //This wire decides if we should block the deque from head because of a branch resolution
   val entry_killed = WireInit(VecInit(Seq.fill(numEntries)(VecInit(Seq.fill(enqWidth)(false.B)))))
+  val heads_killed = WireInit(VecInit(Seq.fill(deqWidth)(false.B)))
+  val heads_updated_brmask = WireInit(VecInit(Seq.fill(deqWidth)(false.B)))
 
-
-  // Handle enqueues
-  for (w <- 0 until enqWidth) {
-    val col = WrapAdd(tail_col, w.U, enqWidth)
-    val row = Mux(col =/= tail_col, WrapInc(tail_row, numEntries), tail_row)
-
-    when(io.enq_uops(w).fire) {
-      sram_fifo(col)(row) := WireInit(io.enq_uops(w).bits) //TODO: WireInit necessary?
-      valids(row)(col) := io.enq_uops(w).valid
-      br_mask(row)(col) := io.enq_uops(w).bits.br_mask
-
-      // Here we assume that we dont try to enqueue anything to a full queue
-      assert(!valids(row)(col), "[dis-q] tyring to enqueue to a full queue")
-
-    }
-
-    // Latch this for potential bypass
-    s1_enq_uops(w) := io.enq_uops(w).bits
-    s1_enq_valids(w) := io.enq_uops(w).fire
-    s1_enq_row(w) := row
-    s1_enq_col(w) := col
+  if (coreWidth > 1) {
+    assert(! (io.enq_uops(1).fire && !io.enq_uops(0).fire), "[dis-q-compact] Assumption of lane-order doesnt hold. Consider redoing some of the logic")
   }
-
-  s1_bypass := empty && io.enq_uops.map(_.valid).reduce(_||_) //Bypass next CC if we enqueue to an empty FIFO
-
-  // Update tail
-  //  We only update the tail for the next CC if there was a fire
-  tail_col_next := WrapAdd(tail_col, PopCount(io.enq_uops.map(._fire), enqWidth)
-  tail_row_next := Mux(tail_col_next === tail_col, tail_row, WrapInc(tail_row, numEntries))
-
-  // Read from SRAM
-  for(i <- 0 until enqWidth) {
-    val col = WrapSub(head_col, i, enqWidth)
-    val row = Mux(col =/= head_col, WrapDec(head_row, numEntries), head_row)
-
-    s2_sram_read(i) := sram_fifo(col)(row)
-  }
-
-  // Pass out the head
-  //  Init all outputs to invalids
-  //  A little hacking to assign a possible wider set of FIFOs to a narrower set of deq ports
-  io.heads.map(_.valid := false.B)
-  io.heads.map(_.bits := DontCare) //TODO: Connect to NOP?
-  val deqPortUsed = WireInit(VecInit(Seq.fill(enqWidth)(false.B)))
-  for(i <- 0 until enqWidth) {
-    val idx = Wire(UInt(log2Ceil(enqWidth).W))
-    if(i == 0) {
-      idx := 0.U
-    }
-    else {
-      idx := PopCount(deqPortUsed.slice(0,i))
-    }
-
-    when(valids(head)(i) && idx < deqWidth.U) {
-      io.heads(idx).valid :=  valids(head)(i) &&
-        !entry_killed(head)(i) &&
-        !io.flush
-
-      when(s1_bypass) {
-
-        io.heads(idx).bits := s1_enq_uops(i)
-        // If we have a branch resolution this CC we need to update the bypassed instruction as well
-        io.heads(idx).bits.br_mask := Mux(updated_brmask(head)(i), br_mask(head)(i) & ~io.brinfo.mask, br_mask(head)(i))
-
-
-      }.otherwise {
-        io.heads(idx).bits := s2_sram_read(i)
-        // If we have a branch resolution this cycle. Be sure to pass out the updated Brmask and not the old
-        //  TODO: Can this affect the Critical Path?
-        io.heads(idx).bits.br_mask := Mux(updated_brmask(head)(i), br_mask(head)(i) & ~io.brinfo.mask, br_mask(head)(i))
-
-      }
-
-      deqPortUsed(i) := true.B
-      deq_ptr(idx) := i.U
-    }
-  }
-
-
-
-  // Handle dequeues
-  for (i <- 0 until deqWidth) {
-    when(io.heads(i).fire) {
-      valids(head)(deq_ptr(i)) := false.B
-      assert(valids(head)(deq_ptr(i)), "[dis-q] Dequeued invalid uop from head")
-      assert(!entry_killed(head)(deq_ptr(i)), "[dis-q] Dequeued killed uop from head")
-    }
-  }
-
-  // Calculate next head
-  when(valids(head).reduce(_ || _)) {
-    // Case 1: We entered this CC with some valid uops at head
-    //  Either those were dequeded this CC and we move head_pointer or w stay at this head
-    //  This double loop is a clonky way of checking it. It checks wether all of the valids at head
-    //  also match the ones dequeued this CC
-    val proceed = WireInit(true.B)
-    for (i <- 0 until enqWidth) {
-      val uop_done = WireInit(false.B)
-      for(j <- 0 until deqWidth) {
-        when(!valids(head)(i) || (io.heads(j).fire && deq_ptr(j) === i.U )) {
-          uop_done := true.B
-        }
-      }
-      when(!uop_done) {
-        proceed := false.B
-      }
-    }
-    head_next := Mux(proceed, WrapInc(head, numEntries), head)
-  }
-
 
 
   // Handle branch resolution
   //  On mispredict, find oldest that is killed and kill everyone younger than that
   //  On resolved. Update all branch masks in paralell. Updates also invalid entries, for simplicity.
-  //
-  // This function takes a killed and valid Vec and finds out of the whole Vec was killed or is invalid
-  def width_killed(k: Vec[Bool], v: Vec[Bool]): Bool = {
-    v.reduce(_ || _ ) && (k zip v).map{case (kill, valid) => kill || !valid}.reduce(_&&_)
-  }
+
   when(io.brinfo.valid) {
     for (idx <- 0 until numEntries) {
-      for(lane <- 0 until enqWidth) {
+      for (lane <- 0 until enqWidth) {
         val entry_match = valids(idx)(lane) && maskMatch(io.brinfo.mask, br_mask(idx)(lane))
-        when (entry_match && io.brinfo.mispredict) { // Mispredict
+        when(entry_match && io.brinfo.mispredict) { // Mispredict
           entry_killed(idx)(lane) := true.B
           valids(idx)(lane) := false.B
         }.elsewhen(entry_match && !io.brinfo.mispredict) { // Resolved
@@ -231,32 +130,204 @@ class SramDispatchQueueCompacting(params: DispatchQueueParams,
       }
     }
 
+    for (idx <- 0 until deqWidth) {
+      val entry_match = heads_valid(idx) && maskMatch(io.brinfo.mask, heads_brmask(idx))
+      when(entry_match && io.brinfo.mispredict) {
+        heads_killed(idx) := true.B
+        heads_valid(idx) := false.B
+      }.elsewhen(entry_match && !io.brinfo.mispredict) {
+        heads_updated_brmask(idx) := true.B
+        heads_brmask(idx) := heads_brmask(idx) & ~io.brinfo.mask
+      }
+    }
+
 
     // tail update logic
     for (i <- 0 until numEntries) {
-      // treat it as a circular structure
-      val previous_killed =
-        if (i == 0) {
-          width_killed(entry_killed(numEntries - 1) ,valids(numEntries - 1))
-        } else {
-          width_killed(entry_killed(i-1) ,valids(i-1))
+      for (j <- 0 until enqWidth) {
+        val previous_killed =
+          if (i == 0) {
+            if (j == 0) {
+              entry_killed(numEntries - 1)(enqWidth - 1)
+            } else {
+              entry_killed(numEntries - 1)(j - 1)
+            }
+          } else {
+            if (j == 0) {
+              entry_killed(i - 1)(enqWidth - 1)
+            } else {
+              entry_killed(i - 1)(j - 1)
+            }
+          }
+        // transition from not killed to killed - there should be one at maximum
+        when(!previous_killed && entry_killed(i)(j)) {
+          // this one was killed but the previous one not => this is tail
+          // if branches are killed there should be nothing being enqueued
+          tail_row_next := i.U
+          tail_col_next := j.U
         }
-      val this_killed = width_killed(entry_killed(i) ,valids(i))
-
-      // transition from not killed to killed - there should be one at maximum
-      when(!previous_killed && this_killed){
-        // this one was killed but the previous one not => this is tail
-        // if branches are killed there should be nothing being enqueued
-        // TODO: make sure this is true (assert)
-        tail_next := i.U
       }
     }
   }
 
-  assert(! (io.brinfo.mispredict && io.brinfo.valid &&  width_killed(entry_killed(head), valids(head)) && (head_next =/= tail_next)), "[dis-q] branch resolution with head flushed but head and tail_next not reset")
-  assert(! (RegNext(io.brinfo.mispredict && io.brinfo.valid && width_killed(entry_killed(head), valids(head))) && (full =/= false.B || empty =/= true.B )), "[dis-q] branch resolution with head flushed but empty, full not reset")
+
+  // Handle enqueues
+  when(!heads_valid.reduce(_ || _) && empty) {
+    // Add enqs directly to the head
+    // NB: Watch out as we ofteen have more enqueues than dequeues. Only add the first n to heads and then the rest
+    // to the sram. (Which often will be bypassed also)
+    for (w <- 0 until deqWidth) {
+      when(io.enq_uops(w).fire) {
+        heads_valid(w) := true.B
+        heads_uop(w) := io.enq_uops(w).bits
+        heads_brmask(w) := io.enq_uops(w).bits.br_mask
+      }
+    }
+
+    // Add remaining uops to the SRAM
+    for( w <- deqWidth until enqWidth) {
+      val col = WrapAdd(tail_col, w.U, enqWidth)
+      val row = Mux(col =/= tail_col, WrapInc(tail_row, numEntries), tail_row)
+
+      when(io.enq_uops(w).fire) {
+        // DavidHack to access FIFO columns with scalaInts
+        for(i <- 0 until enqWidth){
+          when(i.U === col){
+            sram_fifo(i).write(row, WireInit(io.enq_uops(w).bits))
+          }
+        }
+        valids(row)(col) := io.enq_uops(w).valid
+        br_mask(row)(col) := io.enq_uops(w).bits.br_mask
+
+        // Here we assume that we dont try to enqueue anything to a full queue
+        assert(!valids(row)(col), "[dis-q] tyring to enqueue to a full queue")
+
+      }
+
+      // Latch these for potential bypass
+      s1_enq_uops(w) := io.enq_uops(w).bits
+      s1_enq_valids(w) := io.enq_uops(w).fire
+      s1_enq_row(w) := row
+      s1_enq_col(w) := col
+    }
+
+  }.otherwise {
+
+    for (w <- 0 until enqWidth) {
+      val col = WrapAdd(tail_col, w.U, enqWidth)
+      val row = Mux(col =/= tail_col, WrapInc(tail_row, numEntries), tail_row)
+
+      when(io.enq_uops(w).fire) {
+        // DavidHack to access FIFO columns with scalaInts
+        for(i <- 0 until enqWidth){
+          when(i.U === col){
+            sram_fifo(i).write(row, WireInit(io.enq_uops(w).bits))
+          }
+        }
+        valids(row)(col) := io.enq_uops(w).valid
+        br_mask(row)(col) := io.enq_uops(w).bits.br_mask
+
+        // Here we assume that we dont try to enqueue anything to a full queue
+        assert(!valids(row)(col), "[dis-q] tyring to enqueue to a full queue")
+
+      }
+      // Latch this for potential bypass
+      s1_enq_uops(w) := io.enq_uops(w).bits
+      s1_enq_valids(w) := io.enq_uops(w).fire
+      s1_enq_row(w) := row
+      s1_enq_col(w) := col
+    }
+  }
+
+  // Update tail
+  //  We only update the tail for the next CC if there was a fire
+  tail_col_next := WrapAdd(tail_col, PopCount(io.enq_uops.map(_.fire)), enqWidth)
+  tail_row_next := Mux(tail_col_next === tail_col, tail_row, WrapInc(tail_row, numEntries))
+
+  // Read from SRAM
+  for(i <- 0 until enqWidth) {
+    val col = WrapSub(head_col, i, enqWidth)
+    val row = Mux(col =/= head_col, WrapDec(head_row, numEntries), head_row)
+    for(j <- 0 until enqWidth){
+      when(j.U === col){
+        s2_sram_read_uop(i) := sram_fifo(j)(row)
+        s2_sram_read_row(i) := row
+        s2_sram_read_col(i) := col
+      }
+    }
+
+  }
+
+  // Pass out the heads
+  for (i <- 0 until deqWidth) {
+    io.heads(i).bits := heads_uop(i)
+    io.heads(i).valid := heads_valid(i)
+
+    // Was head killed this CC
+    when(heads_killed(i)) {
+      io.heads(i).valid := false.B
+    }
+    // Was head brmask updated this CC
+    when(heads_updated_brmask(i)) {
+      io.heads(i).bits.br_mask := heads_brmask(i) & ~io.brinfo.mask
+    }
+
+    //If we dequeue this head, update state to false next CC. THis can be overwritten later
+    when(io.heads(i).fire) {
+      heads_valid(i) := false.B
+      assert(heads_valid(i), "[dis-q] Dequeued invalid uop from head")
+    }
+  }
 
 
+  // Refill the heads by dequeueing from the FIFO
+  for (i <- 0 until deqWidth) {
+    val refillIdx = Wire(UInt(qWidthSz.W))
+    if (i == 0) {
+      refillIdx := 0.U
+    } else {
+      refillIdx := PopCount((io.heads.map(_.fire).slice(0,i) zip io.heads.map(_.valid)).map{ case (l,r) => l || !r })
+    }
+
+    val row = s2_sram_read_row(refillIdx)
+    val col = s2_sram_read_col(refillIdx)
+
+    // If a head was fired or it was invalid. Then refill that head
+    when((io.heads(i).fire || !io.heads(i).valid) && !io.flush) {
+      heads_uop(i) := s2_sram_read_uop(refillIdx)
+      heads_valid(i) := valids(row)(col)
+      heads_brmask(i) := Mux(!updated_brmask(row)(col),
+                                br_mask(row)(col),
+                                br_mask(row)(col) & ~io.brinfo.mask
+      )
+      // Do we need a bypass because this uop was enqueued last cycle and is not read as s2_sram_read_uop?
+      //  In that case, just overwrite the heads_uop output. br_mask update is handled the same
+      for (j <- 0 until enqWidth) {
+        when(row === s1_enq_row(j) && col === s1_enq_col(j) && s1_enq_valids(j)) {
+          heads_uop(i) := s1_enq_uops(j)
+        }
+      }
+
+      // Update the refill deqs wire
+      deqs(refillIdx) := valids(row)(col)
+    }
+  }
+
+
+  // Handle dequeues
+  for (i <- 0 until deqWidth) {
+    when(io.heads(i).fire) {
+    }
+  }
+
+  // Calculate next head
+  val nDeqs = PopCount(deqs)
+  head_col_next := WrapAdd(head_col, nDeqs, enqWidth)
+  head_row_next := Mux(head_col_next === head_col, head_row, WrapInc(head_row, numEntries))
+
+
+  assert(! (io.brinfo.mispredict && io.brinfo.valid &&  entry_killed(head_row)(head_col) && ((head_row_next =/= tail_row_next) || (head_col_next =/= tail_row_next))), "[dis-q] branch resolution with head flushed but head and tail_next not reset")
+  assert(! (RegNext(io.brinfo.mispredict && io.brinfo.valid && entry_killed(head_row)(head_col)) && (full =/= false.B || empty =/= true.B )), "[dis-q] branch resolution with head flushed but empty, full not reset")
 
 
   require(enqWidth>=coreWidth)
@@ -269,7 +340,7 @@ class SramDispatchQueueCompacting(params: DispatchQueueParams,
 
 
   // Full/Empty
-  when(head === tail) {
+  when( head_row === tail_row) {
     full := true.B
     empty := false.B
     for (i <- 0 until numEntries) {
@@ -278,22 +349,37 @@ class SramDispatchQueueCompacting(params: DispatchQueueParams,
         empty := true.B
       }
     }
+  }.elsewhen( ((WrapInc(tail_row, numEntries) === head_row) && ((head_col + tail_col - deqWidth.U) < deqWidth.U)) ) {
+    when(valids(head_row)(head_col)) {
+      full := true.B
+      empty := false.B
+    }.otherwise {
+      full := false.B
+      empty := false.B
+      assert(false.B, "[dis-q] full/empty logic should never get here")
+    }
   }.otherwise {
     full := false.B
     empty := false.B
   }
 
-  // Pipeline flushs
+  // Pipline flushes
   when(io.flush)
   {
-    head_next := 0.U
-    tail_next := 0.U
+    head_row_next := 0.U
+    head_col_next := 0.U
+    tail_row_next := 0.U
+    tail_col_next := 0.U
     valids.map(_.map(_ := false.B))
+    heads_valid.map(_ := false.B)
   }
 
   // Update for next CC
-  head := head_next
-  tail := tail_next
+  head_row := head_row_next
+  head_col := head_col_next
+  tail_row := tail_row_next
+  tail_col := tail_col_next
+
 
   if (O3PIPEVIEW_PRINTF) {
     for (i <- 0 until coreWidth) {
@@ -307,10 +393,10 @@ class SramDispatchQueueCompacting(params: DispatchQueueParams,
 
   dontTouch(io)
   dontTouch(valids)
-  dontTouch(head)
-  dontTouch(tail)
-  dontTouch(head_next)
-  dontTouch(tail_next)
+  dontTouch(head_row)
+  dontTouch(tail_row)
+  dontTouch(head_row_next)
+  dontTouch(tail_row_next)
   dontTouch(full)
   dontTouch(empty)
 }
