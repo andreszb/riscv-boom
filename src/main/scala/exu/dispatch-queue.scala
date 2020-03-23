@@ -78,20 +78,17 @@ class SramDispatchQueueCompacting(params: DispatchQueueParams,
   val heads_brmask = Reg(Vec(deqWidth, UInt(maxBrCount.W)))
   val heads_valid = RegInit(VecInit(Seq.fill(deqWidth)(false.B)))
 
-  // Deqeueue pointer maps dequeue port (io.heads) to FIFO-lane.
-  val deq_ptr = WireInit(VecInit(Seq.fill(enqWidth)(0.U(log2Ceil(deqWidth).W))))
-
   // Stage 1 enqueues stored for bypassing.
   val s1_enq_uops = Reg(Vec(enqWidth, new MicroOp()))
-  val s1_enq_valids = Reg(Vec(enqWidth, Bool()))
+  val s1_enq_valids = RegInit(VecInit(Seq.fill(enqWidth)(false.B)))
   val s1_bypass = RegInit(false.B)
-  val s1_enq_row = Reg(Vec(enqWidth, UInt(qAddrSz.W)))
-  val s1_enq_col = Reg(Vec(deqWidth, UInt(qWidthSz.W)))
+  val s1_enq_row = RegInit(VecInit(Seq.fill(enqWidth)(0.U(qAddrSz.W))))
+  val s1_enq_col = RegInit(VecInit(Seq.fill(enqWidth)(0.U(qWidthSz.W))))
 
   // Stage 2 read-outs from SRAM
   val s2_sram_read_uop = Wire(Vec(enqWidth, new MicroOp()))
-  val s2_sram_read_col = Reg(Vec(enqWidth, UInt(qWidthSz.W)))
-  val s2_sram_read_row = Reg(Vec(enqWidth,UInt(qAddrSz.W)))
+  val s2_sram_read_col = RegInit(VecInit(Seq.fill(enqWidth)(0.U(qWidthSz.W))))
+  val s2_sram_read_row = RegInit(VecInit(Seq.fill(enqWidth)(0.U(qAddrSz.W))))
 
 
   // Wires for calculating state in next CC
@@ -172,6 +169,7 @@ class SramDispatchQueueCompacting(params: DispatchQueueParams,
 
 
   // Handle enqueues
+  s2_sram_read_uop.map(_ := DontCare)
   when(!heads_valid.reduce(_ || _) && empty) {
     // Add enqs directly to the head
     // NB: Watch out as we ofteen have more enqueues than dequeues. Only add the first n to heads and then the rest
@@ -247,7 +245,8 @@ class SramDispatchQueueCompacting(params: DispatchQueueParams,
   // Read from SRAM
   for(i <- 0 until enqWidth) {
     val col = WrapSub(head_col, i, enqWidth)
-    val row = Mux(col =/= head_col, WrapDec(head_row, numEntries), head_row)
+    val row = Wire(UInt(qAddrSz.W))
+    row := Mux(col =/= head_col, WrapDec(head_row, numEntries), head_row)
     for(j <- 0 until enqWidth){
       when(j.U === col){
         s2_sram_read_uop(i) := sram_fifo(j)(row)
@@ -286,10 +285,12 @@ class SramDispatchQueueCompacting(params: DispatchQueueParams,
     if (i == 0) {
       refillIdx := 0.U
     } else {
-      refillIdx := PopCount((io.heads.map(_.fire).slice(0,i) zip io.heads.map(_.valid)).map{ case (l,r) => l || !r })
+      refillIdx := 1.U
+      //refillIdx := PopCount((io.heads.map(_.fire).slice(0,i) zip io.heads.map(_.valid).slice(0,i)).map{ case (l,r) => l || !r })
     }
 
-    val row = s2_sram_read_row(refillIdx)
+    val row = Wire(UInt(qAddrSz.W))
+    row := s2_sram_read_row(refillIdx)
     val col = s2_sram_read_col(refillIdx)
 
     // If a head was fired or it was invalid. Then refill that head
