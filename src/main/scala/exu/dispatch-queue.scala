@@ -187,6 +187,7 @@ class SramDispatchQueueCompacting(params: DispatchQueueParams,
     // to the sram. (Which often will be bypassed also)
 
     val last_bypass_idx = WireInit(0.U((qWidthSz+1).W))
+    dontTouch(last_bypass_idx)
     for (w <- 0 until enqWidth) {
       val deqIdx = Wire(UInt(qWidthSz.W))
       if (w == 0) {
@@ -203,6 +204,7 @@ class SramDispatchQueueCompacting(params: DispatchQueueParams,
       }
     }
     var start_remaining_scalaInt = -1 // Initialize to something invalid because I had a bug where it never got assigned
+    val enqs = WireInit(VecInit(Seq.fill(enqWidth)(false.B)))
     for(i <- 0 until enqWidth + 1){
       when(i.U === last_bypass_idx + 1.U) {
         start_remaining_scalaInt = i
@@ -213,8 +215,16 @@ class SramDispatchQueueCompacting(params: DispatchQueueParams,
     //  The col and row where the uop is stored is based on how many has been enqueued
     //  since the start_remaining. The others are directly bypassed.
     for( w <- start_remaining_scalaInt until enqWidth) {
-      val col = WrapAdd(tail_col, w.U - last_bypass_idx + 1.U, enqWidth)
-      val row = Mux(col =/= tail_col, WrapInc(tail_row, numEntries), tail_row)
+      val i = w - start_remaining_scalaInt
+      val enq_idx = Wire(UInt(qWidthSz.W))
+      if (i == 0) {
+          enq_idx := 0.U
+      } else {
+          enq_idx := PopCount(enqs.slice(0,i))
+      }
+
+      val col = WrapAdd(tail_col, enq_idx, enqWidth)
+      val row = Mux(col < tail_col, WrapInc(tail_row, numEntries), tail_row)
 
       when(io.enq_uops(w).fire) {
         // DavidHack to access FIFO columns with scalaInts
@@ -229,6 +239,7 @@ class SramDispatchQueueCompacting(params: DispatchQueueParams,
         // Here we assume that we dont try to enqueue anything to a full queue
         assert(!valids(row)(col), "[dis-q] tyring to enqueue to a full queue")
 
+        enqs(i) := true.B
       }
 
       // Latch these for potential bypass
@@ -240,9 +251,17 @@ class SramDispatchQueueCompacting(params: DispatchQueueParams,
 
   }.otherwise {
     // Normal case of enqueing to a half-full FIFO
+    val enqs = WireInit(VecInit(Seq.fill(enqWidth)(false.B)))
     for (w <- 0 until enqWidth) {
-      val col = WrapAdd(tail_col, w.U, enqWidth)
-      val row = Mux(col =/= tail_col, WrapInc(tail_row, numEntries), tail_row)
+      val enq_idx = Wire(UInt(qWidthSz.W))
+      if (w == 0) {
+        enq_idx := 0.U
+      } else {
+        enq_idx := PopCount(enqs.slice(0,w))
+      }
+
+      val col = WrapAdd(tail_col, enq_idx, enqWidth)
+      val row = Mux(col < tail_col, WrapInc(tail_row, numEntries), tail_row)
 
       when(io.enq_uops(w).fire) {
         // DavidHack to access FIFO columns with scalaInts
@@ -257,6 +276,7 @@ class SramDispatchQueueCompacting(params: DispatchQueueParams,
         // Here we assume that we dont try to enqueue anything to a full queue
         assert(!valids(row)(col), "[dis-q] tyring to enqueue to a full queue")
 
+        enqs(w) := true.B
       }
       // Latch this for potential bypass
       s1_enq_uops(w) := io.enq_uops(w).bits
@@ -266,10 +286,12 @@ class SramDispatchQueueCompacting(params: DispatchQueueParams,
     }
   }
 
+
   // Update tail
   //  We only update the tail for the next CC if there was a fire AND it wasnt bypassed
-  tail_col_next := WrapAdd(tail_col, PopCount((io.enq_uops zip enqs_bypassed).map {case(l,r) => l.fire && !r}), enqWidth)
-  tail_row_next := Mux(tail_col_next >= tail_col, tail_row, WrapInc(tail_row, numEntries))
+  val tail_move_by = PopCount((io.enq_uops zip enqs_bypassed).map {case(l,r) => l.fire && !r})
+  tail_col_next := WrapAdd(tail_col, tail_move_by, enqWidth)
+  tail_row_next := Mux(tail_col_next < tail_col || tail_move_by === enqWidth.U , WrapInc(tail_row, numEntries), tail_row)
 
   // Read from SRAM
   //  Each CC we will read out the value of head+1 .. head+nDeqs. Next CC they will be MUX'ed into heads regs
@@ -354,7 +376,7 @@ class SramDispatchQueueCompacting(params: DispatchQueueParams,
   // Calculate next head
   val nDeqs = PopCount(deqs)
   head_col_next := WrapAdd(head_col, nDeqs, enqWidth)
-  head_row_next := Mux(head_col_next >= head_col, head_row, WrapInc(head_row, numEntries))
+  head_row_next := Mux(head_col_next < head_col || nDeqs === enqWidth.U, WrapInc(head_row, numEntries), head_row)
 
 
   assert(! (io.brinfo.mispredict && io.brinfo.valid &&  entry_killed(head_row)(head_col) && ((head_row_next =/= tail_row_next) || (head_col_next =/= tail_row_next))), "[dis-q] branch resolution with head flushed but head and tail_next not reset")
