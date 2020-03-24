@@ -78,10 +78,14 @@ class SramDispatchQueueCompacting(params: DispatchQueueParams,
   val heads_brmask = Reg(Vec(deqWidth, UInt(maxBrCount.W)))
   val heads_valid = RegInit(VecInit(Seq.fill(deqWidth)(false.B)))
 
+  // Wires for bypassing enq->heads
+  val bypass_valids = WireInit(VecInit(Seq.fill(deqWidth)(false.B)))
+  val bypass_uops = Wire(Vec(deqWidth, new MicroOp()))
+  bypass_uops.map(_ := DontCare)
+
   // Stage 1 enqueues stored for bypassing.
   val s1_enq_uops = Reg(Vec(enqWidth, new MicroOp()))
   val s1_enq_valids = RegInit(VecInit(Seq.fill(enqWidth)(false.B)))
-  val s1_bypass = RegInit(false.B)
   val s1_enq_row = RegInit(VecInit(Seq.fill(enqWidth)(0.U(qAddrSz.W))))
   val s1_enq_col = RegInit(VecInit(Seq.fill(enqWidth)(0.U(qWidthSz.W))))
 
@@ -104,15 +108,12 @@ class SramDispatchQueueCompacting(params: DispatchQueueParams,
   val heads_killed = WireInit(VecInit(Seq.fill(deqWidth)(false.B)))
   val heads_updated_brmask = WireInit(VecInit(Seq.fill(deqWidth)(false.B)))
 
-  if (coreWidth > 1) {
-    assert(! (io.enq_uops(1).fire && !io.enq_uops(0).fire), "[dis-q-compact] Assumption of lane-order doesnt hold. Consider redoing some of the logic")
-  }
 
 
   // Handle branch resolution
   //  On mispredict, find oldest that is killed and kill everyone younger than that
   //  On resolved. Update all branch masks in paralell. Updates also invalid entries, for simplicity.
-
+  //  Since heads are in separate Regs they must also be searched through
   when(io.brinfo.valid) {
     for (idx <- 0 until numEntries) {
       for (lane <- 0 until enqWidth) {
@@ -170,21 +171,49 @@ class SramDispatchQueueCompacting(params: DispatchQueueParams,
 
   // Handle enqueues
   s2_sram_read_uop.map(_ := DontCare)
-  when(!heads_valid.reduce(_ || _) && empty) {
+
+  // Bypass enq->head when
+  //  1. SRAM is empty and there are no valids at head == FIFO is completely empty
+  //  2. SRAM is empty and the valid heads are also fired this CC == FIFO will be empty next CC
+  val bypass_head =   (!heads_valid.reduce(_ || _) && empty) ||
+                      ((heads_valid zip io.heads).map{case (l,r) => (l && r.fire || !l)}.reduce(_ && _) && empty)
+
+  dontTouch(bypass_head)
+  // enqs_bypassed are used to count how many uops were bypassed and also calculate the idx into heads() to place them
+  val enqs_bypassed = WireInit(VecInit(Seq.fill(enqWidth)(false.B)))
+  when(bypass_head) {
     // Add enqs directly to the head
     // NB: Watch out as we ofteen have more enqueues than dequeues. Only add the first n to heads and then the rest
     // to the sram. (Which often will be bypassed also)
-    for (w <- 0 until deqWidth) {
-      when(io.enq_uops(w).fire) {
-        heads_valid(w) := true.B
-        heads_uop(w) := io.enq_uops(w).bits
-        heads_brmask(w) := io.enq_uops(w).bits.br_mask
+
+    val last_bypass_idx = WireInit(0.U((qWidthSz+1).W))
+    for (w <- 0 until enqWidth) {
+      val deqIdx = Wire(UInt(qWidthSz.W))
+      if (w == 0) {
+        deqIdx := 0.U
+      } else {
+        deqIdx := PopCount(enqs_bypassed.slice(0,w))
+      }
+
+      when(io.enq_uops(w).fire && deqIdx < deqWidth.U) {
+        enqs_bypassed(w) := true.B
+        bypass_valids(deqIdx) := true.B
+        bypass_uops(deqIdx) := io.enq_uops(w).bits
+        last_bypass_idx := w.U
       }
     }
-
+    var start_remaining_scalaInt = -1 // Initialize to something invalid because I had a bug where it never got assigned
+    for(i <- 0 until enqWidth + 1){
+      when(i.U === last_bypass_idx + 1.U) {
+        start_remaining_scalaInt = i
+      }
+    }
     // Add remaining uops to the SRAM
-    for( w <- deqWidth until enqWidth) {
-      val col = WrapAdd(tail_col, w.U, enqWidth)
+    //  start_remaining is the io_enq idx to start iteration from
+    //  The col and row where the uop is stored is based on how many has been enqueued
+    //  since the start_remaining. The others are directly bypassed.
+    for( w <- start_remaining_scalaInt until enqWidth) {
+      val col = WrapAdd(tail_col, w.U - last_bypass_idx + 1.U, enqWidth)
       val row = Mux(col =/= tail_col, WrapInc(tail_row, numEntries), tail_row)
 
       when(io.enq_uops(w).fire) {
@@ -210,7 +239,7 @@ class SramDispatchQueueCompacting(params: DispatchQueueParams,
     }
 
   }.otherwise {
-
+    // Normal case of enqueing to a half-full FIFO
     for (w <- 0 until enqWidth) {
       val col = WrapAdd(tail_col, w.U, enqWidth)
       val row = Mux(col =/= tail_col, WrapInc(tail_row, numEntries), tail_row)
@@ -238,11 +267,13 @@ class SramDispatchQueueCompacting(params: DispatchQueueParams,
   }
 
   // Update tail
-  //  We only update the tail for the next CC if there was a fire
-  tail_col_next := WrapAdd(tail_col, PopCount(io.enq_uops.map(_.fire)), enqWidth)
-  tail_row_next := Mux(tail_col_next === tail_col, tail_row, WrapInc(tail_row, numEntries))
+  //  We only update the tail for the next CC if there was a fire AND it wasnt bypassed
+  tail_col_next := WrapAdd(tail_col, PopCount((io.enq_uops zip enqs_bypassed).map {case(l,r) => l.fire && !r}), enqWidth)
+  tail_row_next := Mux(tail_col_next >= tail_col, tail_row, WrapInc(tail_row, numEntries))
 
   // Read from SRAM
+  //  Each CC we will read out the value of head+1 .. head+nDeqs. Next CC they will be MUX'ed into heads regs
+  //  together with bypasses etc.
   for(i <- 0 until enqWidth) {
     val col = WrapSub(head_col, i, enqWidth)
     val row = Wire(UInt(qAddrSz.W))
@@ -271,7 +302,8 @@ class SramDispatchQueueCompacting(params: DispatchQueueParams,
       io.heads(i).bits.br_mask := heads_brmask(i) & ~io.brinfo.mask
     }
 
-    //If we dequeue this head, update state to false next CC. THis can be overwritten later
+    // If we dequeue this head, update state to false next CC. This false will be overwritten more down if we
+    //  refill the head
     when(io.heads(i).fire) {
       heads_valid(i) := false.B
       assert(heads_valid(i), "[dis-q] Dequeued invalid uop from head")
@@ -281,12 +313,13 @@ class SramDispatchQueueCompacting(params: DispatchQueueParams,
 
   // Refill the heads by dequeueing from the FIFO
   for (i <- 0 until deqWidth) {
+    // refillIdx is used to calculate which of head, head+1 ... to refill into heads regs.
+    //  Only refill invalid head_regs or valid ones that are being fired this CC
     val refillIdx = Wire(UInt(qWidthSz.W))
     if (i == 0) {
       refillIdx := 0.U
     } else {
-      refillIdx := 1.U
-      //refillIdx := PopCount((io.heads.map(_.fire).slice(0,i) zip io.heads.map(_.valid).slice(0,i)).map{ case (l,r) => l || !r })
+      refillIdx := PopCount((io.heads.map(_.fire).slice(0,i) zip io.heads.map(_.valid).slice(0,i)).map{ case (l,r) => l || !r })
     }
 
     val row = Wire(UInt(qAddrSz.W))
@@ -294,37 +327,34 @@ class SramDispatchQueueCompacting(params: DispatchQueueParams,
     val col = s2_sram_read_col(refillIdx)
 
     // If a head was fired or it was invalid. Then refill that head
+    //  Either we get the data from the bypass or from the SRAM. There is also the possibility of the s1_bypass
+    //  Which is handled below
     when((io.heads(i).fire || !io.heads(i).valid) && !io.flush) {
-      heads_uop(i) := s2_sram_read_uop(refillIdx)
-      heads_valid(i) := valids(row)(col)
-      heads_brmask(i) := Mux(!updated_brmask(row)(col),
+      heads_uop(i) := Mux(bypass_valids(i), bypass_uops(i), s2_sram_read_uop(refillIdx))
+      heads_valid(i) := Mux(bypass_valids(i), true.B, valids(row)(col))
+      heads_brmask(i) := Mux(bypass_valids(i), bypass_uops(i).br_mask, Mux(!updated_brmask(row)(col),
                                 br_mask(row)(col),
                                 br_mask(row)(col) & ~io.brinfo.mask
-      )
+      ))
       // Do we need a bypass because this uop was enqueued last cycle and is not read as s2_sram_read_uop?
-      //  In that case, just overwrite the heads_uop output. br_mask update is handled the same
+      //  In that case, just overwrite the heads_uop output. br_mask update is already correct since it is stored in regs and not SRAM
       for (j <- 0 until enqWidth) {
         when(row === s1_enq_row(j) && col === s1_enq_col(j) && s1_enq_valids(j)) {
           heads_uop(i) := s1_enq_uops(j)
+          assert(!bypass_valids(i), "[dis-q-comp] S1 bypass and head bypass on same uop")
         }
       }
 
-      // Update the refill deqs wire
-      deqs(refillIdx) := valids(row)(col)
+      // Update the refill deqs wire if we dequeue something from the SRAM
+      deqs(refillIdx) := Mux(bypass_valids(i), false.B, valids(row)(col))
     }
   }
 
-
-  // Handle dequeues
-  for (i <- 0 until deqWidth) {
-    when(io.heads(i).fire) {
-    }
-  }
 
   // Calculate next head
   val nDeqs = PopCount(deqs)
   head_col_next := WrapAdd(head_col, nDeqs, enqWidth)
-  head_row_next := Mux(head_col_next === head_col, head_row, WrapInc(head_row, numEntries))
+  head_row_next := Mux(head_col_next >= head_col, head_row, WrapInc(head_row, numEntries))
 
 
   assert(! (io.brinfo.mispredict && io.brinfo.valid &&  entry_killed(head_row)(head_col) && ((head_row_next =/= tail_row_next) || (head_col_next =/= tail_row_next))), "[dis-q] branch resolution with head flushed but head and tail_next not reset")
@@ -333,7 +363,7 @@ class SramDispatchQueueCompacting(params: DispatchQueueParams,
 
   require(enqWidth>=coreWidth)
 
-
+  // Only allow enqueues when we have room for enqWidth enqueus this CC
   for (w <- 0 until enqWidth)
   {
     io.enq_uops(w).ready := !full
@@ -341,6 +371,7 @@ class SramDispatchQueueCompacting(params: DispatchQueueParams,
 
 
   // Full/Empty
+  //  We are full when we have less than enqWidth free slots
   when( head_row === tail_row) {
     full := true.B
     empty := false.B
