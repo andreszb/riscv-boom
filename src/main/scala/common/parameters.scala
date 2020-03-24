@@ -90,7 +90,8 @@ case class BoomCoreParams(
   loadSliceCore: Option[LoadSliceCoreParams] = None,
   ibdaParams: Option[IbdaParams] = None,
   busyLookupParams: Option[BusyLookupParams] = None,
-  dnbParams: Option[DnbParams] = None
+  dnbParams: Option[DnbParams] = None,
+  casParams: Option[CasParams] = None
 
 ) extends freechips.rocketchip.tile.CoreParams
 {
@@ -102,8 +103,9 @@ case class BoomCoreParams(
   val jumpInFrontend: Boolean = false // unused in boom
   val loadSliceMode: Boolean = loadSliceCore.isDefined
   val dnbMode: Boolean = dnbParams.isDefined
+  val casMode: Boolean = casParams.isDefined
   val ibdaMode: Boolean = loadSliceMode || dnbMode
-  val busyLookupMode: Boolean = loadSliceMode || dnbMode
+  val busyLookupMode: Boolean = loadSliceMode || dnbMode || casMode
 
   // Make sure we have enough lookup ports to the Busy Table
   if(busyLookupMode) {
@@ -112,6 +114,10 @@ case class BoomCoreParams(
     }
     if (dnbMode) {
       require(busyLookupParams.get.lookupAtDisWidth == dnbParams.get.dlqDispatches)
+    }
+
+    if (casMode) {
+      require(busyLookupParams.get.lookupAtDisWidth == casParams.get.inqDispatches + casParams.get.slidingWindow)
     }
   }
 
@@ -323,6 +329,15 @@ case class DromajoParams(
   plicParams: Option[PLICParams] = None
 )
 
+// CASINO Parameters
+
+case class CasParams(
+                    numInqEntries: Int = 8,
+                    numSqEntries: Int = 8,
+                    slidingWindow: Int = 2,
+                    inqDispatches: Int = 2,
+                    sqDispatches: Int = 1
+                    )
 
 // Class for DnB Parameters
 case class DnbParams(
