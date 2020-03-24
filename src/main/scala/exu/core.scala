@@ -116,6 +116,9 @@ class BoomCore(implicit p: Parameters) extends BoomModule
     if(boomParams.dnbMode){
       unified_iss_unit = Module(new IssueUnitDnbUnified(combIssueParam.get, numIntIssueWakeupPorts+numFpWakeupPorts))
       unified_iss_unit.suggestName("dnb_issue_unit")
+    } else if (boomParams.casMode) {
+      unified_iss_unit = Module(new IssueUnitCasUnified(combIssueParam.get, numIntIssueWakeupPorts+numFpWakeupPorts))
+      unified_iss_unit.suggestName("cas_issue_unit")
     } else {
       unified_iss_unit = Module(new IssueUnitSliceUnified(combIssueParam.get, numIntIssueWakeupPorts+numFpWakeupPorts))
       unified_iss_unit.suggestName("unified_slice_issue_unit")
@@ -135,7 +138,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
 
   val issue_units      = if(boomParams.unifiedIssueQueue) Seq(unified_iss_unit)else Seq(mem_iss_unit,int_iss_unit)
 
-  val dispatcher       = if(boomParams.loadSliceMode) Module(new SliceDispatcher) else if(boomParams.dnbMode) Module(new DnbDispatcher) else Module(new BasicDispatcher)
+  val dispatcher       = if(boomParams.loadSliceMode) Module(new SliceDispatcher) else if(boomParams.dnbMode) Module(new DnbDispatcher) else if(boomParams.casMode) Module(new CasDispatcher) else Module(new BasicDispatcher)
 
   val iregfile         = Module(new RegisterFileSynthesizable(
                              numIntPhysRegs,

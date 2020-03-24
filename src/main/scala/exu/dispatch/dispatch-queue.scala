@@ -652,7 +652,7 @@ class SramDispatchQueueCompacting(params: DispatchQueueParams,
   //  2. SRAM is empty and the valid heads are also fired this CC == FIFO will be empty next CC
   val bypass_head =   (!heads_valid.reduce(_ || _) && empty) ||
                       (heads_valid zip io.heads.map(_.fire)).map{case (l,r) => (l && r || !l)}.reduce(_ || _) && empty
-  dontTouch(bypass_head)
+  dontTouch(bypass_head) //TODO: remove
   // enqs_bypassed are used to count how many uops were bypassed and also calculate the idx into heads() to place them
   val enqs_bypassed = WireInit(VecInit(Seq.fill(enqWidth)(false.B)))
   when(bypass_head) {
@@ -662,6 +662,7 @@ class SramDispatchQueueCompacting(params: DispatchQueueParams,
 
     val last_bypass_idx = WireInit(0.U((qWidthSz+1).W))
 
+    dontTouch(last_bypass_idx) //TODO: remove
     for (w <- 0 until enqWidth) {
       val deqIdx = Wire(UInt(qWidthSz.W))
       if (w == 0) {
@@ -679,7 +680,7 @@ class SramDispatchQueueCompacting(params: DispatchQueueParams,
     }
 
     var start_remaining_scalaInt = 0
-    for(i <- 0 until enqWidth){
+    for(i <- 0 until enqWidth + 1){
       when(i.U === last_bypass_idx + 1.U) {
         start_remaining_scalaInt = i
       }
