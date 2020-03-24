@@ -368,13 +368,19 @@ class SramDispatchQueueCompacting(params: DispatchQueueParams,
       }
 
       // Update the refill deqs wire if we dequeue something from the SRAM
+      //  and update the valids regs to "free" up the space
       deqs(refillIdx) := Mux(bypass_valids(i), false.B, valids(row)(col))
+      when (deqs(refillIdx) && valids(row)(col)) {
+        valids(row)(col) := false.B
+      }
     }
   }
 
+  assert(!( RegNext((head_col_next =/= head_col)) && valids(RegNext(head_col))(RegNext(head_row))), "[dis-q] Head ptr moved but SRAM not freed up")
 
   // Calculate next head
   val nDeqs = PopCount(deqs)
+
   head_col_next := WrapAdd(head_col, nDeqs, enqWidth)
   head_row_next := Mux(head_col_next < head_col || nDeqs === enqWidth.U, WrapInc(head_row, numEntries), head_row)
 
