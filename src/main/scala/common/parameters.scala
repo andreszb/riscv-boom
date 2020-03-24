@@ -117,7 +117,7 @@ case class BoomCoreParams(
     }
 
     if (casMode) {
-      require(busyLookupParams.get.lookupAtDisWidth == casParams.get.inqDispatches + casParams.get.slidingWindow)
+      require(busyLookupParams.get.lookupAtDisWidth == casParams.get.inqDispatches + casParams.get.windowSize)
     }
   }
 
@@ -334,10 +334,11 @@ case class DromajoParams(
 case class CasParams(
                     numInqEntries: Int = 8,
                     numSqEntries: Int = 8,
-                    slidingWindow: Int = 2,
+                    slidingOffset: Int = 1,
                     inqDispatches: Int = 2,
-                    sqDispatches: Int = 1
+                    windowSize: Int = 2
                     )
+{}
 
 // Class for DnB Parameters
 case class DnbParams(

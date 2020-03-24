@@ -35,12 +35,17 @@ class DispatchIO(implicit p: Parameters) extends BoomBundle
   val fp_busy_req_uops = if(boomParams.busyLookupMode && usingFPU) Some(Output(Vec(boomParams.busyLookupParams.get.lookupAtDisWidth, new MicroOp))) else None
   val fp_busy_resps = if(boomParams.busyLookupMode && usingFPU) Some(Input(Vec(boomParams.busyLookupParams.get.lookupAtDisWidth, new BusyResp))) else None
   // brinfo & flush for LSC
-  val brinfo = if(boomParams.loadSliceMode || boomParams.dnbMode) Some(Input(new BrResolutionInfo())) else None
-  val flush = if(boomParams.loadSliceMode || boomParams.dnbMode) Some(Input(Bool())) else None
+  val brinfo = if(boomParams.loadSliceMode || boomParams.dnbMode || boomParams.casMode) Some(Input(new BrResolutionInfo())) else None
+  val flush = if(boomParams.loadSliceMode || boomParams.dnbMode || boomParams.casMode) Some(Input(Bool())) else None
 
   // DnB ports to UIQ
   val dlq_head = if(boomParams.dnbMode) Some(Vec(boomParams.dnbParams.get.dlqDispatches, DecoupledIO(new MicroOp))) else None
   val crq_head = if(boomParams.dnbMode) Some(Vec(boomParams.dnbParams.get.crqDispatches, DecoupledIO(new MicroOp))) else None
+
+  // CAS ports to UIQ
+  val sq_heads = if(boomParams.casMode) Some(Vec(boomParams.casParams.get.windowSize, DecoupledIO(new MicroOp()))) else None
+  val inq_heads = if(boomParams.casMode) Some(Vec(boomParams.casParams.get.inqDispatches, DecoupledIO(new MicroOp()))) else None
+
 
   val tsc_reg = Input(UInt(width=xLen.W))
 
@@ -97,6 +102,109 @@ class BasicDispatcher(implicit p: Parameters) extends Dispatcher
 }
 
 class CasDispatcher(implicit p: Parameters) extends Dispatcher {
+  val casParams = boomParams.casParams.get
+
+  val inq = Module(new SramDispatchQueueCompacting( DispatchQueueParams(
+    numEntries = casParams.numInqEntries,
+    qName="INQ",
+    deqWidth=casParams.inqDispatches,
+    enqWidth= casParams.slidingOffset)))
+
+
+
+  val sq = Module(new SramDispatchQueueCompacting( DispatchQueueParams(
+    numEntries = casParams.numSqEntries,
+    qName="SQ",
+    deqWidth=casParams.windowSize,
+    enqWidth=coreWidth)))
+
+
+  // We dont use the dispatch port. Everything goes via the heads ports
+  io.dis_uops.map(_ := DontCare)
+
+  // Handle enqueing of renamed uops. All just go straight to the Speculative Queue SQ
+  for (i <- 0 until coreWidth) {
+    io.ren_uops(i) <> sq.io.enq_uops(i)
+  }
+
+  // Busy-lookup
+  val n_heads = casParams.windowSize + casParams.inqDispatches
+  val q_heads = sq.io.heads ++ inq.io.heads
+  val heads = Wire(Vec(n_heads, new MicroOp()))
+  val heads_ready = WireInit(VecInit(Seq.fill(n_heads)(false.B)))
+
+  for (i <- 0 until n_heads) {
+    heads(i) := q_heads(i).bits
+
+    io.busy_req_uops.get(i) := heads(i)
+    io.fp_busy_req_uops.get(i) := heads(i)
+
+    val rs1_busy = WireInit(true.B)
+    val rs2_busy = WireInit(true.B)
+    val rs3_busy = WireInit(false.B)
+
+    when(heads(i).lrs1_rtype === RT_FIX) {
+      rs1_busy := io.busy_resps.get(i)
+    }.elsewhen(heads(i).lrs1_rtype === RT_FLT) {
+      rs1_busy := io.fp_busy_resps.get(i)
+    }.otherwise {
+      rs1_busy := false.B
+    }
+
+    when(heads(i).lrs2_rtype === RT_FIX) {
+      rs2_busy := io.busy_resps.get(i)
+    }.elsewhen(heads(i).lrs2_rtype === RT_FLT) {
+      rs2_busy := io.fp_busy_resps.get(i)
+    }.otherwise {
+      rs2_busy := false.B
+    }
+    heads(i).prs1_busy := rs1_busy
+    heads(i).prs2_busy := rs2_busy
+    heads(i).prs3_busy := rs3_busy
+    heads_ready(i) := !rs1_busy && !rs2_busy && !rs3_busy
+  }
+
+
+  // Pass out the heads to the UIQ
+  val uiq_heads = io.sq_heads.get ++ io.inq_heads.get
+  for (i <- 0 until n_heads) {
+    uiq_heads(i).valid := q_heads(i).valid
+    uiq_heads(i).bits := heads(i)
+    q_heads(i).ready := uiq_heads(i).ready
+
+    assert(!(uiq_heads(i).ready && !heads_ready(i)), "[cas-dis] issued non ready uop")
+  }
+
+  // SQ > INQ connection
+  for (i <- 0 until casParams.slidingOffset) {
+    when( inq.io.enq_uops(i).ready &&
+          sq.io.heads(i).valid &&
+          !heads_ready(i)
+        )
+    {
+      // Dequeue the uop from SQ
+      sq.io.heads(i).ready := true.B
+
+      // Enqueue the uop to the INQ
+      inq.io.enq_uops(i).valid := true.B
+      inq.io.enq_uops(i).bits := sq.io.heads(i).bits
+
+      assert(!uiq_heads(i).ready, "[cas-dis] Issuing and moving uop to INQ at the same time")
+    }
+  }
+
+
+
+  // Branch resolution and flushes
+  // Route brinfo and flush into the fifos
+  inq.io.brinfo := io.brinfo.get
+  inq.io.flush := io.flush.get
+  sq.io.brinfo := io.brinfo.get
+  sq.io.flush  := io.flush.get
+
+  // Route in tsc for pipeview
+  inq.io.tsc_reg := io.tsc_reg
+  sq.io.tsc_reg := io.tsc_reg
 
 }
 

@@ -185,7 +185,7 @@ class WithSmallBooms extends Config((site, here, up) => {
   case XLen => 64
   case MaxHartIdBits => log2Up(site(BoomTilesKey).size)
 })
-class WithDnbBooms extends Config((site, here, up) => {
+class WithCasBooms extends Config((site, here, up) => {
   case BoomTilesKey => up(BoomTilesKey, site) map { b => b.copy(
     core = b.core.copy(
       fetchWidth = 4,
@@ -218,9 +218,9 @@ class WithDnbBooms extends Config((site, here, up) => {
       casParams= Some(CasParams(
         numInqEntries = 8,
         numSqEntries = 8,
-        slidingWindow = 2,
-        inqDispatches = 2,
-        sqDispatches = 1
+        slidingOffset = 1,
+        windowSize = 2,
+        inqDispatches = 2
       )),
       busyLookupParams = Some(BusyLookupParams(
         lookupAtRename = false,
