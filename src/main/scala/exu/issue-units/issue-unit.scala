@@ -95,6 +95,11 @@ class IssueUnitIO(
   val dlq_head = if(boomParams.dnbMode) Some(Vec(boomParams.dnbParams.get.dlqDispatches, Flipped(DecoupledIO(new MicroOp)))) else None
   val crq_head = if(boomParams.dnbMode) Some(Vec(boomParams.dnbParams.get.crqDispatches, Flipped(DecoupledIO(new MicroOp)))) else None
   val rob_head_idx = if(boomParams.dnbMode) Some(Input(UInt(robAddrSz.W))) else None
+
+  // CASINO ports to Dispatch
+  val inq_heads = if(boomParams.casMode) Some(Vec(boomParams.casParams.get.inqDispatches, Flipped(DecoupledIO(new MicroOp)))) else None
+  val sq_heads = if(boomParams.casMode) Some(Vec(boomParams.casParams.get.windowSize, Flipped(DecoupledIO(new MicroOp)))) else None
+
 }
 
 /**

@@ -38,6 +38,10 @@ class DispatchIO(implicit p: Parameters) extends BoomBundle
   val brinfo = if(boomParams.loadSliceMode || boomParams.dnbMode) Some(Input(new BrResolutionInfo())) else None
   val flush = if(boomParams.loadSliceMode || boomParams.dnbMode) Some(Input(Bool())) else None
 
+  // CAS ports to UIQ
+  val inq_heads =if(boomParams.casMode) Some(Vec(boomParams.casParams.get.inqDispatches, DecoupledIO(new MicroOp))) else None
+  val sq_heads = if(boomParams.casMode) Some(Vec(boomParams.casParams.get.windowSize, DecoupledIO(new MicroOp))) else None
+
   // DnB ports to UIQ
   val dlq_head = if(boomParams.dnbMode) Some(Vec(boomParams.dnbParams.get.dlqDispatches, DecoupledIO(new MicroOp))) else None
   val crq_head = if(boomParams.dnbMode) Some(Vec(boomParams.dnbParams.get.crqDispatches, DecoupledIO(new MicroOp))) else None
@@ -46,6 +50,7 @@ class DispatchIO(implicit p: Parameters) extends BoomBundle
 
   val lsc_perf = if(boomParams.loadSliceMode) Some(Output(new LscDispatchPerfCounters)) else None
   val dnb_perf = if(boomParams.dnbMode) Some(Output(new DnbDispatchPerfCounters)) else None
+  val cas_perf = if(boomParams.casMode) Some(Output(new CasDispatchPerfCounters)) else None
 }
 
 
@@ -64,6 +69,11 @@ class DnbDispatchPerfCounters(implicit p: Parameters) extends BoomBundle {
   val dlq = Vec(decodeWidth, Bool()) // Number of insts in DLQ
   val crq = Vec(decodeWidth, Bool()) // Number of insts on CRQ
   val iq = Vec(decodeWidth, Bool()) // Number of insts on IQ
+}
+
+class CasDispatchPerfCounters(implicit p: Parameters) extends BoomBundle {
+  val inq_iss = Vec(boomParams.casParams.get.inqDispatches, Bool())
+  val sq_iss = Vec(boomParams.casParams.get.inqDispatches, Bool())
 }
 
 

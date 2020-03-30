@@ -196,7 +196,7 @@ class WithCasBooms extends Config((site, here, up) => {
         IssueParams(issueWidth=2, numEntries=0, iqType=IQT_INT.litValue, dispatchWidth=0), // INT
         IssueParams(issueWidth=1, numEntries=0, iqType=IQT_MEM.litValue, dispatchWidth=0), // MEM
         IssueParams(issueWidth=1, numEntries=0, iqType=IQT_FP.litValue , dispatchWidth=0), // FP
-        IssueParams(issueWidth=4, numEntries=8, iqType=IQT_COMB.litValue, dispatchWidth=2), // combined
+        IssueParams(issueWidth=4, numEntries=8, iqType=IQT_COMB.litValue, dispatchWidth=0), // combined
       ),
       numIntPhysRegisters = 52,
       numFpPhysRegisters = 48,
