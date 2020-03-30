@@ -92,7 +92,14 @@ class SramDispatchQueueCompactingShifting(params: DispatchQueueParams,
   val s1_enq_uops = Reg(Vec(enqWidth, new MicroOp()))
   val s1_enq_valids = RegInit(VecInit(Seq.fill(enqWidth)(false.B)))
   val s1_enq_row = RegInit(VecInit(Seq.fill(enqWidth)(0.U(qAddrSz.W))))
-  val s1_enq_col = RegInit(VecInit(Seq.fill(enqWidth)(0.U(qWidthSz.W))))
+
+  // Stage 1 sram write wires.
+  val s1_write_uops = Wire(Vec(enqWidth, new MicroOp()))
+  val s1_write_rows = WireInit(VecInit(Seq.fill(enqWidth)(0.U(qAddrSz.W))))
+  val s1_write_valids = WireInit(VecInit(Seq.fill(enqWidth)(false.B)))
+
+  s1_write_uops.map(_ := DontCare)
+
 
   // Stage 2 read-outs from SRAM
   val s2_sram_read_uop = Wire(Vec(enqWidth, new MicroOp()))
@@ -188,26 +195,13 @@ class SramDispatchQueueCompactingShifting(params: DispatchQueueParams,
       val row = Mux(col < tail_col, WrapInc(tail_row, numEntries), tail_row)
 
       when(io.enq_uops(w).fire) {
-        // DavidHack to access FIFO columns with scalaInts
-        for(i <- 0 until enqWidth){
-          when(i.U === col){
-            sram_fifo(i).write(row, WireInit(io.enq_uops(w).bits))
-          }
-        }
-        valids(row)(col) := io.enq_uops(w).valid
-        br_mask(row)(col) := io.enq_uops(w).bits.br_mask
+        s1_write_rows(col) := row
+        s1_write_uops(col) := io.enq_uops(w).bits
+        s1_write_valids(col) := true.B
 
-        // Here we assume that we dont try to enqueue anything to a full queue
-        assert(!valids(row)(col), "[dis-q] tyring to enqueue to a full queue")
-
-        enqs(i) := true.B
+        enqs(w) := true.B
       }
 
-      // Latch these for potential bypass
-      s1_enq_uops(w) := io.enq_uops(w).bits
-      s1_enq_valids(w) := io.enq_uops(w).fire
-      s1_enq_row(w) := row
-      s1_enq_col(w) := col
     }
 
   }.otherwise {
@@ -225,29 +219,32 @@ class SramDispatchQueueCompactingShifting(params: DispatchQueueParams,
       val row = Mux(col < tail_col, WrapInc(tail_row, numEntries), tail_row)
 
       when(io.enq_uops(w).fire) {
-        // DavidHack to access FIFO columns with scalaInts
-        for(i <- 0 until enqWidth){
-          when(i.U === col){
-            sram_fifo(i).write(row, WireInit(io.enq_uops(w).bits))
-          }
-        }
-        valids(row)(col) := io.enq_uops(w).valid
-        br_mask(row)(col) := io.enq_uops(w).bits.br_mask
 
-        // Here we assume that we dont try to enqueue anything to a full queue
-        assert(!valids(row)(col), "[dis-q] tyring to enqueue to a full queue")
+        s1_write_uops(col) := io.enq_uops(w).bits
+        s1_write_valids(col) := true.B
+        s1_write_rows(col) := row
 
         enqs(w) := true.B
       }
-      // Latch this for potential bypass
-      s1_enq_uops(w) := io.enq_uops(w).bits
-      s1_enq_valids(w) := io.enq_uops(w).fire
-      s1_enq_row(w) := row
-      s1_enq_col(w) := col
     }
   }
 
+  // Do the actual SRAM writes
+  for (i <- 0 until enqWidth) {
+    when (s1_write_valids(i)) {
+      sram_fifo(i).write(s1_write_rows(i), s1_write_uops(i))
 
+      valids(s1_write_rows(i))(i) := true.B
+      br_mask(s1_write_rows(i))(i) := s1_write_uops(i).br_mask
+
+      // Here we assume that we dont try to enqueue anything to a full queue
+      assert(!valids(s1_write_rows(i))(i), "[dis-q] tyring to enqueue to a full queue")
+    }
+    s1_enq_uops(i) := s1_write_uops(i)
+    s1_enq_valids(i) := s1_write_valids(i)
+    s1_enq_row(i) := s1_write_rows(i)
+
+  }
 
   // Read from SRAM
   //  Each CC we will read out the value of head+1 .. head+nDeqs. Next CC they will be MUX'ed into heads regs
@@ -329,7 +326,7 @@ class SramDispatchQueueCompactingShifting(params: DispatchQueueParams,
         )
 
         for (j <- 0 until enqWidth) {
-          when(row === s1_enq_row(j) && col === s1_enq_col(j) && s1_enq_valids(j)) {
+          when(row === s1_enq_row(j) && col === j.U && s1_enq_valids(j)) {
             uop := s1_enq_uops(j)
             assert(!bypass_valids(i), "[dis-q-comp] S1 bypass and head bypass on same uop")
           }
@@ -579,9 +576,7 @@ class SramDispatchQueueCompacting(params: DispatchQueueParams,
   //  We only update the tail for the next CC if there was a fire AND it wasnt bypassed
   val enqs_bypassed = WireInit(VecInit(Seq.fill(enqWidth)(false.B)))
 
-  val tail_move_by = PopCount((io.enq_uops zip enqs_bypassed).map {case(l,r) => l.fire && !r})
-  tail_col_next := WrapAdd(tail_col, tail_move_by, enqWidth)
-  tail_row_next := Mux(tail_col_next < tail_col || tail_move_by === enqWidth.U , WrapInc(tail_row, numEntries), tail_row)
+
 
   assert(!(!valids(head_row)(head_col) && !empty), "[dis-q] head is invalid but we are not empty")
 
@@ -757,6 +752,9 @@ class SramDispatchQueueCompacting(params: DispatchQueueParams,
     }
   }
 
+  val tail_move_by = PopCount((io.enq_uops zip enqs_bypassed).map {case(l,r) => l.fire && !r})
+  tail_col_next := WrapAdd(tail_col, tail_move_by, enqWidth)
+  tail_row_next := Mux(tail_col_next < tail_col || tail_move_by === enqWidth.U , WrapInc(tail_row, numEntries), tail_row)
 
 
   // Read from SRAM
@@ -829,7 +827,7 @@ class SramDispatchQueueCompacting(params: DispatchQueueParams,
       // Do we need a bypass because this uop was enqueued last cycle and is not read as s2_sram_read_uop?
       //  In that case, just overwrite the heads_uop output. br_mask update is already correct since it is stored in regs and not SRAM
       for (j <- 0 until enqWidth) {
-        when(row === s1_enq_row(j) && col === s1_enq_col(j) && s1_enq_valids(j)) {
+        when(row === s1_enq_row(j) && col === j.U && s1_enq_valids(j)) {
           heads_uop(i) := s1_enq_uops(j)
           assert(!bypass_valids(i), "[dis-q-comp] S1 bypass and head bypass on same uop")
         }
