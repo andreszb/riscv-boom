@@ -13,7 +13,7 @@ case class DispatchQueueParams(
                                 val deqWidth: Int,
                                 val enqWidth: Int,
                                 val qName: String
-                      )
+                              )
 
 class DispatchQueueIO(
                        val deqWidth: Int = 1,
@@ -36,11 +36,11 @@ abstract class DispatchQueue( val numEntries: Int = 8,
 {
   val io = IO(new DispatchQueueIO(deqWidth, enqWidth))
   val qAddrSz: Int = log2Ceil(numEntries)
-
-  val qWidthSz: Int = if (enqWidth == 1) {
+  val fifoWidth = if (enqWidth>deqWidth) enqWidth else deqWidth
+  val qWidthSz: Int = if (fifoWidth == 1) {
     1
   } else {
-    log2Ceil(enqWidth)
+    log2Ceil(fifoWidth)
   }
 
   // Maps i to idx of queue. Used with for-loops starting at head or tail
@@ -56,16 +56,15 @@ abstract class DispatchQueue( val numEntries: Int = 8,
 }
 
 class SramDispatchQueueCompactingShifting(params: DispatchQueueParams,
-                                 )(implicit p: Parameters) extends DispatchQueue(params.numEntries, params.deqWidth, params.enqWidth, params.qName)
+                                         )(implicit p: Parameters) extends DispatchQueue(params.numEntries, params.deqWidth, params.enqWidth, params.qName)
 {
-  // enqWidth has to be bigger than deqWidth
-  require(enqWidth >= deqWidth)
 
-  val sram_fifo = (0 until enqWidth).map(i => SyncReadMem(numEntries, new MicroOp))
+
+  val sram_fifo = (0 until fifoWidth).map(i => SyncReadMem(numEntries, new MicroOp))
 
   // Branch mask and valid bits are still stored in Regs
-  val br_mask = Reg(Vec(numEntries, Vec(enqWidth,UInt(maxBrCount.W) )))
-  val valids = RegInit(VecInit(Seq.fill(numEntries)(VecInit(Seq.fill(enqWidth)(false.B)))))
+  val br_mask = Reg(Vec(numEntries, Vec(fifoWidth,UInt(maxBrCount.W) )))
+  val valids = RegInit(VecInit(Seq.fill(numEntries)(VecInit(Seq.fill(fifoWidth)(false.B)))))
   val head_row = RegInit(0.U(qAddrSz.W))
   val head_col = RegInit(0.U(qWidthSz.W))
   val tail_row = RegInit(0.U(qAddrSz.W))
@@ -89,37 +88,38 @@ class SramDispatchQueueCompactingShifting(params: DispatchQueueParams,
   bypass_uops.map(_ := DontCare)
 
   // Stage 1 enqueues stored for bypassing.
-  val s1_enq_uops = Reg(Vec(enqWidth, new MicroOp()))
-  val s1_enq_valids = RegInit(VecInit(Seq.fill(enqWidth)(false.B)))
-  val s1_enq_row = RegInit(VecInit(Seq.fill(enqWidth)(0.U(qAddrSz.W))))
+  val s1_enq_uops = Reg(Vec(fifoWidth, new MicroOp()))
+  val s1_enq_valids = RegInit(VecInit(Seq.fill(fifoWidth)(false.B)))
+  val s1_enq_row = RegInit(VecInit(Seq.fill(fifoWidth)(0.U(qAddrSz.W))))
 
   // Stage 1 sram write wires.
-  val s1_write_uops = Wire(Vec(enqWidth, new MicroOp()))
-  val s1_write_rows = WireInit(VecInit(Seq.fill(enqWidth)(0.U(qAddrSz.W))))
-  val s1_write_valids = WireInit(VecInit(Seq.fill(enqWidth)(false.B)))
+  val s1_write_uops = Wire(Vec(fifoWidth, new MicroOp()))
+  val s1_write_rows = WireInit(VecInit(Seq.fill(fifoWidth)(0.U(qAddrSz.W))))
+  val s1_write_valids = WireInit(VecInit(Seq.fill(fifoWidth)(false.B)))
 
   s1_write_uops.map(_ := DontCare)
 
 
   // Stage 2 read-outs from SRAM
-  val s2_sram_read_uop = Wire(Vec(enqWidth, new MicroOp()))
-  val s2_sram_read_idx = RegInit(VecInit(Seq.fill(enqWidth)(0.U(qWidthSz.W))))
-  val s2_sram_read_idx_map = RegInit(VecInit(Seq.fill(enqWidth)(0.U(qWidthSz.W))))
-  val s2_sram_read_row = RegInit(VecInit(Seq.fill(enqWidth)(0.U(qAddrSz.W))))
-  val s2_sram_read_valids = RegInit(VecInit(Seq.fill(enqWidth)(false.B)))
+  val s2_sram_read_uop = Wire(Vec(fifoWidth, new MicroOp()))
+  val s2_sram_read_idx = RegInit(VecInit(Seq.fill(fifoWidth)(0.U(qWidthSz.W))))
+  val s2_sram_read_idx_map = RegInit(VecInit(Seq.fill(fifoWidth)(0.U(qWidthSz.W))))
+  val s2_sram_read_row = RegInit(VecInit(Seq.fill(fifoWidth)(0.U(qAddrSz.W))))
+  val s2_sram_read_valids = RegInit(VecInit(Seq.fill(fifoWidth)(false.B)))
   dontTouch(s2_sram_read_valids)
   dontTouch(s2_sram_read_uop)
 
   // Wires for calculating state in next CC
   val head_row_next = WireInit(head_row)
-  val head_col_next = WireInit(head_col)
+  val head_col_next = Wire(UInt(qWidthSz.W))
+  head_col_next := head_col
   val tail_row_next = WireInit(tail_row)
   val tail_col_next = WireInit(tail_col)
-  val deqs = WireInit(VecInit(Seq.fill(enqWidth)(false.B)))
+  val deqs = WireInit(VecInit(Seq.fill(fifoWidth)(false.B)))
 
   // Wires for branch resolutions
-  val updated_brmask = WireInit(VecInit(Seq.fill(numEntries)(VecInit(Seq.fill(enqWidth)(false.B))))) //This wire decides if we should block the deque from head because of a branch resolution
-  val entry_killed = WireInit(VecInit(Seq.fill(numEntries)(VecInit(Seq.fill(enqWidth)(false.B)))))
+  val updated_brmask = WireInit(VecInit(Seq.fill(numEntries)(VecInit(Seq.fill(fifoWidth)(false.B))))) //This wire decides if we should block the deque from head because of a branch resolution
+  val entry_killed = WireInit(VecInit(Seq.fill(numEntries)(VecInit(Seq.fill(fifoWidth)(false.B)))))
 
   // Connect heads_out to heads and pass them out to io.heads
   (heads_out_uop zip heads_uop).map {case (out, reg) => out := reg}
@@ -130,11 +130,11 @@ class SramDispatchQueueCompactingShifting(params: DispatchQueueParams,
 
 
 
- // Bypass enq->head when
+  // Bypass enq->head when
   //  1. SRAM is empty and there are no valids at head == FIFO is completely empty
   //  2. SRAM is empty and the valid heads are also fired this CC == FIFO will be empty next CC
   val heads_will_be_valid = (heads_out_valid zip io.heads).map {case (l,r) => l && !r.fire}
-  val bypass_head =   !heads_out_valid.reduce(_ || _) && empty
+  val bypass_head =   !heads_will_be_valid.reduce(_ || _) && empty
 
   dontTouch(bypass_head)
   // enqs_bypassed are used to count how many uops were bypassed and also calculate the idx into heads() to place them
@@ -186,12 +186,12 @@ class SramDispatchQueueCompactingShifting(params: DispatchQueueParams,
       val i = w - start_remaining_scalaInt
       val enq_idx = Wire(UInt(qWidthSz.W))
       if (i == 0) {
-          enq_idx := 0.U
+        enq_idx := 0.U
       } else {
-          enq_idx := PopCount(enqs.slice(0,i))
+        enq_idx := PopCount(enqs.slice(0,i))
       }
 
-      val col = WrapAdd(tail_col, enq_idx, enqWidth)
+      val col = WrapAdd(tail_col, enq_idx, fifoWidth)
       val row = Mux(col < tail_col, WrapInc(tail_row, numEntries), tail_row)
 
       when(io.enq_uops(w).fire) {
@@ -215,7 +215,7 @@ class SramDispatchQueueCompactingShifting(params: DispatchQueueParams,
         enq_idx := PopCount(enqs.slice(0,w))
       }
 
-      val col = WrapAdd(tail_col, enq_idx, enqWidth)
+      val col = WrapAdd(tail_col, enq_idx, fifoWidth)
       val row = Mux(col < tail_col, WrapInc(tail_row, numEntries), tail_row)
 
       when(io.enq_uops(w).fire) {
@@ -230,7 +230,7 @@ class SramDispatchQueueCompactingShifting(params: DispatchQueueParams,
   }
 
   // Do the actual SRAM writes
-  for (i <- 0 until enqWidth) {
+  for (i <- 0 until fifoWidth) {
     when (s1_write_valids(i)) {
       sram_fifo(i).write(s1_write_rows(i), s1_write_uops(i))
 
@@ -250,19 +250,19 @@ class SramDispatchQueueCompactingShifting(params: DispatchQueueParams,
   //  Each CC we will read out the value of head+1 .. head+nDeqs. Next CC they will be MUX'ed into heads regs
   //  together with bypasses etc. We read an entire row eac CC. COlumn 0 always goes into
   //  s2_sram_read_0.
-
-  for(i <- 0 until enqWidth) {
+  for(i <- 0 until fifoWidth) {
     // Idx is the order of this column. s2_sram_read_0 always contains the uop in
     //  column 0. But as the head moves we need to calculate which order it has.
     //  We need this when we shift them into the head register later. Uops closest to head
-    //  are oldest and get priority.
-    val idx = WrapSubUInt(i.U, head_col, enqWidth)
+    //  are oldest and get priority. To quickly read out the sram reads after their priority
+    //  s2_sram_idx_map is a mapping from priority -> index into s2_sram_read.
+    //  if s2_sram_idx_map = (2,0,1) Then highest priority uop is in s2_sram_read_uop(2) then s2_sram_read_uop(0) and so on
+    val idx_map = WrapSubUInt(i.U, head_col_next, fifoWidth)
     val row = Wire(UInt(qAddrSz.W))
     // Calculate row. either its the head row or, if we have a wrap-around, its the next
-    row := Mux(idx > i.U, WrapInc(head_row, numEntries), head_row)
+    row := Mux(idx_map > i.U, WrapInc(head_row_next, numEntries), head_row_next)
     s2_sram_read_row(i) := row
-    s2_sram_read_idx(i) := idx
-    s2_sram_read_idx_map(idx) := i.U
+    s2_sram_read_idx_map(idx_map) := i.U
     s2_sram_read_uop(i) := sram_fifo(i)(row) // This is the actual reading
     s2_sram_read_valids(i) := valids(i)(row)
   }
@@ -280,6 +280,9 @@ class SramDispatchQueueCompactingShifting(params: DispatchQueueParams,
       heads_valid(i) := false.B
       assert(heads_valid(i), "[dis-q] Dequeued invalid uop from head")
       assert(!io.flush, "[dis-q] Fired head during flush")
+    }
+    if (i > 0) {
+      assert(!(io.heads(i).valid && !io.heads.slice(0,i).map(_.valid).reduce(_ && _)), "[dis-q] compact heads")
     }
   }
 
@@ -325,7 +328,7 @@ class SramDispatchQueueCompactingShifting(params: DispatchQueueParams,
           br_mask(row)(col) & ~io.brinfo.mask)
         )
 
-        for (j <- 0 until enqWidth) {
+        for (j <- 0 until fifoWidth) {
           when(row === s1_enq_row(j) && col === j.U && s1_enq_valids(j)) {
             uop := s1_enq_uops(j)
             assert(!bypass_valids(i), "[dis-q-comp] S1 bypass and head bypass on same uop")
@@ -346,14 +349,13 @@ class SramDispatchQueueCompactingShifting(params: DispatchQueueParams,
     }
   }
 
-
   assert(!( RegNext((head_col_next =/= head_col)) && valids(RegNext(head_row))(RegNext(head_col))), "[dis-q] Head ptr moved but SRAM not freed up")
 
   // Calculate next head
   val nDeqs = PopCount(deqs)
 
-  head_col_next := WrapAdd(head_col, nDeqs, enqWidth)
-  head_row_next := Mux(head_col_next < head_col || nDeqs === enqWidth.U, WrapInc(head_row, numEntries), head_row)
+  head_col_next := WrapAdd(head_col, nDeqs, fifoWidth)
+  head_row_next := Mux(head_col_next < head_col || nDeqs === fifoWidth.U, WrapInc(head_row, numEntries), head_row)
 
 
   // Update tail
@@ -361,8 +363,8 @@ class SramDispatchQueueCompactingShifting(params: DispatchQueueParams,
 
 
   val tail_move_by = PopCount((io.enq_uops zip enqs_bypassed).map {case(l,r) => l.fire && !r})
-  tail_col_next := WrapAdd(tail_col, tail_move_by, enqWidth)
-  tail_row_next := Mux(tail_col_next < tail_col || tail_move_by === enqWidth.U , WrapInc(tail_row, numEntries), tail_row)
+  tail_col_next := WrapAdd(tail_col, tail_move_by, fifoWidth)
+  tail_row_next := Mux(tail_col_next < tail_col || tail_move_by === fifoWidth.U , WrapInc(tail_row, numEntries), tail_row)
 
   assert(!(!valids(head_row)(head_col) && !empty), "[dis-q] head is invalid but we are not empty")
 
@@ -371,7 +373,6 @@ class SramDispatchQueueCompactingShifting(params: DispatchQueueParams,
 
 
 
-  require(enqWidth>=coreWidth)
 
   // Only allow enqueues when we have room for enqWidth enqueus this CC
   for (w <- 0 until enqWidth)
@@ -417,7 +418,7 @@ class SramDispatchQueueCompactingShifting(params: DispatchQueueParams,
   //  Since heads are in separate Regs they must also be searched through
   when(io.brinfo.valid) {
     for (idx <- 0 until numEntries) {
-      for (lane <- 0 until enqWidth) {
+      for (lane <- 0 until fifoWidth) {
         val entry_match = valids(idx)(lane) && maskMatch(io.brinfo.mask, br_mask(idx)(lane))
         when(entry_match && io.brinfo.mispredict) { // Mispredict
           entry_killed(idx)(lane) := true.B
@@ -444,17 +445,17 @@ class SramDispatchQueueCompactingShifting(params: DispatchQueueParams,
 
     // tail update logic
     for (i <- 0 until numEntries) {
-      for (j <- 0 until enqWidth) {
+      for (j <- 0 until fifoWidth) {
         val previous_killed =
           if (i == 0) {
             if (j == 0) {
-              entry_killed(numEntries - 1)(enqWidth - 1)
+              entry_killed(numEntries - 1)(fifoWidth - 1)
             } else {
               entry_killed(i)(j - 1)
             }
           } else {
             if (j == 0) {
-              entry_killed(i - 1)(enqWidth - 1)
+              entry_killed(i - 1)(fifoWidth - 1)
             } else {
               entry_killed(i)(j - 1)
             }
@@ -495,7 +496,7 @@ class SramDispatchQueueCompactingShifting(params: DispatchQueueParams,
 
 
   if (O3PIPEVIEW_PRINTF) {
-    for (i <- 0 until coreWidth) {
+    for (i <- 0 until enqWidth) {
       when (io.enq_uops(i).valid) {
         printf("%d; O3PipeView:"+qName+": %d\n",
           io.enq_uops(i).bits.debug_events.fetch_seq,
@@ -1011,8 +1012,8 @@ class SramDispatchQueue (params: DispatchQueueParams,
 
     when(valids(head)(i) && idx < deqWidth.U) {
       io.heads(idx).valid :=  valids(head)(i) &&
-                              !entry_killed(head)(i) &&
-                              !io.flush
+        !entry_killed(head)(i) &&
+        !io.flush
 
       when(s1_bypass) {
 
@@ -1095,11 +1096,11 @@ class SramDispatchQueue (params: DispatchQueueParams,
     for (i <- 0 until numEntries) {
       // treat it as a circular structure
       val previous_killed =
-      if (i == 0) {
-        width_killed(entry_killed(numEntries - 1) ,valids(numEntries - 1))
-      } else {
-        width_killed(entry_killed(i-1) ,valids(i-1))
-      }
+        if (i == 0) {
+          width_killed(entry_killed(numEntries - 1) ,valids(numEntries - 1))
+        } else {
+          width_killed(entry_killed(i-1) ,valids(i-1))
+        }
       val this_killed = width_killed(entry_killed(i) ,valids(i))
 
       // transition from not killed to killed - there should be one at maximum
@@ -1148,7 +1149,7 @@ class SramDispatchQueue (params: DispatchQueueParams,
     head_next := 0.U
     tail_next := 0.U
     valids.map(_.map(_ := false.B))
-    }
+  }
 
   // Update for next CC
   head := head_next
@@ -1179,7 +1180,7 @@ class SramDispatchQueue (params: DispatchQueueParams,
 @chiselName
 class SliceDispatchQueue(params: DispatchQueueParams,
                         )(implicit p: Parameters) extends DispatchQueue(params.numEntries, params.deqWidth, params.enqWidth, params.qName)
-  {
+{
 
 
   // Queue state
