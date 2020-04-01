@@ -23,8 +23,8 @@ class CasDispatcher(implicit p: Parameters) extends Dispatcher {
     deqWidth=casParams.windowSize,
     enqWidth=coreWidth)))
 
-  val sq_issue_grant = Vec(casParams.windowSize, Bool())
-  val sq_enqueue_inq = Vec(casParams.slidingOffset, Bool())
+  val sq_issue_grant = Wire(Vec(casParams.windowSize, Bool()))
+  val sq_enqueue_inq = Wire(Vec(casParams.slidingOffset, Bool()))
 
   // We dont use the dispatch port. Everything goes via the heads ports
   io.dis_uops.map(_ := DontCare)
@@ -32,7 +32,7 @@ class CasDispatcher(implicit p: Parameters) extends Dispatcher {
 
   // Handle enqueing of renamed uops. All just go straight to the Speculative Queue SQ
   for (i <- 0 until coreWidth) {
-    io.ren_uops(i) <> sq.io.enq_uops(i)
+    sq.io.enq_uops(i) <> io.ren_uops(i)
   }
 
   // Busy-lookup
@@ -44,9 +44,9 @@ class CasDispatcher(implicit p: Parameters) extends Dispatcher {
   (sq_heads zip sq.io.heads).map{case (l,r) => l := r.bits}
   (sq_heads_valid zip sq.io.heads).map{case (l,r) => l := r.valid}
 
-  val inq_heads = Wire(Vec(casParams.windowSize, new MicroOp()))
+  val inq_heads = Wire(Vec(casParams.inqDispatches, new MicroOp()))
   val inq_heads_ready = WireInit(VecInit(Seq.fill(casParams.inqDispatches)(false.B)))
-  val inq_heads_valid = WireInit(VecInit(Seq.fill(casParams.windowSize)(false.B)))
+  val inq_heads_valid = WireInit(VecInit(Seq.fill(casParams.inqDispatches)(false.B)))
   (inq_heads zip inq.io.heads).map{case (l,r) => l := r.bits}
   (inq_heads_valid zip inq.io.heads).map{case (l,r) => l := r.valid}
 
@@ -65,17 +65,17 @@ class CasDispatcher(implicit p: Parameters) extends Dispatcher {
     val rs3_busy = WireInit(false.B)
 
     when(heads(i).lrs1_rtype === RT_FIX) {
-      rs1_busy := io.busy_resps.get(i)
+      rs1_busy := io.busy_resps.get(i).prs1_busy
     }.elsewhen(heads(i).lrs1_rtype === RT_FLT) {
-      rs1_busy := io.fp_busy_resps.get(i)
+      rs1_busy := io.fp_busy_resps.get(i).prs1_busy
     }.otherwise {
       rs1_busy := false.B
     }
 
     when(heads(i).lrs2_rtype === RT_FIX) {
-      rs2_busy := io.busy_resps.get(i)
+      rs2_busy := io.busy_resps.get(i).prs2_busy
     }.elsewhen(heads(i).lrs2_rtype === RT_FLT) {
-      rs2_busy := io.fp_busy_resps.get(i)
+      rs2_busy := io.fp_busy_resps.get(i).prs2_busy
     }.otherwise {
       rs2_busy := false.B
     }
@@ -103,17 +103,9 @@ class CasDispatcher(implicit p: Parameters) extends Dispatcher {
   // SQ > INQ connection
 
   for (i <- 0 until casParams.slidingOffset) {
-    when( sq_heads_valid(i) &&        // sq uops in question is valid
-          !sq_heads_ready(i)  )        // Sq heads is still busy
-    {
-      // Dequeue the uop from SQ
-      sq_enqueue_inq(i) := inq.io.enq_uops(i).ready
-
-      // Enqueue the uop to the INQ
-      inq.io.enq_uops(i).valid := sq_heads_valid(i)
-      inq.io.enq_uops(i).bits := sq_heads(i)
-
-    }
+    inq.io.enq_uops(i).bits := sq_heads(i)
+    inq.io.enq_uops(i).valid := sq_heads_valid(i) && !sq_heads_ready(i)
+    sq_enqueue_inq(i) := sq_heads_valid(i) && !sq_heads_ready(i) &&  inq.io.enq_uops(i).ready
   }
 
   // Connect ready signal to SQ
@@ -137,5 +129,9 @@ class CasDispatcher(implicit p: Parameters) extends Dispatcher {
   // Route in tsc for pipeview
   inq.io.tsc_reg := io.tsc_reg
   sq.io.tsc_reg := io.tsc_reg
+
+  // Performance counteres
+  (io.cas_perf.get.sq_dis zip io.sq_heads.get).map{case(l,r) => l := r.fire()}
+  (io.cas_perf.get.inq_dis zip io.inq_heads.get).map{case(l,r) => l := r.fire()}
 
 }

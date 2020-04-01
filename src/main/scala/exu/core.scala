@@ -272,6 +272,10 @@ class BoomCore(implicit p: Parameters) extends BoomModule
             (f"DLQ$i", () => dispatcher.io.dnb_perf.get.dlq(i)),
             (f"CRQ$i", () => dispatcher.io.dnb_perf.get.crq(i)),
             (f"IQ$i", () => dispatcher.io.dnb_perf.get.iq(i)),
+          ) else if (boomParams.casMode) Seq(
+            // CASINO events
+            (f"SQ-dispatches: $i", () => dispatcher.io.cas_perf.get.sq_dis(i)),
+            (f"INQ-dispatches: $i", () => dispatcher.io.cas_perf.get.inq_dis(i)),
           ) else Seq(
             (f"DIS$i", () => dispatcher.io.ren_uops(i).fire()),
             ("nop", () => false.B),
@@ -790,7 +794,11 @@ class BoomCore(implicit p: Parameters) extends BoomModule
     unified_iss_unit.io.dlq_head.get <> dispatcher.io.dlq_head.get
     unified_iss_unit.io.crq_head.get <> dispatcher.io.crq_head.get
     unified_iss_unit.io.rob_head_idx.get := rob.io.rob_head_idx
+  }else if(boomParams.casMode) {
+    unified_iss_unit.io.sq_heads.get <> dispatcher.io.sq_heads.get
+    unified_iss_unit.io.inq_heads.get <> dispatcher.io.inq_heads.get
   }
+
   // Connect Dispatcher to IQ
   if(boomParams.unifiedIssueQueue){
     // TODO: maybe two for a and B?

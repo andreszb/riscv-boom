@@ -35,8 +35,8 @@ class DispatchIO(implicit p: Parameters) extends BoomBundle
   val fp_busy_req_uops = if(boomParams.busyLookupMode && usingFPU) Some(Output(Vec(boomParams.busyLookupParams.get.lookupAtDisWidth, new MicroOp))) else None
   val fp_busy_resps = if(boomParams.busyLookupMode && usingFPU) Some(Input(Vec(boomParams.busyLookupParams.get.lookupAtDisWidth, new BusyResp))) else None
   // brinfo & flush for LSC
-  val brinfo = if(boomParams.loadSliceMode || boomParams.dnbMode) Some(Input(new BrResolutionInfo())) else None
-  val flush = if(boomParams.loadSliceMode || boomParams.dnbMode) Some(Input(Bool())) else None
+  val brinfo = if(boomParams.loadSliceMode || boomParams.dnbMode || boomParams.casMode) Some(Input(new BrResolutionInfo())) else None
+  val flush = if(boomParams.loadSliceMode || boomParams.dnbMode || boomParams.casMode) Some(Input(Bool())) else None
 
   // CAS ports to UIQ
   val inq_heads =if(boomParams.casMode) Some(Vec(boomParams.casParams.get.inqDispatches, DecoupledIO(new MicroOp))) else None
@@ -72,8 +72,8 @@ class DnbDispatchPerfCounters(implicit p: Parameters) extends BoomBundle {
 }
 
 class CasDispatchPerfCounters(implicit p: Parameters) extends BoomBundle {
-  val inq_iss = Vec(boomParams.casParams.get.inqDispatches, Bool())
-  val sq_iss = Vec(boomParams.casParams.get.inqDispatches, Bool())
+  val inq_dis = Vec(boomParams.casParams.get.inqDispatches, Bool())
+  val sq_dis = Vec(boomParams.casParams.get.windowSize, Bool())
 }
 
 
