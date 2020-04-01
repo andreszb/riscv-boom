@@ -195,7 +195,7 @@ object WrapSub
       val b = Cat(0.U(1.W), amt.U)
       Mux(value >= amt.U,
           value - amt.U,
-          n.U - amt.U - value)
+          n.U - amt.U + value)
     }
   }
 }
@@ -211,7 +211,7 @@ object WrapSubUInt
       val b = Cat(0.U(1.W), amt)
       Mux(value >= amt,
         value - amt,
-        n.U - amt - value)
+        n.U - amt + value)
     }
   }
 }
