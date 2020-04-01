@@ -41,6 +41,7 @@ class IssueUnitCasUnified(
 
   // CASINO has no OoO-IQ
   require(params.numEntries ==0)
+  require(params.dispatchWidth == 0)
 
 
   // Issue Select Logic
@@ -90,4 +91,5 @@ class IssueUnitCasUnified(
       uop_issued = (requests(i) && can_allocate && !was_port_issued_yet) | uop_issued
     }
   }
+  assert(!(PopCount(grants) > issueWidth.U), "[iss-cas] More grants than issue ports")
 }
