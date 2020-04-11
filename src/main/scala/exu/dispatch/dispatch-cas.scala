@@ -62,7 +62,7 @@ class CasDispatcher(implicit p: Parameters) extends Dispatcher {
 
     val rs1_busy = WireInit(true.B)
     val rs2_busy = WireInit(true.B)
-    val rs3_busy = WireInit(false.B)
+    val rs3_busy = WireInit(true.B)
 
     when(heads(i).lrs1_rtype === RT_FIX) {
       rs1_busy := io.busy_resps.get(i).prs1_busy
@@ -79,6 +79,9 @@ class CasDispatcher(implicit p: Parameters) extends Dispatcher {
     }.otherwise {
       rs2_busy := false.B
     }
+
+    rs3_busy := heads(i).frs3_en && io.fp_busy_resps.get(i).prs3_busy
+
     heads(i).prs1_busy := rs1_busy
     heads(i).prs2_busy := rs2_busy
     heads(i).prs3_busy := rs3_busy
