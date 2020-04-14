@@ -94,8 +94,8 @@ class IssueUnitCollapsing(
                             (!issue_slots(i).will_be_valid || issue_slots(i).clear) && !(issue_slots(i).in_uop.valid))
   val num_available = PopCount(will_be_available)
   for (w <- 0 until dispatchWidth) {
-    assert(!dispatch_used(w) || io.dis_uops(w).ready, f"IQ: dispatch $w had ready logic error")
-    assert(!io.dis_uops(w).fire() || dispatch_used(w), f"IQ: dispatch $w had ready logic error")
+//    assert(!dispatch_used(w) || io.dis_uops(w).ready, f"IQ: dispatch $w had ready logic error")
+//    assert(!io.dis_uops(w).fire() || dispatch_used(w), f"IQ: dispatch $w had ready logic error")
     io.dis_uops(w).ready := RegNext(num_available > w.U)
   }
 

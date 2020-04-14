@@ -146,9 +146,8 @@ class IssueUnitDnbUnified(
     dlq_to_slot(i) := queue_added(i) && dlq_will_be_valid(i)
   }
   for (w <- 0 until dispatchWidth) {
-//    assert(!queue_added(w+1) || io.dis_uops(w).ready, f"IQ: dispatch $w had ready logic error")
-//    assert(!io.dis_uops(w).fire() || queue_added(w), f"IQ: dispatch $w had ready logic error")
-    io.dis_uops(w).ready := RegNext(num_available > (w+1).U)
+    assert(!(!queue_added(w+dnbParams.dlqDispatches) && io.dis_uops(w).fire()), f"IQ: dispatch $w had ready logic error")
+    io.dis_uops(w).ready := RegNext(num_available > (w+dnbParams.dlqDispatches).U)
   }
   //-------------------------------------------------------------
   // Issue Select Logic
