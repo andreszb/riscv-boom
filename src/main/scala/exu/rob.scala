@@ -324,9 +324,11 @@ class Rob(
         rob_bsy(row_idx)      := false.B
         rob_unsafe(row_idx)   := false.B
         if (O3PIPEVIEW_PRINTF) {
-          printf("%d; O3PipeView:complete:%d\n",
-            rob_uop(row_idx).debug_events.fetch_seq,
-            io.debug_tsc)
+          when(io.debug_tsc>=O3_START_CYCLE.U) {
+            printf("%d; O3PipeView:complete:%d\n",
+              rob_uop(row_idx).debug_events.fetch_seq,
+              io.debug_tsc)
+          }
         }
       }
       // TODO check that fflags aren't overwritten
@@ -346,8 +348,10 @@ class Rob(
         assert (rob_bsy(cidx) === true.B, "[rob] store writing back to a not-busy entry.")
 
         if (O3PIPEVIEW_PRINTF) {
-          printf("%d; O3PipeView:complete:%d\n",
-            rob_uop(GetRowIdx(clr_rob_idx.bits)).debug_events.fetch_seq, io.debug_tsc)
+          when(io.debug_tsc>=O3_START_CYCLE.U) {
+            printf("%d; O3PipeView:complete:%d\n",
+              rob_uop(GetRowIdx(clr_rob_idx.bits)).debug_events.fetch_seq, io.debug_tsc)
+          }
         }
       }
     }

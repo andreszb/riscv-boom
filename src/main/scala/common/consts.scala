@@ -29,6 +29,7 @@ trait BOOMDebugConstants
   val MEMTRACE_PRINTF     = false // dump trace of memory accesses to L1D for debugging
   val O3PIPEVIEW_PRINTF   = true  // dump trace for O3PipeView from gem5
   val O3_CYCLE_TIME       = (2)// "cycle" time expected by o3pipeview.py
+  val O3_START_CYCLE       = (0)// cycle in which printing should start
   val DROMAJO_COSIM_ENABLE = false // enable dromajo cosim
 
 

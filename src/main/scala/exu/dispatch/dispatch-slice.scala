@@ -264,14 +264,16 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher {
   }
 
   if(O3PIPEVIEW_PRINTF){ // dispatch is here because it does not happen driectly after rename anymore
-    for(i <- 0 until boomParams.loadSliceCore.get.aDispatches){
-      when (a_queue.io.heads(i).fire()) {
-        printf("%d; O3PipeView:dispatch: %d\n", a_queue.io.heads(i).bits.debug_events.fetch_seq, io.tsc_reg)
+    when(io.tsc_reg>=O3_START_CYCLE.U) {
+      for (i <- 0 until boomParams.loadSliceCore.get.aDispatches) {
+        when(a_queue.io.heads(i).fire()) {
+          printf("%d; O3PipeView:dispatch: %d\n", a_queue.io.heads(i).bits.debug_events.fetch_seq, io.tsc_reg)
+        }
       }
-    }
-    for(i <- 0 until boomParams.loadSliceCore.get.bDispatches){
-      when (b_queue.io.heads(i).fire()) {
-        printf("%d; O3PipeView:dispatch: %d\n", b_queue.io.heads(i).bits.debug_events.fetch_seq, io.tsc_reg)
+      for (i <- 0 until boomParams.loadSliceCore.get.bDispatches) {
+        when(b_queue.io.heads(i).fire()) {
+          printf("%d; O3PipeView:dispatch: %d\n", b_queue.io.heads(i).bits.debug_events.fetch_seq, io.tsc_reg)
+        }
       }
     }
   }

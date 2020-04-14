@@ -592,20 +592,22 @@ class FetchControlUnit(implicit p: Parameters) extends BoomModule
   //-------------------------------------------------------------
 
   if (O3PIPEVIEW_PRINTF) {
-    when (f3_fire) {
-      fseq_reg := fseq_reg + PopCount(f3_fetch_bundle.mask)
-      val bundle = f3_fetch_bundle
-      for (i <- 0 until fetchWidth) {
-        when (bundle.mask(i)) {
-          // TODO for now, manually set the fetch_tsc to point to when the fetch
-          // started. This doesn't properly account for i-cache and i-tlb misses. :(
-          // Also not factoring in NPC.
-          printf("%d; O3PipeView:fetch:%d:0x%x:0:%d:DASM(%x)\n",
-            bundle.debug_events(i).fetch_seq,
-            io.tsc_reg - (2*O3_CYCLE_TIME).U,
-            f3_debug_pcs(i),
-            bundle.debug_events(i).fetch_seq,
-            bundle.insts(i))
+    when(io.tsc_reg>=O3_START_CYCLE.U) {
+      when(f3_fire) {
+        fseq_reg := fseq_reg + PopCount(f3_fetch_bundle.mask)
+        val bundle = f3_fetch_bundle
+        for (i <- 0 until fetchWidth) {
+          when(bundle.mask(i)) {
+            // TODO for now, manually set the fetch_tsc to point to when the fetch
+            // started. This doesn't properly account for i-cache and i-tlb misses. :(
+            // Also not factoring in NPC.
+            printf("%d; O3PipeView:fetch:%d:0x%x:0:%d:DASM(%x)\n",
+              bundle.debug_events(i).fetch_seq,
+              io.tsc_reg - (2 * O3_CYCLE_TIME).U,
+              f3_debug_pcs(i),
+              bundle.debug_events(i).fetch_seq,
+              bundle.insts(i))
+          }
         }
       }
     }

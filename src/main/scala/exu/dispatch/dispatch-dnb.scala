@@ -15,7 +15,7 @@ package boom.exu
 import chisel3._
 import chisel3.util._
 import freechips.rocketchip.config.Parameters
-import boom.common.{IQT_MFP, MicroOp, O3PIPEVIEW_PRINTF, uopLD, _}
+import boom.common.{IQT_MFP, MicroOp, O3PIPEVIEW_PRINTF, O3_START_CYCLE, uopLD, _}
 import boom.util._
 import chisel3.internal.naming.chiselName
 
@@ -138,11 +138,13 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
   }
 
   if(O3PIPEVIEW_PRINTF){ // dispatch is here because it only happens for IQ and not dlq/crq
-    io.dis_uops(LSC_DIS_COMB_PORT_IDX).foreach( port =>{
-      when (port.fire()) {
-        printf("%d; O3PipeView:dispatch: %d\n", port.bits.debug_events.fetch_seq, io.tsc_reg)
-      }
-    })
+    when(io.tsc_reg>=O3_START_CYCLE.U) {
+      io.dis_uops(LSC_DIS_COMB_PORT_IDX).foreach(port => {
+        when(port.fire()) {
+          printf("%d; O3PipeView:dispatch: %d\n", port.bits.debug_events.fetch_seq, io.tsc_reg)
+        }
+      })
+    }
   }
 
   // Handle CRQ dequeue

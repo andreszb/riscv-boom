@@ -496,11 +496,13 @@ class SramDispatchQueueCompactingShifting(params: DispatchQueueParams,
 
 
   if (O3PIPEVIEW_PRINTF) {
-    for (i <- 0 until enqWidth) {
-      when (io.enq_uops(i).valid) {
-        printf("%d; O3PipeView:"+qName+": %d\n",
-          io.enq_uops(i).bits.debug_events.fetch_seq,
-          io.tsc_reg)
+    when(io.tsc_reg>=O3_START_CYCLE.U) {
+      for (i <- 0 until enqWidth) {
+        when(io.enq_uops(i).valid) {
+          printf("%d; O3PipeView:" + qName + ": %d\n",
+            io.enq_uops(i).bits.debug_events.fetch_seq,
+            io.tsc_reg)
+        }
       }
     }
   }
@@ -913,11 +915,13 @@ class SramDispatchQueueCompacting(params: DispatchQueueParams,
 
 
   if (O3PIPEVIEW_PRINTF) {
-    for (i <- 0 until coreWidth) {
-      when (io.enq_uops(i).valid) {
-        printf("%d; O3PipeView:"+qName+": %d\n",
-          io.enq_uops(i).bits.debug_events.fetch_seq,
-          io.tsc_reg)
+    when(io.tsc_reg>=O3_START_CYCLE.U) {
+      for (i <- 0 until coreWidth) {
+        when(io.enq_uops(i).valid) {
+          printf("%d; O3PipeView:" + qName + ": %d\n",
+            io.enq_uops(i).bits.debug_events.fetch_seq,
+            io.tsc_reg)
+        }
       }
     }
   }
@@ -1156,11 +1160,13 @@ class SramDispatchQueue (params: DispatchQueueParams,
   tail := tail_next
 
   if (O3PIPEVIEW_PRINTF) {
-    for (i <- 0 until coreWidth) {
-      when (io.enq_uops(i).valid) {
-        printf("%d; O3PipeView:"+qName+": %d\n",
-          io.enq_uops(i).bits.debug_events.fetch_seq,
-          io.tsc_reg)
+    when(io.tsc_reg>=O3_START_CYCLE.U) {
+      for (i <- 0 until coreWidth) {
+        when(io.enq_uops(i).valid) {
+          printf("%d; O3PipeView:" + qName + ": %d\n",
+            io.enq_uops(i).bits.debug_events.fetch_seq,
+            io.tsc_reg)
+        }
       }
     }
   }
@@ -1313,11 +1319,13 @@ val entry_killed = WireInit(VecInit(Seq.fill(numEntries)(false.B)))
   //  assert(!(io.deq_uop && io.flush))
 
   if (O3PIPEVIEW_PRINTF) {
-    for (i <- 0 until coreWidth) {
-      when (io.enq_uops(i).valid) {
-        printf("%d; O3PipeView:"+qName+": %d\n",
-          io.enq_uops(i).bits.debug_events.fetch_seq,
-          io.tsc_reg)
+    when(io.tsc_reg>=O3_START_CYCLE.U) {
+      for (i <- 0 until coreWidth) {
+        when(io.enq_uops(i).valid) {
+          printf("%d; O3PipeView:" + qName + ": %d\n",
+            io.enq_uops(i).bits.debug_events.fetch_seq,
+            io.tsc_reg)
+        }
       }
     }
   }

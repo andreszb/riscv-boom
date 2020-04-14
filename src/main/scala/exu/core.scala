@@ -1353,6 +1353,9 @@ class BoomCore(implicit p: Parameters) extends BoomModule
         reset.asBool) {
     idle_cycles := 0.U
   }
+  when(idle_cycles.value(12, 0).andR()){
+    printf(p"2^13 cycle pipeline hang - Cycle $debug_tsc_reg\n")
+  }
   assert (!(idle_cycles.value(13)), "Pipeline has hung.")
 
   //-------------------------------------------------------------
@@ -1595,37 +1598,39 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   // Pipeview Visualization
 
   if (O3PIPEVIEW_PRINTF) {
-    println("   O3Pipeview Visualization Enabled\n")
+    when(debug_tsc_reg>=O3_START_CYCLE.U) {
+      println("   O3Pipeview Visualization Enabled\n")
 
-    // did we already print out the instruction sitting at the front of the fetchbuffer/decode stage?
-    val dec_printed_mask = RegInit(0.U(coreWidth.W))
+      // did we already print out the instruction sitting at the front of the fetchbuffer/decode stage?
+      val dec_printed_mask = RegInit(0.U(coreWidth.W))
 
-    for (w <- 0 until coreWidth) {
-      when (dec_valids(w) && !dec_printed_mask(w)) {
-        printf("%d; O3PipeView:decode:%d\n", dec_uops(w).debug_events.fetch_seq, debug_tsc_reg)
-      }
-      // Rename begins when uop leaves fetch buffer (Dec+Ren1 are in same stage).
-      when (dec_fire(w)) {
-        printf("%d; O3PipeView:rename: %d\n", dec_uops(w).debug_events.fetch_seq, debug_tsc_reg)
-      }
-      if(!boomParams.loadSliceMode && !boomParams.dnbMode){
-        when (dispatcher.io.ren_uops(w).valid) {
-          printf("%d; O3PipeView:dispatch: %d\n", dispatcher.io.ren_uops(w).bits.debug_events.fetch_seq, debug_tsc_reg)
+      for (w <- 0 until coreWidth) {
+        when(dec_valids(w) && !dec_printed_mask(w)) {
+          printf("%d; O3PipeView:decode:%d\n", dec_uops(w).debug_events.fetch_seq, debug_tsc_reg)
+        }
+        // Rename begins when uop leaves fetch buffer (Dec+Ren1 are in same stage).
+        when(dec_fire(w)) {
+          printf("%d; O3PipeView:rename: %d\n", dec_uops(w).debug_events.fetch_seq, debug_tsc_reg)
+        }
+        if (!boomParams.loadSliceMode && !boomParams.dnbMode) {
+          when(dispatcher.io.ren_uops(w).valid) {
+            printf("%d; O3PipeView:dispatch: %d\n", dispatcher.io.ren_uops(w).bits.debug_events.fetch_seq, debug_tsc_reg)
+          }
+        }
+
+        when(dec_ready || flush_ifu) {
+          dec_printed_mask := 0.U
+        }.otherwise {
+          dec_printed_mask := dec_valids.asUInt | dec_printed_mask
         }
       }
 
-      when (dec_ready || flush_ifu) {
-        dec_printed_mask := 0.U
-      } .otherwise {
-        dec_printed_mask := dec_valids.asUInt | dec_printed_mask
-      }
-    }
-
-    for (i <- 0 until coreWidth) {
-      when (rob.io.commit.valids(i)) {
-        printf("%d; O3PipeView:retire:%d:store: 0\n",
-          rob.io.commit.uops(i).debug_events.fetch_seq,
-          debug_tsc_reg)
+      for (i <- 0 until coreWidth) {
+        when(rob.io.commit.valids(i)) {
+          printf("%d; O3PipeView:retire:%d:store: 0\n",
+            rob.io.commit.uops(i).debug_events.fetch_seq,
+            debug_tsc_reg)
+        }
       }
     }
   }
