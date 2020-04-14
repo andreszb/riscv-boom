@@ -3,10 +3,12 @@ package boom.exu
 import chisel3._
 import chisel3.util._
 import freechips.rocketchip.config.Parameters
-import boom.common.{IQT_MFP, MicroOp, O3PIPEVIEW_PRINTF, uopLD, _}
+import boom.common.{IQT_MFP, MicroOp, O3PIPEVIEW_PRINTF, O3_START_CYCLE, uopLD, _}
 import boom.util._
 import chisel3.internal.naming.chiselName
 import freechips.rocketchip.util.DescribedSRAM
+
+import scala.collection.mutable
 
 case class DispatchQueueParams(
                                 val numEntries: Int,
@@ -55,12 +57,207 @@ abstract class DispatchQueue( val numEntries: Int = 8,
   }
 }
 
+class UopSram(numEntries: Int, numWrites: Int, numReads: Int)(implicit p: Parameters) extends BoomModule{
+  val io = IO(new Bundle{
+    val writes = Input(Vec(numWrites, Valid(new Bundle{
+      val addr = UInt()
+      val data = new MicroOp()
+    })))
+    val read_req = Input(Vec(numReads, Valid(new Bundle{
+      val addr = UInt()
+    })))
+    val read_resp = Output(Vec(numReads, Valid(new Bundle{
+      val data = new MicroOp()
+    })))
+  })
+
+  def bundle_to_hashmap(d: Data, name: String = "uop_sram", hashMap: mutable.HashMap[String, Data] = null): mutable.HashMap[String, Data] = {
+    val hm = if(hashMap == null){
+      new mutable.HashMap[String, Data]();
+    } else {
+      hashMap
+    }
+    d match {
+      case vec: Vec[_] =>
+        for ((c, i) <- vec.zipWithIndex) {
+          bundle_to_hashmap(c, s"${name}_${i}", hm)
+        }
+      case bundle: Bundle =>
+        bundle.elements.toList.foreach {
+          case (st, d) => bundle_to_hashmap(d, s"${name}_${st}", hm)
+        }
+      case element: Element => {
+        hm.put(name, d)
+      }
+      case _ => throw new scala.Exception(s"unknown type: $name")
+    }
+    hm
+  }
+
+  val default_hm = bundle_to_hashmap(new MicroOp())
+
+  val whitelist = Seq[String](
+    "uop_sram_uopc",
+    "uop_sram_is_rvc",
+    "uop_sram_iq_type",
+    "uop_sram_fu_code",
+    "uop_sram_iw_p1_poisoned",
+    "uop_sram_iw_p2_poisoned",
+    "uop_sram_is_br_or_jmp",
+    "uop_sram_is_jump",
+    "uop_sram_is_jal",
+    "uop_sram_is_ret",
+    "uop_sram_is_call",
+    "uop_sram_br_tag",
+    "uop_sram_br_prediction_btb_blame",
+    "uop_sram_br_prediction_btb_hit",
+    "uop_sram_br_prediction_btb_taken",
+    "uop_sram_br_prediction_bpd_blame",
+    "uop_sram_br_prediction_bpd_taken",
+    "uop_sram_ftq_idx",
+    "uop_sram_cfi_idx",
+    "uop_sram_edge_inst",
+    "uop_sram_pc_lob",
+    "uop_sram_imm_packed",
+    "uop_sram_rob_idx",
+    "uop_sram_ldq_idx",
+    "uop_sram_stq_idx",
+    "uop_sram_pdst",
+    "uop_sram_prs1",
+    "uop_sram_prs2",
+    "uop_sram_prs3",
+    "uop_sram_bypassable",
+    "uop_sram_mem_cmd",
+    "uop_sram_mem_size",
+    "uop_sram_mem_signed",
+    "uop_sram_is_amo",
+    "uop_sram_uses_ldq",
+    "uop_sram_uses_stq",
+    "uop_sram_ldst_val",
+    "uop_sram_dst_rtype",
+    "uop_sram_lrs1_rtype",
+    "uop_sram_lrs2_rtype",
+    "uop_sram_frs3_en",
+    "uop_sram_fp_val",
+  )
+
+//  val mem = SyncReadMem(numEntries, MixedVec(whitelist.map(n => default_hm.get(n).get)))
+//  for(wp <- io.writes){
+//    val write_hm = bundle_to_hashmap(wp.bits.data)
+//    val mv = WireInit(MixedVecInit(whitelist.map(n => write_hm.get(n).get)))
+//    when(wp.valid){
+//      mem(wp.bits.addr) := mv
+//    }
+//  }
+//  for((req, resp) <- io.read_req zip io.read_resp){
+//    val read_hm = bundle_to_hashmap(resp.bits.data)
+//    resp.bits.data := DontCare
+//    val mv = mem.read(req.bits.addr, req.valid)
+//    for ((n, d) <- (whitelist zip mv)) {
+//      read_hm.get(n).get := d
+//    }
+//    resp.valid := RegNext(req.valid)
+//  }
+
+
+  //  def generateMems(d: Data, name: String = "uop_sram", memDict: mutable.HashMap[String, SyncReadMem[Data]] = null): mutable.HashMap[String, SyncReadMem[Data]] = {
+  //    val md = if(memDict == null){
+  //      new mutable.HashMap[String, SyncReadMem[Data]]();
+  //    } else {
+  //      memDict
+  //    }
+  //
+  //    d match {
+  //      case vec: Vec[_] =>
+  //        for ((c, i) <- vec.zipWithIndex) {
+  //          generateMems(c, s"${name}_${i}", md)
+  //        }
+  //      case bundle: Bundle =>
+  //        bundle.elements.toList.foreach {
+  //          case (st, d) => generateMems(d, s"${name}_${st}", md)
+  //        }
+  //      case element: Element => {
+  //        val sr = SyncReadMem(numEntries, d)
+  //        sr.suggestName(name)
+  //        md.put(name, sr)
+  //      }
+  //      case _ => throw new scala.Exception(s"unknown type: $name")
+  //    }
+  //
+  //    md
+  //  }
+  //
+  //  def connectWrites(idx: UInt, d: Data, name: String = "uop_sram", md: mutable.HashMap[String, SyncReadMem[Data]]): Unit = {
+  //    d match {
+  //      case vec: Vec[_] =>
+  //        for ((c, i) <- vec.zipWithIndex) {
+  //          connectWrites(idx, c, s"${name}_${i}", md)
+  //        }
+  //      case bundle: Bundle =>
+  //        bundle.elements.toList.foreach {
+  //          case (st, d) => connectWrites(idx, d, s"${name}_${st}", md)
+  //        }
+  //      case element: Element => md.get(name).get.write(idx, d)
+  //      case _ => throw new scala.Exception(s"unknown type: $name")
+  //    }
+  //  }
+  //
+  //  def connectReads(idx: UInt, d: Data, name: String = "uop_sram", md: mutable.HashMap[String, SyncReadMem[Data]]): Unit = {
+  //    d match {
+  //      case vec: Vec[_] =>
+  //        for ((c, i) <- vec.zipWithIndex) {
+  //          connectReads(idx, c, s"${name}_${i}", md)
+  //        }
+  //      case bundle: Bundle =>
+  //        bundle.elements.toList.foreach {
+  //          case (st, d) => connectReads(idx, d, s"${name}_${st}", md)
+  //        }
+  //      case element: Element => d := md.get(name).get.read(idx)
+  //      case _ => throw new scala.Exception(s"unknown type: $name")
+  //    }
+  //  }
+
+  //  val memDict = generateMems(new MicroOp())
+  //  for(wp <- io.writes){
+  //    when(wp.valid){
+  //      connectWrites(wp.bits.addr, wp.bits.data, md=memDict)
+  //    }
+  //  }
+  //  for((req, resp) <- io.read_req zip io.read_resp){
+  //    when(req.valid){
+  //      connectReads(req.bits.addr, resp.bits.data, md=memDict)
+  //    }.otherwise(
+  //      resp.bits := DontCare
+  //    )
+  //    resp.valid := RegNext(req.valid)
+  //  }
+
+
+    val reg = Reg(Vec(numEntries, new MicroOp()))
+    for(wp <- io.writes){
+      when(wp.valid){
+        reg(wp.bits.addr) := wp.bits.data
+      }
+    }
+    for((req, resp) <- io.read_req zip io.read_resp){
+      val tmp = Reg(new MicroOp())
+      tmp := DontCare
+      resp.bits.data := tmp
+      when(req.valid){
+        tmp := reg(req.bits.addr)
+      }.otherwise(
+        resp.bits := DontCare
+      )
+      resp.valid := RegNext(req.valid)
+    }
+}
+
 class SramDispatchQueueCompactingShifting(params: DispatchQueueParams,
                                          )(implicit p: Parameters) extends DispatchQueue(params.numEntries, params.deqWidth, params.enqWidth, params.qName)
 {
 
-
-  val sram_fifo = (0 until fifoWidth).map(i => SyncReadMem(numEntries, new MicroOp))
+//  val sram_fifo = (0 until fifoWidth).map(i => SyncReadMem(numEntries, new MicroOp))
+  val sram_fifo = (0 until fifoWidth).map(i => Module(new UopSram(numEntries, 1, 1)))
 
   // Branch mask and valid bits are still stored in Regs
   val br_mask = Reg(Vec(numEntries, Vec(fifoWidth,UInt(maxBrCount.W) )))
@@ -231,8 +428,11 @@ class SramDispatchQueueCompactingShifting(params: DispatchQueueParams,
 
   // Do the actual SRAM writes
   for (i <- 0 until fifoWidth) {
+    sram_fifo(i).io.writes(0).valid := s1_write_valids(i)
+    sram_fifo(i).io.writes(0).bits.addr := s1_write_rows(i)
+    sram_fifo(i).io.writes(0).bits.data := s1_write_uops(i)
     when (s1_write_valids(i)) {
-      sram_fifo(i).write(s1_write_rows(i), s1_write_uops(i))
+//      sram_fifo(i).write(s1_write_rows(i), s1_write_uops(i))
 
       valids(s1_write_rows(i))(i) := true.B
       br_mask(s1_write_rows(i))(i) := s1_write_uops(i).br_mask
@@ -263,7 +463,10 @@ class SramDispatchQueueCompactingShifting(params: DispatchQueueParams,
     row := Mux(idx_map > i.U, WrapInc(head_row_next, numEntries), head_row_next)
     s2_sram_read_row(i) := row
     s2_sram_read_idx_map(idx_map) := i.U
-    s2_sram_read_uop(i) := sram_fifo(i)(row) // This is the actual reading
+//    s2_sram_read_uop(i) := sram_fifo(i)(row) // This is the actual reading
+    sram_fifo(i).io.read_req(0).valid := true.B
+    sram_fifo(i).io.read_req(0).bits.addr := row
+    s2_sram_read_uop(i) := sram_fifo(i).io.read_resp(0).bits.data
     s2_sram_read_valids(i) := valids(i)(row)
   }
 
@@ -1188,10 +1391,11 @@ class SliceDispatchQueue(params: DispatchQueueParams,
                         )(implicit p: Parameters) extends DispatchQueue(params.numEntries, params.deqWidth, params.enqWidth, params.qName)
 {
 
-
+  require(isPow2(numEntries))
   // Queue state
   val q_uop = Reg(Vec(numEntries, new MicroOp()))
   val valids = RegInit(VecInit(Seq.fill(numEntries)(false.B)))
+  val dequeued = RegInit(VecInit(Seq.fill(numEntries)(false.B)))
   val head = RegInit(0.U(qAddrSz.W))
   val tail = RegInit(0.U(qAddrSz.W))
 
@@ -1222,30 +1426,17 @@ class SliceDispatchQueue(params: DispatchQueueParams,
   //  Only needs a last increment if the last enq port also fired
   tail_next := Mux(io.enq_uops(coreWidth - 1).fire, WrapInc(enq_idx(coreWidth - 1), numEntries), enq_idx(coreWidth - 1))
 
-  // Handle dequeues
-  // on more so we also do something if all are dequeued
-  for (i <- 0 until deqWidth+1) {
-    val previous_deq = if(i==0) true.B else io.heads(i-1).fire()
-    val current_deq =  if(i==deqWidth) false.B else io.heads(i).fire()
-    assert(!(boomParams.loadSliceMode.asBool && !previous_deq && current_deq), "deq only possible in order!")
-    // transition from deq to not deq - there should be exactly one
-    // TODO: maybe do this in a smarter way so the compiler knows this and can optimize?
-    when(previous_deq && !current_deq){
-      // TODO: something other than % for wrap?
-      head_next := (head+i.U)%numEntries.U
-    }
-  }
-
 
   // Handle branch resolution
   //  On mispredict, find oldest that is killed and kill everyone younger than that
   //  On resolved. Update all branch masks in paralell. Updates also invalid entries, for simplicity.
   val updated_brmask = WireInit(false.B)//VecInit(Seq.fill(numEntries)(false.B))) //This wire decides if we should block the deque from head because of a branch resolution
-val entry_killed = WireInit(VecInit(Seq.fill(numEntries)(false.B)))
+  val entry_killed = WireInit(VecInit(Seq.fill(numEntries)(false.B)))
   when(io.brinfo.valid) {
     for (i <- 0 until numEntries) {
       val br_mask = q_uop(i).br_mask
       val entry_match = valids(i) && maskMatch(io.brinfo.mask, br_mask)
+      val dequeued_match = dequeued(i) && maskMatch(io.brinfo.mask, br_mask)
 
       when (entry_match && io.brinfo.mispredict) { // Mispredict
         entry_killed(i) := true.B
@@ -1253,6 +1444,11 @@ val entry_killed = WireInit(VecInit(Seq.fill(numEntries)(false.B)))
       }.elsewhen(entry_match && !io.brinfo.mispredict) { // Resolved
         q_uop(i).br_mask := (br_mask & ~io.brinfo.mask)
         updated_brmask := true.B
+      }
+      when(dequeued_match&& io.brinfo.mispredict) { // Mispredict of an already dequeued instruction
+        dequeued(i) := false.B
+        // ugly hack - but needed to get tail to right position
+        entry_killed(i) := true.B
       }
     }
     // tail update logic
@@ -1269,15 +1465,6 @@ val entry_killed = WireInit(VecInit(Seq.fill(numEntries)(false.B)))
     }
   }
 
-
-  // Pipeline flushs
-  when(io.flush)
-  {
-    head_next := 0.U
-    tail_next := 0.U
-    valids.map(_ := false.B)
-  }
-
   require(numEntries>2*coreWidth)
 
 
@@ -1292,31 +1479,47 @@ val entry_killed = WireInit(VecInit(Seq.fill(numEntries)(false.B)))
         !io.flush // TODO: handle flush?
       when(io.heads(i).fire()){
         valids(idx) := false.B
+        dequeued(idx) := true.B
       }
     }
   }
-
   for (w <- 0 until coreWidth)
   {
-    io.enq_uops(w).ready := !valids(tail+w.U) //TODO: ensure it is possible to take only some from rename
+    // don't allow filling dequeud entrys
+    io.enq_uops(w).ready := !valids(tail+w.U) && !dequeued(tail+w.U)
+  }
+
+  // Handle dequeues - nneds to be lower than head logic
+  var previous_deq = true.B
+  // one more so we also do something if all are dequeued
+  for (i <- 0 until deqWidth+1) {
+    val current_deq = if(i==deqWidth) false.B else io.heads(i).fire()||dequeued(head+i.U)
+    // transition from deq to not deq - there should be exactly one
+    // TODO: maybe do this in a smarter way so the compiler knows this and can optimize?
+    when(previous_deq && !current_deq){
+      // TODO: something other than % for wrap?
+      head_next := (head+i.U)%numEntries.U
+      for(j <- 0 until i){
+        dequeued(head+j.U) := false.B
+      }
+    }
+    previous_deq = previous_deq && current_deq
+  }
+
+  // Pipeline flushs - at bottom
+  when(io.flush)
+  {
+    head_next := 0.U
+    tail_next := 0.U
+    valids.foreach(_ := false.B)
+    dequeued.foreach(_ := false.B)
   }
 
   // Update for next CC
   head := head_next
   tail := tail_next
 
-  // TODO: update
-  //  // dequeue implies queue valid (not empty)
-  //  assert(!io.deq_uop || !empty)
-  //
-  //  // empty implies ready
-  //  assert(!empty || ready)
-  //
-  //  // enqueue implies ready
-  //  assert(!io.enq_uops.map(_.valid).reduce(_||_) || ready)
-  //
-  //  // No deques on flush
-  //  assert(!(io.deq_uop && io.flush))
+  assert(dequeued.zip(valids).map{ case (d, v) => !(d&&v)}.reduce(_&&_), "can be either dequeued or valid")
 
   if (O3PIPEVIEW_PRINTF) {
     when(io.tsc_reg>=O3_START_CYCLE.U) {
