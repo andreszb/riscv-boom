@@ -269,13 +269,13 @@ class BoomCore(implicit p: Parameters) extends BoomModule
             ("nop", () => false.B),
           ) else if (boomParams.dnbMode) Seq(
             // DNB events
-            (f"DLQ$i", () => rob.io.commit.valids(i) && !rob.io.commit.uops(i).perf_dnb_dlq.get),
-            (f"CRQ$i", () => rob.io.commit.valids(i) && !rob.io.commit.uops(i).perf_dnb_crq.get),
-            (f"IQ$i", () => rob.io.commit.valids(i) && !rob.io.commit.uops(i).perf_dnb_iq.get),
+            (f"DLQ$i", () => rob.io.commit.valids(i) && rob.io.commit.uops(i).perf_dnb_dlq.get),
+            (f"CRQ$i", () => rob.io.commit.valids(i) && rob.io.commit.uops(i).perf_dnb_crq.get),
+            (f"IQ$i", () => rob.io.commit.valids(i) && rob.io.commit.uops(i).perf_dnb_iq.get),
           ) else if (boomParams.casMode) Seq(
             // CASINO events
-            (f"SQ-dispatches: $i", () => rob.io.commit.valids(i) && !rob.io.commit.uops(i).perf_cas_sq_dis.get),
-            (f"INQ-dispatches: $i", () => rob.io.commit.valids(i) && !rob.io.commit.uops(i).perf_cas_inq_dis.get),
+            (f"SQ-dispatches: $i", () => rob.io.commit.valids(i) && rob.io.commit.uops(i).perf_cas_sq_dis.get),
+            (f"INQ-dispatches: $i", () => rob.io.commit.valids(i) && rob.io.commit.uops(i).perf_cas_inq_dis.get),
           ) else Seq(
             (f"DIS$i", () => dispatcher.io.ren_uops(i).fire()),
             ("nop", () => false.B),
