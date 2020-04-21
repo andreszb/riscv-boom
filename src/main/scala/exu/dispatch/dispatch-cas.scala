@@ -134,7 +134,17 @@ class CasDispatcher(implicit p: Parameters) extends Dispatcher {
   sq.io.tsc_reg := io.tsc_reg
 
   // Performance counteres
-  (io.cas_perf.get.sq_dis zip io.sq_heads.get).map{case(l,r) => l := r.fire()}
-  (io.cas_perf.get.inq_dis zip io.inq_heads.get).map{case(l,r) => l := r.fire()}
+  for (i <- 0 until casParams.windowSize) {
+    when (io.sq_heads.get(i).fire) {
+      io.sq_heads.get(i).bits.perf_cas_inq_dis.get := false.B
+      io.sq_heads.get(i).bits.perf_cas_inq_dis.get := true.B
+    }
+  }
 
+  for (i <- 0 until casParams.inqDispatches) {
+    when (io.inq_heads.get(i).fire) {
+      io.sq_heads.get(i).bits.perf_cas_inq_dis.get := true.B
+      io.sq_heads.get(i).bits.perf_cas_inq_dis.get := false.B
+    }
+  }
 }

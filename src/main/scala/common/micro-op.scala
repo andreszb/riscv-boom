@@ -144,6 +144,15 @@ class MicroOp(implicit p: Parameters) extends BoomBundle
   val debug_wdata      = UInt(xLen.W)
   val debug_events     = new DebugStageEvents
 
+  // Performance counters
+  val perf_dnb_dlq: Option[Bool] = if (boomParams.dnbMode) Some(Bool()) else None
+  val perf_dnb_crq: Option[Bool] = if (boomParams.dnbMode) Some(Bool()) else None
+  val perf_dnb_iq: Option[Bool] = if (boomParams.dnbMode) Some(Bool()) else None
+
+  val perf_cas_sq_dis: Option[Bool] = if (boomParams.casMode) Some(Bool()) else None
+  val perf_cas_inq_dis: Option[Bool] = if (boomParams.casMode) Some(Bool()) else None
+
+
 
   // Does this register write-back
   def rf_wen           = dst_rtype =/= RT_X

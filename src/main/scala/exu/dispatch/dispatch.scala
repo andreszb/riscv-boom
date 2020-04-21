@@ -48,32 +48,6 @@ class DispatchIO(implicit p: Parameters) extends BoomBundle
 
   val tsc_reg = Input(UInt(width=xLen.W))
 
-  val lsc_perf = if(boomParams.loadSliceMode) Some(Output(new LscDispatchPerfCounters)) else None
-  val dnb_perf = if(boomParams.dnbMode) Some(Output(new DnbDispatchPerfCounters)) else None
-  val cas_perf = if(boomParams.casMode) Some(Output(new CasDispatchPerfCounters)) else None
-}
-
-
-/**
-  *
-  * Performance counters for LSC
-  */
-
-
-class LscDispatchPerfCounters(implicit p: Parameters) extends BoomBundle {
-  val aq = Vec(decodeWidth, Bool()) // Number of insts in A-Q
-  val bq = Vec(decodeWidth, Bool()) // Number of insts on B-Q
-}
-
-class DnbDispatchPerfCounters(implicit p: Parameters) extends BoomBundle {
-  val dlq = Vec(decodeWidth, Bool()) // Number of insts in DLQ
-  val crq = Vec(decodeWidth, Bool()) // Number of insts on CRQ
-  val iq = Vec(decodeWidth, Bool()) // Number of insts on IQ
-}
-
-class CasDispatchPerfCounters(implicit p: Parameters) extends BoomBundle {
-  val inq_dis = Vec(boomParams.casParams.get.inqDispatches, Bool())
-  val sq_dis = Vec(boomParams.casParams.get.windowSize, Bool())
 }
 
 
