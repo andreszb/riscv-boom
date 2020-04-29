@@ -100,9 +100,6 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher {
 
     assert(!(io.ren_uops(w).fire() && use_b_queue && uop_b.is_br_or_jmp), "[Dispatcher] We are puttig a branch/jump on B-Q")
 
-    // Perf counters
-    io.lsc_perf.get.aq(w) := io.ren_uops(w).fire() && use_a_queue
-    io.lsc_perf.get.bq(w) := io.ren_uops(w).fire() && use_b_queue && uop.uopc =/= uopSTA
   }
 
   // annotate heads with busy information

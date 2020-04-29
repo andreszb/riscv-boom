@@ -323,6 +323,17 @@ class Rob(
       when (wb_resp.valid && MatchBank(GetBankIdx(wb_uop.rob_idx))) {
         rob_bsy(row_idx)      := false.B
         rob_unsafe(row_idx)   := false.B
+
+        if (boomParams.casMode) {
+          rob_uop(row_idx).perf_cas_sq_dis.get := wb_uop.perf_cas_sq_dis.get
+          rob_uop(row_idx).perf_cas_inq_dis.get := wb_uop.perf_cas_inq_dis.get
+        } else if (boomParams.dnbMode) {
+          rob_uop(row_idx).perf_dnb_dlq.get := wb_uop.perf_dnb_dlq.get
+          rob_uop(row_idx).perf_dnb_crq.get := wb_uop.perf_dnb_crq.get
+          rob_uop(row_idx).perf_dnb_iq.get := wb_uop.perf_dnb_iq.get
+
+        } else if (boomParams.loadSliceMode)
+          rob_uop(row_idx).is_lsc_b := wb_uop.is_lsc_b
         if (O3PIPEVIEW_PRINTF) {
           when(io.debug_tsc>=O3_START_CYCLE.U) {
             printf("%d; O3PipeView:complete:%d\n",

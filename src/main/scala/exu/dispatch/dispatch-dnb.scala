@@ -49,17 +49,11 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
   dlq.io.tsc_reg := io.tsc_reg
   crq.io.tsc_reg := io.tsc_reg
 
-  // Initialize the perf counters
-  io.dnb_perf.get.dlq.map(_ := false.B)
-  io.dnb_perf.get.crq.map(_ := false.B)
-  io.dnb_perf.get.iq.map(_ := false.B)
-
-
   val dis_stall = WireInit(VecInit(Seq.fill(coreWidth)(false.B)))
   var previous_ready = true.B
   for (i <- 0 until coreWidth) {
     // Just get uop bits, valid and critical/busy info
-    val uop = io.ren_uops(i).bits
+    val uop = WireInit(io.ren_uops(i).bits)
     val uop_critical = uop.is_lsc_b
     val uop_iq = if(boomParams.ibdaParams.get.branchIbda) {
       uop.is_br_or_jmp
@@ -70,6 +64,12 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
 
     // Check if this uop must be split into 2 which creates some extra corner cases
     val uop_split = uop.uopc === uopSTA
+
+    // Initialize performance counters
+    uop.perf_dnb_dlq.get := false.B
+    uop.perf_dnb_crq.get := false.B
+    uop.perf_dnb_iq.get := false.B
+
 
     // Initialize the ports to false and just add the uop
     dlq.io.enq_uops(i).bits := uop
@@ -93,22 +93,24 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
         when(!uop_critical && !uop_iq) {
           //dlq
           dlq.io.enq_uops(i).valid := true.B
-          io.dnb_perf.get.dlq(i) := true.B
+          uop.perf_dnb_dlq.get := true.B
         }.otherwise {
           when(uop_busy || uop_iq) {
             //iq
             io.dis_uops(LSC_DIS_COMB_PORT_IDX)(i).valid := true.B
-            io.dnb_perf.get.iq(i) := true.B
-
+            uop.perf_dnb_iq.get := true.B
           }.otherwise {
             //crq
             crq.io.enq_uops(i).valid := true.B
-            io.dnb_perf.get.crq(i) := true.B
+            uop.perf_dnb_crq.get := true.B
           }
         }
       }.otherwise { // Uop splitting case
         // Currently 2 cases. STORE and FP STORE. We want the uopSTD to go in the DLQ and the uopSTA on the IQ
         //  If we dont have place for both, i.e. in DLQ and IQ we will stall
+        uop.perf_dnb_crq.get := true.B
+        uop.perf_dnb_iq.get := true.B
+
         val uop_sta = WireInit(uop)
         val uop_std = WireInit(uop)
 
@@ -135,8 +137,7 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
         dlq.io.enq_uops(i).valid := true.B
         dlq.io.enq_uops(i).bits := uop_std
 
-        io.dnb_perf.get.dlq(i) := true.B
-        io.dnb_perf.get.iq(i) := true.B
+
       }
     }
   }

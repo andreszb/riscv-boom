@@ -273,18 +273,18 @@ class BoomCore(implicit p: Parameters) extends BoomModule
         new freechips.rocketchip.rocket.EventSet((mask, hits) => (mask & hits).orR,
           if (boomParams.loadSliceMode) Seq(
             //lsc
-            (f"A-Q$i", () => dispatcher.io.lsc_perf.get.aq(i)),
-            (f"B-Q$i", () => dispatcher.io.lsc_perf.get.bq(i)),
+            (f"A-Q$i", () => rob.io.commit.valids(i) && !rob.io.commit.uops(i).is_lsc_b),
+            (f"B-Q$i", () => rob.io.commit.valids(i) && rob.io.commit.uops(i).is_lsc_b),
             ("nop", () => false.B),
           ) else if (boomParams.dnbMode) Seq(
             // DNB events
-            (f"DLQ$i", () => dispatcher.io.dnb_perf.get.dlq(i)),
-            (f"CRQ$i", () => dispatcher.io.dnb_perf.get.crq(i)),
-            (f"IQ$i", () => dispatcher.io.dnb_perf.get.iq(i)),
+            (f"DLQ$i", () => rob.io.commit.valids(i) && rob.io.commit.uops(i).perf_dnb_dlq.get),
+            (f"CRQ$i", () => rob.io.commit.valids(i) && rob.io.commit.uops(i).perf_dnb_crq.get),
+            (f"IQ$i", () => rob.io.commit.valids(i) && rob.io.commit.uops(i).perf_dnb_iq.get),
           ) else if (boomParams.casMode) Seq(
             // CASINO events
-            (f"SQ-dispatches: $i", () => dispatcher.io.cas_perf.get.sq_dis(i)),
-            (f"INQ-dispatches: $i", () => dispatcher.io.cas_perf.get.inq_dis(i)),
+            (f"SQ-dispatches: $i", () => rob.io.commit.valids(i) && rob.io.commit.uops(i).perf_cas_sq_dis.get),
+            (f"INQ-dispatches: $i", () => rob.io.commit.valids(i) && rob.io.commit.uops(i).perf_cas_inq_dis.get),
           ) else Seq(
             (f"DIS$i", () => dispatcher.io.ren_uops(i).fire()),
             ("nop", () => false.B),
