@@ -137,14 +137,14 @@ class CasDispatcher(implicit p: Parameters) extends Dispatcher {
   for (i <- 0 until casParams.windowSize) {
     when (io.q2_heads.get(i).fire) {
       io.q2_heads.get(i).bits.perf_cas_inq_dis.get := false.B
-      io.q2_heads.get(i).bits.perf_cas_inq_dis.get := true.B
+      io.q2_heads.get(i).bits.perf_cas_sq_dis.get := true.B
     }
   }
 
   for (i <- 0 until casParams.inqDispatches) {
     when (io.q1_heads.get(i).fire) {
-      io.q2_heads.get(i).bits.perf_cas_inq_dis.get := true.B
-      io.q2_heads.get(i).bits.perf_cas_inq_dis.get := false.B
+      io.q1_heads.get(i).bits.perf_cas_inq_dis.get := true.B
+      io.q1_heads.get(i).bits.perf_cas_sq_dis.get := false.B
     }
   }
 }
