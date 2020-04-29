@@ -38,9 +38,13 @@ class DispatchIO(implicit p: Parameters) extends BoomBundle
   val brinfo = if(boomParams.loadSliceMode || boomParams.dnbMode || boomParams.casMode) Some(Input(new BrResolutionInfo())) else None
   val flush = if(boomParams.loadSliceMode || boomParams.dnbMode || boomParams.casMode) Some(Input(Bool())) else None
 
-  // CAS ports to UIQ
-  val inq_heads =if(boomParams.casMode) Some(Vec(boomParams.casParams.get.inqDispatches, DecoupledIO(new MicroOp))) else None
-  val sq_heads = if(boomParams.casMode) Some(Vec(boomParams.casParams.get.windowSize, DecoupledIO(new MicroOp))) else None
+  // CAS/LSC ports to UIQ
+  val q1_heads = if(boomParams.casMode) Some(Vec(boomParams.casParams.get.inqDispatches, DecoupledIO(new MicroOp)))
+  else if(boomParams.loadSliceMode && boomParams.unifiedIssueQueue) Some(Vec(boomParams.loadSliceCore.get.bDispatches, DecoupledIO(new MicroOp)))
+  else None
+  val q2_heads = if(boomParams.casMode) Some(Vec(boomParams.casParams.get.windowSize, DecoupledIO(new MicroOp)))
+  else if(boomParams.loadSliceMode && boomParams.unifiedIssueQueue) Some(Vec(boomParams.loadSliceCore.get.bDispatches, DecoupledIO(new MicroOp)))
+  else None
 
   // DnB ports to UIQ
   val dlq_head = if(boomParams.dnbMode) Some(Vec(boomParams.dnbParams.get.dlqDispatches, DecoupledIO(new MicroOp))) else None

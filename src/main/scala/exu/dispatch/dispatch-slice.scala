@@ -26,26 +26,16 @@ import chisel3.internal.naming.chiselName
 class SliceDispatcher(implicit p: Parameters) extends Dispatcher {
   // Todo: These can probably be removed now. But we need the check somewhere else
 
-  //issue requirements
-  require(issueParams(0).iqType == IQT_INT.litValue()) // INT
-  require(issueParams(1).iqType == IQT_MEM.litValue()) // MEM
-
-  require(issueParams(0).dispatchWidth == 2)
-  require(issueParams(1).dispatchWidth == 2)
-
-  if (usingFPU) {
-    require(issueParams(2).iqType == IQT_FP.litValue()) // FP
-    require(issueParams(2).dispatchWidth == 1)
-  }
+  require(!boomParams.ibdaParams.get.branchIbda)
 
   // slice queues
-  val a_queue = Module(new SramDispatchQueue( DispatchQueueParams(
+  val a_queue = Module(new SramDispatchQueueCompactingShifting( DispatchQueueParams(
     numEntries = boomParams.loadSliceCore.get.numAqEntries,
     qName = "a_queue",
     deqWidth = boomParams.loadSliceCore.get.aDispatches,
     enqWidth = coreWidth))
   )
-  val b_queue = Module(new SramDispatchQueue( DispatchQueueParams(
+  val b_queue = Module(new SramDispatchQueueCompactingShifting( DispatchQueueParams(
     numEntries = boomParams.loadSliceCore.get.numBqEntries,
     qName = "b_queue",
     deqWidth = boomParams.loadSliceCore.get.bDispatches,
@@ -148,29 +138,29 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher {
   }
 
   if(boomParams.unifiedIssueQueue){
-    //    io.dis_uops(LSC_DIS_MEM_PORT_IDX) := DontCare
-    //    io.dis_uops(3) := DontCare // TODO: clean up
-    //    if (usingFPU) {
-    //      io.dis_uops(LSC_DIS_FP_PORT_IDX) := DontCare
-    //    }
-    var dis_idx = 0
     for(i <- 0 until boomParams.loadSliceCore.get.aDispatches){
-      val dis = io.dis_uops(LSC_DIS_COMB_PORT_IDX)(dis_idx)
-      dis.valid := a_queue.io.heads(i).valid
-      a_queue.io.heads(i).ready := dis.ready
-      dis.bits := a_heads(i)
-      dis_idx += 1
+      io.q2_heads.get(i).valid := a_queue.io.heads(i).valid
+      io.q2_heads.get(i).bits := a_heads(i)
+      a_queue.io.heads(i).ready := io.q2_heads.get(i).ready
     }
-    for(i <- 0 until boomParams.loadSliceCore.get.bDispatches){
-      val dis = io.dis_uops(LSC_DIS_COMB_PORT_IDX)(dis_idx)
-      dis.valid := b_queue.io.heads(i).valid
-      b_queue.io.heads(i).ready := dis.ready
-      dis.bits := b_heads(i)
-      dis_idx += 1
-    }
-    require(dis_idx == boomParams.loadSliceCore.get.dispatches)
 
+    for(i <- 0 until boomParams.loadSliceCore.get.bDispatches){
+      io.q1_heads.get(i).valid := b_queue.io.heads(i).valid
+      io.q1_heads.get(i).bits := b_heads(i)
+      b_queue.io.heads(i).ready := io.q1_heads.get(i).ready
+    }
   } else {
+    //issue requirements
+    require(issueParams(0).iqType == IQT_INT.litValue()) // INT
+    require(issueParams(1).iqType == IQT_MEM.litValue()) // MEM
+
+    require(issueParams(0).dispatchWidth == 2)
+    require(issueParams(1).dispatchWidth == 2)
+
+    if (usingFPU) {
+      require(issueParams(2).iqType == IQT_FP.litValue()) // FP
+      require(issueParams(2).dispatchWidth == 1)
+    }
     require(boomParams.loadSliceCore.get.aDispatches == 1)
     require(boomParams.loadSliceCore.get.bDispatches == 1)
 

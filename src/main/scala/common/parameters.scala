@@ -91,7 +91,8 @@ case class BoomCoreParams(
   ibdaParams: Option[IbdaParams] = None,
   busyLookupParams: Option[BusyLookupParams] = None,
   dnbParams: Option[DnbParams] = None,
-  casParams: Option[CasParams] = None
+  casParams: Option[CasParams] = None,
+inoParams: Option[InoParams] = None
 
 ) extends freechips.rocketchip.tile.CoreParams
 {
@@ -104,6 +105,7 @@ case class BoomCoreParams(
   val loadSliceMode: Boolean = loadSliceCore.isDefined
   val dnbMode: Boolean = dnbParams.isDefined
   val casMode: Boolean = casParams.isDefined
+  val inoMode: Boolean = inoParams.isDefined
   val ibdaMode: Boolean = loadSliceMode || dnbMode
   val busyLookupMode: Boolean = loadSliceMode || dnbMode || casMode
 
@@ -122,7 +124,7 @@ case class BoomCoreParams(
   }
 
 
-  val unifiedIssueQueue: Boolean = loadSliceCore.exists(_.unifiedIssueQueue) || dnbMode || casMode
+  val unifiedIssueQueue: Boolean = loadSliceCore.exists(_.unifiedIssueQueue) || dnbMode || casMode || inoMode
 
   override def customCSRs(implicit p: Parameters) = new BoomCustomCSRs
 }
@@ -340,6 +342,8 @@ case class CasParams(
                     )
 {}
 
+case class InoParams()
+
 // Class for DnB Parameters
 case class DnbParams(
                                 numCrqEntries: Int = 8,
@@ -368,8 +372,11 @@ case class LoadSliceCoreParams(
 /**
   * IBDA Params, used by LsC and DnB
  */
-case class IbdaParams( ibdaTagType: Int = IBDA_TAG_FULL_PC,
-                       rdtIstMarkWidth: Int = 4)
+case class IbdaParams(
+                 ibdaTagType: Int = IBDA_TAG_FULL_PC,
+                 rdtIstMarkWidth: Int = 4,
+                 branchIbda: Boolean = false
+                     )
 {
   def ibda_get_tag(uop: MicroOp): UInt = {
     val tag = Wire(UInt(ibda_tag_sz.W))
@@ -400,7 +407,14 @@ case class IbdaParams( ibdaTagType: Int = IBDA_TAG_FULL_PC,
         0
       }
     }
+  }
 
+  def is_ibda(uop: MicroOp): Bool = {
+    if(branchIbda){
+      uop.is_lsc_b || uop.is_br_or_jmp
+    } else{
+      uop.is_lsc_b || uop.uopc === uopLD || uop.uopc === uopSTA || uop.uopc === uopSTD
+    }
   }
 }
 

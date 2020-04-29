@@ -26,14 +26,12 @@ import freechips.rocketchip.config.Parameters
   * @param numWakeupPorts number of wakeup ports for the issue queue
   */
 @chiselName
-class IssueUnitCasUnified(
+class IssueUnitQueuesUnified(
                            params: IssueParams,
                            numWakeupPorts: Int)
-                         (implicit p: Parameters)
+                            (implicit p: Parameters)
   extends IssueUnit(params.numEntries, params.issueWidth, numWakeupPorts, params.iqType, params.dispatchWidth)
 {
-  val casParams = boomParams.casParams.get
-
   def uop_ready(u: MicroOp): Bool = {
     val res = Wire(Bool())
     res := !u.prs1_busy && !u.prs2_busy && !u.prs3_busy
@@ -58,38 +56,41 @@ class IssueUnitCasUnified(
   }
 
   // FIFO heads "request" issue when they are valid and not-busy
-  val requests = io.inq_heads.get.map(h => h.valid && uop_ready(h.bits)) ++
-                 io.sq_heads.get.map(h => h.valid && uop_ready(h.bits))
+  val requests = io.q1_heads.get.map(h => h.valid && uop_ready(h.bits)) ++
+                 io.q2_heads.get.map(h => h.valid && uop_ready(h.bits))
 
   // Issue Unit Grants are connected to the ready signals => signalling dequeue
-  val grants =  io.inq_heads.get.map(h => h.ready) ++
-                io.sq_heads.get.map(h => h.ready)
+  val grants =  io.q1_heads.get.map(h => h.ready) ++
+                io.q2_heads.get.map(h => h.ready)
 
-  val candidate_uops = io.inq_heads.get.map(h => h.bits) ++ io.sq_heads.get.map(h => h.bits)
+  val candidate_uops = io.q1_heads.get.map(h => h.bits) ++ io.q2_heads.get.map(h => h.bits)
   val port_issued = Array.fill(issueWidth){false.B}
 
 
-  val len = casParams.inqDispatches + casParams.windowSize
+  val len = candidate_uops.length
 
+  dontTouch(io.iq_types.get)
+  dontTouch(io.fu_types)
   for (i <- 0 until len) {
     grants(i) := false.B
     val port_reserved = Array.fill(issueWidth) {false.B}
     val uop_iq_ports_satisfied = Wire(Vec(IQT_SZ, Bool()))
     for (n <- 0 until IQT_SZ) {
       val iq_type = 1.U(1.W) << n
-      when((iq_type & candidate_uops(i).iq_type) =/= 0.U) {
-        var uop_issued = false.B
-        
-        for (w <- 0 until issueWidth) {
-          val iq_type_match = (iq_type === io.iq_types.get(w))
-          val fu_type_match = ((candidate_uops(i).fu_code & io.fu_types(w)) =/= 0.U)
-          iq_type_match.suggestName(s"iq_type_match_slot_${i}_exu_$w")
-          fu_type_match.suggestName(s"fu_type_match_slot_${i}_exu_$w")
-          val can_allocate = fu_type_match && iq_type_match
-          val was_port_issued_yet = port_issued(w)
-          port_reserved(w) = (requests(i) && !uop_issued && can_allocate && !was_port_issued_yet) | port_reserved(w)
-          uop_issued = (requests(i) && can_allocate && !was_port_issued_yet) | uop_issued
-        }
+      val iq_present = ((iq_type & candidate_uops(i).iq_type) =/= 0.U)
+      var uop_issued = false.B
+
+      for (w <- 0 until issueWidth) {
+        val iq_type_match = (iq_type === io.iq_types.get(w)) && iq_present
+        val fu_type_match = ((candidate_uops(i).fu_code & io.fu_types(w)) =/= 0.U)
+        iq_type_match.suggestName(s"iq_type_match_slot_${i}_exu_$w")
+        fu_type_match.suggestName(s"fu_type_match_slot_${i}_exu_$w")
+        val can_allocate = fu_type_match && iq_type_match
+        val was_port_issued_yet = port_issued(w)
+        port_reserved(w) = (requests(i) && !uop_issued && can_allocate && !was_port_issued_yet) | port_reserved(w)
+        uop_issued = (requests(i) && can_allocate && !was_port_issued_yet) | uop_issued
+      }
+      when(iq_present){
         uop_iq_ports_satisfied(n) := uop_issued
       }.otherwise {
         uop_iq_ports_satisfied(n) := true.B
@@ -105,6 +106,7 @@ class IssueUnitCasUnified(
           io.iss_valids(w) := true.B
           io.iss_uops(w) := candidate_uops(i)
         }
+        port_reserved(w).suggestName(s"port_reserved_${i}_${w}")
       }
       assert(PopCount(port_reserved) === PopCount(candidate_uops(i).iq_type), "[cas-iss] issues at more ports than it should")
     }

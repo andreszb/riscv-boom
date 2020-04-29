@@ -41,7 +41,7 @@ import boom.common._
 import boom.exu.FUConstants._
 import boom.common.BoomTilesKey
 import boom.util.{AlignPCToBoundary, BoolToChar, BoomCoreStringPrefix, DromajoCosimBlackBox, GetNewUopAndBrMask, RobTypeToChars, Sext, WrapInc}
-import lsc.{InstructionSliceTable, InstructionSliceTableSyncMem, RdtBasic, RdtOneBit, RdtSyncMem}
+import lsc.{InstructionSliceTable, InstructionSliceTableSyncMem, RdtSyncMem}
 
 
 /**
@@ -117,10 +117,14 @@ class BoomCore(implicit p: Parameters) extends BoomModule
       unified_iss_unit = Module(new IssueUnitDnbUnified(combIssueParam.get, numIntIssueWakeupPorts+numFpWakeupPorts))
       unified_iss_unit.suggestName("dnb_issue_unit")
     } else if (boomParams.casMode) {
-      unified_iss_unit = Module(new IssueUnitCasUnified(combIssueParam.get, numIntIssueWakeupPorts+numFpWakeupPorts))
+      unified_iss_unit = Module(new IssueUnitQueuesUnified(combIssueParam.get, numIntIssueWakeupPorts+numFpWakeupPorts))
       unified_iss_unit.suggestName("cas_issue_unit")
+    } else if(boomParams.inoMode){
+      unified_iss_unit = Module(new IssueUnitIno(combIssueParam.get, numIntIssueWakeupPorts+numFpWakeupPorts))
+      unified_iss_unit.suggestName("ino_issue_unit")
     } else {
-      unified_iss_unit = Module(new IssueUnitSliceUnified(combIssueParam.get, numIntIssueWakeupPorts+numFpWakeupPorts))
+//      unified_iss_unit = Module(new IssueUnitSliceUnified(combIssueParam.get, numIntIssueWakeupPorts+numFpWakeupPorts))
+      unified_iss_unit = Module(new IssueUnitQueuesUnified(combIssueParam.get, numIntIssueWakeupPorts+numFpWakeupPorts))
       unified_iss_unit.suggestName("unified_slice_issue_unit")
     }
   } else {
@@ -138,7 +142,12 @@ class BoomCore(implicit p: Parameters) extends BoomModule
 
   val issue_units      = if(boomParams.unifiedIssueQueue) Seq(unified_iss_unit)else Seq(mem_iss_unit,int_iss_unit)
 
-  val dispatcher       = if(boomParams.loadSliceMode) Module(new SliceDispatcher) else if(boomParams.dnbMode) Module(new DnbDispatcher) else if(boomParams.casMode) Module(new CasDispatcher) else Module(new BasicDispatcher)
+  val dispatcher       = if(boomParams.loadSliceMode)
+    Module(new SliceDispatcher)
+  else if(boomParams.dnbMode) Module(new DnbDispatcher)
+  else if(boomParams.casMode) Module(new CasDispatcher)
+  else if(boomParams.inoMode) Module(new InoDispatcher)
+  else Module(new BasicDispatcher)
 
   val iregfile         = Module(new RegisterFileSynthesizable(
                              numIntPhysRegs,
@@ -794,9 +803,9 @@ class BoomCore(implicit p: Parameters) extends BoomModule
     unified_iss_unit.io.dlq_head.get <> dispatcher.io.dlq_head.get
     unified_iss_unit.io.crq_head.get <> dispatcher.io.crq_head.get
     unified_iss_unit.io.rob_head_idx.get := rob.io.rob_head_idx
-  }else if(boomParams.casMode) {
-    unified_iss_unit.io.sq_heads.get <> dispatcher.io.sq_heads.get
-    unified_iss_unit.io.inq_heads.get <> dispatcher.io.inq_heads.get
+  }else if(boomParams.casMode ||(boomParams.loadSliceMode && boomParams.unifiedIssueQueue)) {
+    unified_iss_unit.io.q2_heads.get <> dispatcher.io.q2_heads.get
+    unified_iss_unit.io.q1_heads.get <> dispatcher.io.q1_heads.get
   }
 
   // Connect Dispatcher to IQ

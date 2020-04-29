@@ -23,14 +23,14 @@ import chisel3.internal.naming.chiselName
 class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
   // FIFOs
   val dnbParams = boomParams.dnbParams.get
-  val dlq = Module(new SliceDispatchQueue( DispatchQueueParams(
+  val dlq = Module(new SramDispatchQueueCompactingShifting( DispatchQueueParams(
     numEntries = dnbParams.numDlqEntries,
     qName="DLQ",
     deqWidth=dnbParams.dlqDispatches,
     enqWidth= coreWidth)))
 
 
-  val crq = Module(new SliceDispatchQueue( DispatchQueueParams(
+  val crq = Module(new SramDispatchQueueCompactingShifting( DispatchQueueParams(
     numEntries = dnbParams.numCrqEntries,
     qName="CRQ",
     deqWidth=dnbParams.crqDispatches,
@@ -61,7 +61,11 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
     // Just get uop bits, valid and critical/busy info
     val uop = io.ren_uops(i).bits
     val uop_critical = uop.is_lsc_b
-    val uop_iq = uop.uopc === uopLD || uop.uopc === uopSTA || uop.uopc === uopSTD //TODO: FP STW?
+    val uop_iq = if(boomParams.ibdaParams.get.branchIbda) {
+      uop.is_br_or_jmp
+    } else {
+      uop.uopc === uopLD || uop.uopc === uopSTA || uop.uopc === uopSTD //TODO: FP STW?
+    }
     val uop_busy = (uop.prs1_busy || uop.prs2_busy || uop.prs3_busy)
 
     // Check if this uop must be split into 2 which creates some extra corner cases

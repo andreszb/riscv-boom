@@ -92,15 +92,15 @@ class CasDispatcher(implicit p: Parameters) extends Dispatcher {
   // Pass out the heads to the UIQ. Dont pass the ready signal to the SQ yet
   // It will be or'ed with the dequeue from Inq
   for (i <- 0 until casParams.windowSize) {
-    io.sq_heads.get(i).valid := sq_heads_valid(i) && sq_heads_ready(i)
-    io.sq_heads.get(i).bits := sq_heads(i)
-    sq_issue_grant(i) := io.sq_heads.get(i).ready
+    io.q2_heads.get(i).valid := sq_heads_valid(i) && sq_heads_ready(i)
+    io.q2_heads.get(i).bits := sq_heads(i)
+    sq_issue_grant(i) := io.q2_heads.get(i).ready
   }
 
   for (i <- 0 until casParams.inqDispatches) {
-    io.inq_heads.get(i).valid := inq_heads_valid(i) && inq_heads_ready(i)
-    io.inq_heads.get(i).bits := inq_heads(i)
-    inq.io.heads(i).ready := io.inq_heads.get(i).ready
+    io.q1_heads.get(i).valid := inq_heads_valid(i) && inq_heads_ready(i)
+    io.q1_heads.get(i).bits := inq_heads(i)
+    inq.io.heads(i).ready := io.q1_heads.get(i).ready
   }
 
   // SQ > INQ connection
@@ -134,7 +134,7 @@ class CasDispatcher(implicit p: Parameters) extends Dispatcher {
   sq.io.tsc_reg := io.tsc_reg
 
   // Performance counteres
-  (io.cas_perf.get.sq_dis zip io.sq_heads.get).map{case(l,r) => l := r.fire()}
-  (io.cas_perf.get.inq_dis zip io.inq_heads.get).map{case(l,r) => l := r.fire()}
+  (io.cas_perf.get.sq_dis zip io.q2_heads.get).map{case(l,r) => l := r.fire()}
+  (io.cas_perf.get.inq_dis zip io.q1_heads.get).map{case(l,r) => l := r.fire()}
 
 }

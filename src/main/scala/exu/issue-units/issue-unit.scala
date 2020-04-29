@@ -96,9 +96,13 @@ class IssueUnitIO(
   val crq_head = if(boomParams.dnbMode) Some(Vec(boomParams.dnbParams.get.crqDispatches, Flipped(DecoupledIO(new MicroOp)))) else None
   val rob_head_idx = if(boomParams.dnbMode) Some(Input(UInt(robAddrSz.W))) else None
 
-  // CASINO ports to Dispatch
-  val inq_heads = if(boomParams.casMode) Some(Vec(boomParams.casParams.get.inqDispatches, Flipped(DecoupledIO(new MicroOp)))) else None
-  val sq_heads = if(boomParams.casMode) Some(Vec(boomParams.casParams.get.windowSize, Flipped(DecoupledIO(new MicroOp)))) else None
+  // CASINO/LSC ports to Dispatch
+  val q1_heads = if(boomParams.casMode) Some(Vec(boomParams.casParams.get.inqDispatches, Flipped(DecoupledIO(new MicroOp))))
+  else if(boomParams.loadSliceMode && boomParams.unifiedIssueQueue) Some(Vec(boomParams.loadSliceCore.get.bDispatches, Flipped(DecoupledIO(new MicroOp))))
+  else None
+  val q2_heads = if(boomParams.casMode) Some(Vec(boomParams.casParams.get.windowSize, Flipped(DecoupledIO(new MicroOp))))
+  else if(boomParams.loadSliceMode && boomParams.unifiedIssueQueue) Some(Vec(boomParams.loadSliceCore.get.aDispatches, Flipped(DecoupledIO(new MicroOp))))
+  else None
 
 }
 
@@ -134,8 +138,8 @@ abstract class IssueUnit(
     dis_uops(w).iw_state := s_valid_1
 
     // all of the store splitting logic is handled in dispatch for the LSC
-    require(!(iqType == IQT_COMB.litValue()) || boomParams.loadSliceMode || boomParams.dnbMode, "combined issue queue only in lsc mode")
-    if(!boomParams.loadSliceMode && !boomParams.dnbMode) {
+    require(!(iqType == IQT_COMB.litValue()) || boomParams.loadSliceMode || boomParams.dnbMode || boomParams.inoMode, "combined issue queue only in lsc mode")
+    if(!boomParams.loadSliceMode && !boomParams.dnbMode && !boomParams.inoMode) {
       if (iqType == IQT_MEM.litValue || iqType == IQT_INT.litValue) {
         // For StoreAddrGen for Int, or AMOAddrGen, we go to addr gen state
         when((io.dis_uops(w).bits.uopc === uopSTA && io.dis_uops(w).bits.lrs2_rtype === RT_FIX) ||
@@ -161,13 +165,13 @@ abstract class IssueUnit(
   // Issue Table
 
   val slots = for (i <- 0 until numIssueSlots) yield { val slot = Module(new IssueSlot(numWakeupPorts)); slot }
-  val issue_slots = if(!boomParams.casMode) {
+  val issue_slots = if(!(boomParams.casMode || (boomParams.loadSliceMode && boomParams.unifiedIssueQueue))) {
     VecInit(slots.map(_.io))
   } else {
     null
   }
 
-  if (!boomParams.casMode) {
+  if (!(boomParams.casMode || (boomParams.loadSliceMode && boomParams.unifiedIssueQueue))) {
     io.event_empty := !(issue_slots.map(s => s.valid).reduce(_ | _))
     if (DEBUG_PRINTF_IQ) {
       printf(this.getType + " issue slots:\n")
