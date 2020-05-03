@@ -35,7 +35,18 @@ abstract class InstructionSliceTable(entries: Int=128, ways: Int=2)(implicit p: 
   val ibdaParams = boomParams.ibdaParams.get
 }
 
+class InstructionSliceTableBloom(entries: Int=128, ways: Int=2)(implicit p: Parameters) extends InstructionSliceTable {
+  val bloom = Module(new BloomFilterModified(m = 2048, k = 6, inBits = boomParams.ibdaParams.get.ibda_tag_sz, reads = 2, collisionRate = 0.0001))
+  require(ibdaParams.rdtIstMarkWidth == 1)
 
+  bloom.io.insert.valid := io.mark(0).mark.valid
+  bloom.io.insert.bits := io.mark(0).mark.bits
+  for (i <- 0 until decodeWidth) {
+    bloom.io.test(i).bits := io.check(i).tag.bits
+    io.check(i).in_ist.bits := bloom.io.test(i).found
+    io.check(i).in_ist.valid := RegNext(io.check(i).tag.valid)
+  }
+}
 
 @chiselName
 class InstructionSliceTableSyncMem(entries: Int=128, ways: Int=2)(implicit p: Parameters) extends InstructionSliceTable {

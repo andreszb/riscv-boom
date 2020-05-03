@@ -375,7 +375,8 @@ case class LoadSliceCoreParams(
 case class IbdaParams(
                  ibdaTagType: Int = IBDA_TAG_FULL_PC,
                  rdtIstMarkWidth: Int = 4,
-                 branchIbda: Boolean = false
+                 branchIbda: Boolean = false,
+                 bloomIst: Boolean = false,
                      )
 {
   def ibda_get_tag(uop: MicroOp): UInt = {

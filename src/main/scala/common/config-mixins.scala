@@ -426,7 +426,8 @@ class WithMediumSliceBooms extends Config((site, here, up) => {
       )),
       ibdaParams = Some(IbdaParams(
         ibdaTagType = IBDA_TAG_FULL_PC,
-        rdtIstMarkWidth = 1
+        rdtIstMarkWidth = 1,
+        bloomIst = true
       )),
       busyLookupParams = Some(BusyLookupParams(
         lookupAtRename = false,

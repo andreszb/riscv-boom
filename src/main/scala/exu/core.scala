@@ -41,7 +41,7 @@ import boom.common._
 import boom.exu.FUConstants._
 import boom.common.BoomTilesKey
 import boom.util.{AlignPCToBoundary, BoolToChar, BoomCoreStringPrefix, DromajoCosimBlackBox, GetNewUopAndBrMask, RobTypeToChars, Sext, WrapInc}
-import lsc.{InstructionSliceTable, InstructionSliceTableSyncMem, RdtSyncMem}
+import lsc.{InstructionSliceTable, InstructionSliceTableBloom, InstructionSliceTableSyncMem, RdtSyncMem}
 
 
 /**
@@ -173,7 +173,10 @@ class BoomCore(implicit p: Parameters) extends BoomModule
                            numIrfWritePorts + numFpWakeupPorts, // +memWidth for ll writebacks
                            numFpWakeupPorts))
 
-  val ist = if(boomParams.ibdaMode) Some(Module(new InstructionSliceTableSyncMem())) else None
+  val ist: Option[InstructionSliceTable] = if(boomParams.ibdaMode)
+    if(boomParams.ibdaParams.get.bloomIst) Some(Module(new InstructionSliceTableBloom()))
+    else Some(Module(new InstructionSliceTableSyncMem()))
+  else None
   val rdt = if(boomParams.ibdaMode) Some(Module(new RdtSyncMem())) else None
   // Used to wakeup registers in rename and issue. ROB needs to listen to something else.
   val int_iss_wakeups  = Wire(Vec(numIntIssueWakeupPorts, Valid(new ExeUnitResp(xLen))))
