@@ -35,17 +35,17 @@ class RdtUpdateSignals(implicit p: Parameters) extends BoomBundle {
 class MultiWriteSram(size: Int, width: Int, reads: Int, writes: Int) extends Module {
   val io = IO(new Bundle() {
     val write = Input(Vec(writes, new Bundle {
-      val addr = UInt(log2Floor(size).W)
+      val addr = UInt(log2Up(size).W)
       val data = UInt(width.W)
       val en = Bool()
     }))
     val read = Vec(reads, new Bundle() {
-      val addr = Input(UInt(log2Floor(size).W))
+      val addr = Input(UInt(log2Up(size).W))
       val data = Output(UInt(width.W))
     })
   })
   // this will be turned to bits because it needs multiple writes - sync becaue it is read in the same cycle as the srams
-  val ways = SyncReadMem(size, UInt(log2Down(writes).W))
+  val ways = SyncReadMem(size, UInt(log2Up(writes).W))
 
   val srams = io.write.map(_ => SyncReadMem(size, UInt(width.W)))
   val test = SyncReadMem(size, UInt(width.W))

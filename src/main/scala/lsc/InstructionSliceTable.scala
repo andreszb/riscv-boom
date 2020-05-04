@@ -89,6 +89,8 @@ class InstructionSliceTableSyncMem(entries: Int=128, ways: Int=2)(implicit p: Pa
       // TODO: Research the entropy in the instruction encoding?
     } else if (ibdaParams.ibdaTagType == IBDA_TAG_UOPC_LOB) {
       index := i(indexBits+2-1,2) ^ Cat(i(1), 0.U((indexBits-1).W))
+    }else if (ibdaParams.ibdaTagType == IBDA_TAG_HASH_13) {
+      index := i(indexBits-1,0)
     }
     index
   }
@@ -107,9 +109,9 @@ class InstructionSliceTableSyncMem(entries: Int=128, ways: Int=2)(implicit p: Pa
 
   // Do a cache read
   for(i <- 0 until decodeWidth) {
-    val pc = ist1_check_tag(i)
+    val tag = ist1_check_tag(i)
     // needs to be a wire as per https://github.com/freechipsproject/chisel3/issues/1366
-    val idx = WireInit(index(pc))
+    val idx = WireInit(index(tag))
     idx.suggestName(s"sram_read_addr_$i")
     dontTouch(idx)
     for (j <- 0 until ways) {

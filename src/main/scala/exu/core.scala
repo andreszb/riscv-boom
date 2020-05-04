@@ -580,12 +580,14 @@ class BoomCore(implicit p: Parameters) extends BoomModule
         assert(!(dec_fire(w) && (dec_uops(w).debug_pc =/= ist_pc(w))), "[IST] debug_pc and fetch_pc mismatch")
       }
     } else {
-      require(false)
+//      require(false)
       // We dont want the full PC but rather some hash of the UOP.
       for (w <- 0 until coreWidth) {
         ist.get.io.check(w).tag.valid := dec_fire(w)
         ist.get.io.check(w).tag.bits := ibdaParams.ibda_get_tag(dec_uops(w))
-
+        when(ist.get.io.check(w).in_ist.valid) {
+          dis_uops(w).is_lsc_b := ist.get.io.check(w).in_ist.bits
+        }
       }
     }
 
