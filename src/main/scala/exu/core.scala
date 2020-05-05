@@ -175,7 +175,8 @@ class BoomCore(implicit p: Parameters) extends BoomModule
 
   val ist: Option[InstructionSliceTable] = if(boomParams.ibdaMode)
     if(boomParams.ibdaParams.get.bloomIst) Some(Module(new InstructionSliceTableBloom()))
-    else Some(Module(new InstructionSliceTableSyncMem()))
+    else Some(Module(new InstructionSliceTableSyncMem(
+      probabilistic = (boomParams.ibdaParams.get.ibdaTagType == IBDA_TAG_HASH_13))))
   else None
   val rdt = if(boomParams.ibdaMode) Some(Module(new RdtSyncMem())) else None
   // Used to wakeup registers in rename and issue. ROB needs to listen to something else.

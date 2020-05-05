@@ -32,7 +32,29 @@ class RdtUpdateSignals(implicit p: Parameters) extends BoomBundle {
   val uop = new MicroOp
 }
 
-class MultiWriteSram(size: Int, width: Int, reads: Int, writes: Int) extends Module {
+class MultiWriteSramSimple(size: Int, width: Int, reads: Int, writes: Int, synchronous: Boolean = true) extends Module {
+  val io = IO(new Bundle() {
+    val write = Input(Vec(writes, new Bundle {
+      val addr = UInt(log2Up(size).W)
+      val data = UInt(width.W)
+      val en = Bool()
+    }))
+    val read = Vec(reads, new Bundle() {
+      val addr = Input(UInt(log2Up(size).W))
+      val data = Output(UInt(width.W))
+    })
+  })
+  val sram = if(synchronous) SyncReadMem(size, UInt(width.W)) else Mem(size, UInt(width.W))
+  for ((w, i) <- io.write zipWithIndex) {
+    when(w.en) {
+      sram.write(w.addr, w.data)
+    }
+  }
+  io.read.foreach(r => {
+    r.data := sram.read(r.addr)
+  })
+}
+class MultiWriteSram(size: Int, width: Int, reads: Int, writes: Int, synchronous: Boolean = true) extends Module {
   val io = IO(new Bundle() {
     val write = Input(Vec(writes, new Bundle {
       val addr = UInt(log2Up(size).W)
@@ -45,10 +67,11 @@ class MultiWriteSram(size: Int, width: Int, reads: Int, writes: Int) extends Mod
     })
   })
   // this will be turned to bits because it needs multiple writes - sync becaue it is read in the same cycle as the srams
-  val ways = SyncReadMem(size, UInt(log2Up(writes).W))
+  val memType: (BigInt, UInt) => MemBase[UInt] = if(synchronous) (b, u) => SyncReadMem.apply(b,u) else (b, u) => Mem.apply(b,u)
+  val ways = memType(size, UInt(log2Up(writes).W))
 
-  val srams = io.write.map(_ => SyncReadMem(size, UInt(width.W)))
-  val test = SyncReadMem(size, UInt(width.W))
+  val srams = io.write.map(_ => memType(size, UInt(width.W)))
+  val test = memType(size, UInt(width.W))
   val test_valid = RegInit(VecInit(Seq.fill(size)(false.B)))
   for ((w, i) <- io.write zipWithIndex) {
     when(w.en) {
@@ -71,7 +94,7 @@ class MultiWriteSram(size: Int, width: Int, reads: Int, writes: Int) extends Mod
     read_data.suggestName("read_data")
     dontTouch(read_data)
     r.data := read_data
-    val read_valid = WireInit(test_valid(RegNext(r.addr)))
+    val read_valid = if(synchronous) WireInit(test_valid(RegNext(r.addr))) else WireInit(test_valid(r.addr))
     read_valid.suggestName("read_valid")
     dontTouch(read_valid)
     val test_read = WireInit(test(r.addr))

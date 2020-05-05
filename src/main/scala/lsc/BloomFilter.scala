@@ -153,7 +153,7 @@ class HashTest(inBits: Int, outBits: Int) extends Module {
   io.out := hash(io.in)
 }
 
-class Sram(size: Int, width: Int, reads: Int) extends Module {
+class Sram(size: Int, width: Int, reads: Int, synchronous: Boolean = true) extends Module {
   val io = IO(new Bundle() {
     val write = Input(new Bundle {
       val addr = UInt(log2Floor(size).W)
@@ -165,7 +165,7 @@ class Sram(size: Int, width: Int, reads: Int) extends Module {
       val data = Output(UInt(width.W))
     })
   })
-  val sram = SyncReadMem(size, UInt(width.W))
+  val sram: MemBase[UInt] = if(synchronous) SyncReadMem(size, UInt(width.W)) else Mem(size, UInt(width.W))
   when(io.write.en) {
     sram.write(io.write.addr, io.write.data)
   }

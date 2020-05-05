@@ -49,18 +49,23 @@ class InstructionSliceTableBloom(entries: Int=128, ways: Int=2)(implicit p: Para
 }
 
 @chiselName
-class InstructionSliceTableSyncMem(entries: Int=128, ways: Int=2)(implicit p: Parameters) extends InstructionSliceTable {
+class InstructionSliceTableSyncMem(entries: Int=128, ways: Int=2, probabilistic: Boolean = false)(implicit p: Parameters) extends InstructionSliceTable {
   // TODO: Enable bypass from mark->in_ist
 
   require(ways<=2)
   // First the actual Cache with tag, valids and lru
   val tag_tables = (0 until ways).map(i =>
-    SyncReadMem(entries/ways, UInt(boomParams.ibdaParams.get.ibda_tag_sz.W))
+    Module(new Sram(entries/ways, boomParams.ibdaParams.get.ibda_tag_sz, reads=decodeWidth))
   )
 
   val tag_valids = (0 until ways).map(_ => RegInit(VecInit(Seq.fill(entries/ways)(false.B)))) //TODO: Use SyncReadMem
-  val tag_lru = RegInit(VecInit(Seq.fill(entries/2)(false.B)))
 
+  val tag_lru = Module(new MultiWriteSramSimple(entries/2,1, ibdaParams.rdtIstMarkWidth, decodeWidth+ibdaParams.rdtIstMarkWidth, synchronous = false))
+  tag_lru.io.write.foreach(w => {
+    w.en := false.B
+    w.data := DontCare
+    w.addr := DontCare
+  })
   // Stage 1
   val ist1_check_valid = Wire(Vec(decodeWidth, Bool()))
   val ist1_check_tag = Wire(Vec(decodeWidth, UInt(ibdaParams.ibda_tag_sz.W)))
@@ -116,8 +121,13 @@ class InstructionSliceTableSyncMem(entries: Int=128, ways: Int=2)(implicit p: Pa
     dontTouch(idx)
     for (j <- 0 until ways) {
       // TODO: use read with enable based on valids
-      ist2_check_sram_tag(i)(j) := tag_tables(j)(idx)
-      ist2_check_sram_valid(i)(j) := tag_valids(j)(idx)
+      tag_tables(j).io.read(i).addr := idx
+      ist2_check_sram_tag(i)(j) := tag_tables(j).io.read(i).data
+      if(!probabilistic) {
+        ist2_check_sram_valid(i)(j) := tag_valids(j)(idx)
+      } else{
+        ist2_check_sram_valid(i)(j) := true.B
+      }
     }
   }
 
@@ -128,25 +138,46 @@ class InstructionSliceTableSyncMem(entries: Int=128, ways: Int=2)(implicit p: Pa
     val idx = index(ist2_check_tag(i))
     for(j <- 0 until ways) {
       when(ist2_check_valid(i) && ist2_check_sram_valid(i)(j) && (ist2_check_sram_tag(i)(j) === ist2_check_tag(i))) {
-        tag_lru(idx) := j.B // TODO: fix LRU hack
+        tag_lru.io.write(i).addr := idx
+        tag_lru.io.write(i).en := true.B
+        tag_lru.io.write(i).data:= j.U // TODO: fix LRU hack
         ist2_in_ist(i).bits := true.B
       }
     }
     io.check(i).in_ist := ist2_in_ist(i)
   }
 
+  tag_tables.foreach(s => {
+    s.io.write.en := false.B
+    s.io.write.data := DontCare
+    s.io.write.addr := DontCare
+  })
   // mark - later so mark lrus get priority
   for(i <- 0 until ibdaParams.rdtIstMarkWidth){
+    tag_lru.io.read(i).addr := DontCare
     when(ist1_mark_valid(i)){
       val idx = index(ist1_mark_tag(i))
-      when(tag_lru(idx)){
-        tag_tables(0)(idx) := ist1_mark_tag(i)
-        tag_valids(0)(idx) := true.B
-        tag_lru(idx) := false.B
+      tag_lru.io.read(i).addr := idx
+      when(tag_lru.io.read(i).data === 1.U){
+        tag_tables(0).io.write.addr := idx
+        tag_tables(0).io.write.data := ist1_mark_tag(i)
+        tag_tables(0).io.write.en := true.B
+        if(!probabilistic) {
+          tag_valids(0)(idx) := true.B
+        }
+        tag_lru.io.write(decodeWidth+i).addr := idx
+        tag_lru.io.write(decodeWidth+i).en := true.B
+        tag_lru.io.write(decodeWidth+i).data:= 0.U
       }.otherwise{
-        tag_tables(1)(idx) := ist1_mark_tag(i)
-        tag_valids(1)(idx) := true.B
-        tag_lru(idx) := true.B
+        tag_tables(1).io.write.addr := idx
+        tag_tables(1).io.write.data := ist1_mark_tag(i)
+        tag_tables(1).io.write.en := true.B
+        if(!probabilistic) {
+          tag_valids(1)(idx) := true.B
+        }
+        tag_lru.io.write(decodeWidth+i).addr := idx
+        tag_lru.io.write(decodeWidth+i).en := true.B
+        tag_lru.io.write(decodeWidth+i).data:= 1.U
       }
     }
   }
