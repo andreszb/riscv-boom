@@ -55,7 +55,7 @@ class InstructionSliceTableSyncMem(entries: Int=128, ways: Int=2, probabilistic:
   require(ways<=2)
   // First the actual Cache with tag, valids and lru
   val tag_tables = (0 until ways).map(i =>
-    Module(new Sram(entries/ways, boomParams.ibdaParams.get.ibda_tag_sz, reads=decodeWidth))
+    Module(new MultiWriteSram(entries/ways, boomParams.ibdaParams.get.ibda_tag_sz, reads=decodeWidth, writes=ibdaParams.rdtIstMarkWidth))
   )
 
   val tag_valids = (0 until ways).map(_ => RegInit(VecInit(Seq.fill(entries/ways)(false.B)))) //TODO: Use SyncReadMem
@@ -86,7 +86,7 @@ class InstructionSliceTableSyncMem(entries: Int=128, ways: Int=2, probabilistic:
   def index(i: UInt): UInt = {
     val indexBits = log2Up(entries/ways)
     val index = Wire(UInt(indexBits.W))
-    if (ibdaParams.ibdaTagType == IBDA_TAG_FULL_PC) {
+    if (ibdaParams.ibdaTagType == IBDA_TAG_FULL_PC || ibdaParams.ibdaTagType == IBDA_TAG_DEBUG_PC) {
       // xor the second lowest bit with the highest index bit so compressed insns are spread around
       index := i(indexBits+2-1, 2) ^ Cat(i(1), 0.U((indexBits-1).W))
     } else if (ibdaParams.ibdaTagType == IBDA_TAG_INST_LOB) {
@@ -94,7 +94,7 @@ class InstructionSliceTableSyncMem(entries: Int=128, ways: Int=2, probabilistic:
       // TODO: Research the entropy in the instruction encoding?
     } else if (ibdaParams.ibdaTagType == IBDA_TAG_UOPC_LOB) {
       index := i(indexBits+2-1,2) ^ Cat(i(1), 0.U((indexBits-1).W))
-    }else if (ibdaParams.ibdaTagType == IBDA_TAG_HASH_13) {
+    }else if (ibdaParams.ibdaTagType == IBDA_TAG_HASH) {
       index := i(indexBits-1,0)
     }
     index
@@ -147,11 +147,11 @@ class InstructionSliceTableSyncMem(entries: Int=128, ways: Int=2, probabilistic:
     io.check(i).in_ist := ist2_in_ist(i)
   }
 
-  tag_tables.foreach(s => {
-    s.io.write.en := false.B
-    s.io.write.data := DontCare
-    s.io.write.addr := DontCare
-  })
+  tag_tables.foreach(s => s.io.write.foreach(w => {
+    w.en := false.B
+    w.data := DontCare
+    w.addr := DontCare
+  }))
   // mark - later so mark lrus get priority
   for(i <- 0 until ibdaParams.rdtIstMarkWidth){
     tag_lru.io.read(i).addr := DontCare
@@ -159,9 +159,9 @@ class InstructionSliceTableSyncMem(entries: Int=128, ways: Int=2, probabilistic:
       val idx = index(ist1_mark_tag(i))
       tag_lru.io.read(i).addr := idx
       when(tag_lru.io.read(i).data === 1.U){
-        tag_tables(0).io.write.addr := idx
-        tag_tables(0).io.write.data := ist1_mark_tag(i)
-        tag_tables(0).io.write.en := true.B
+        tag_tables(0).io.write(i).addr := idx
+        tag_tables(0).io.write(i).data := ist1_mark_tag(i)
+        tag_tables(0).io.write(i).en := true.B
         if(!probabilistic) {
           tag_valids(0)(idx) := true.B
         }
@@ -169,9 +169,9 @@ class InstructionSliceTableSyncMem(entries: Int=128, ways: Int=2, probabilistic:
         tag_lru.io.write(decodeWidth+i).en := true.B
         tag_lru.io.write(decodeWidth+i).data:= 0.U
       }.otherwise{
-        tag_tables(1).io.write.addr := idx
-        tag_tables(1).io.write.data := ist1_mark_tag(i)
-        tag_tables(1).io.write.en := true.B
+        tag_tables(1).io.write(i).addr := idx
+        tag_tables(1).io.write(i).data := ist1_mark_tag(i)
+        tag_tables(1).io.write(i).en := true.B
         if(!probabilistic) {
           tag_valids(1)(idx) := true.B
         }

@@ -425,7 +425,7 @@ class WithMediumSliceBooms extends Config((site, here, up) => {
         bDispatches = 2
       )),
       ibdaParams = Some(IbdaParams(
-        ibdaTagType = IBDA_TAG_HASH_13,
+        ibdaTagType = IBDA_TAG_FULL_PC,
         rdtIstMarkWidth = 1,
 //        bloomIst = true
       )),
@@ -455,9 +455,9 @@ class WithMediumBooms extends Config((site, here, up) => {
       decodeWidth = 2,
       numRobEntries = 64,
       issueParams = Seq(
-        IssueParams(issueWidth=2, numEntries=16, iqType=IQT_INT.litValue, dispatchWidth=2), // INT
         IssueParams(issueWidth=1, numEntries=16, iqType=IQT_MEM.litValue, dispatchWidth=2), // MEM
-        IssueParams(issueWidth=1, numEntries=16, iqType=IQT_FP.litValue , dispatchWidth=1), // FP
+        IssueParams(issueWidth=2, numEntries=16, iqType=IQT_INT.litValue, dispatchWidth=2), // INT
+        IssueParams(issueWidth=1, numEntries=16, iqType=IQT_FP.litValue , dispatchWidth=2), // FP
       ),
       numIntPhysRegisters = 80,
       numFpPhysRegisters = 64,

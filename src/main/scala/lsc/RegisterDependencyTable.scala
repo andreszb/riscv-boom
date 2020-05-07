@@ -54,7 +54,7 @@ class MultiWriteSramSimple(size: Int, width: Int, reads: Int, writes: Int, synch
     r.data := sram.read(r.addr)
   })
 }
-class MultiWriteSram(size: Int, width: Int, reads: Int, writes: Int, synchronous: Boolean = true) extends Module {
+class MultiWriteSram(size: Int, width: Int, reads: Int, writes: Int) extends Module {
   val io = IO(new Bundle() {
     val write = Input(Vec(writes, new Bundle {
       val addr = UInt(log2Up(size).W)
@@ -66,12 +66,11 @@ class MultiWriteSram(size: Int, width: Int, reads: Int, writes: Int, synchronous
       val data = Output(UInt(width.W))
     })
   })
-  // this will be turned to bits because it needs multiple writes - sync becaue it is read in the same cycle as the srams
-  val memType: (BigInt, UInt) => MemBase[UInt] = if(synchronous) (b, u) => SyncReadMem.apply(b,u) else (b, u) => Mem.apply(b,u)
-  val ways = memType(size, UInt(log2Up(writes).W))
+  // this will be turned to bits because it needs multiple writes - sync because it is read in the same cycle as the srams
+  val ways = SyncReadMem(size, UInt(log2Up(writes).W))
 
-  val srams = io.write.map(_ => memType(size, UInt(width.W)))
-  val test = memType(size, UInt(width.W))
+  val srams = io.write.map(_ => SyncReadMem(size, UInt(width.W)))
+  val test = SyncReadMem(size, UInt(width.W))
   val test_valid = RegInit(VecInit(Seq.fill(size)(false.B)))
   for ((w, i) <- io.write zipWithIndex) {
     when(w.en) {
@@ -84,17 +83,17 @@ class MultiWriteSram(size: Int, width: Int, reads: Int, writes: Int, synchronous
   }
 
   io.read.foreach(r => {
-    val way = WireInit(ways.read(r.addr))
+    val way = if(writes==1) WireInit(0.U) else WireInit(ways.read(r.addr))
     way.suggestName("way")
     dontTouch(way)
-    val reads = VecInit(srams.map(s => s.read(r.addr)))
+    val reads = WireInit(VecInit(srams.map(s => s.read(r.addr))))
     reads.suggestName("reads")
-    dontTouch(reads)
+//    dontTouch(reads)
     val read_data = WireInit(reads(way))
     read_data.suggestName("read_data")
     dontTouch(read_data)
     r.data := read_data
-    val read_valid = if(synchronous) WireInit(test_valid(RegNext(r.addr))) else WireInit(test_valid(r.addr))
+    val read_valid = WireInit(test_valid(RegNext(r.addr)))
     read_valid.suggestName("read_valid")
     dontTouch(read_valid)
     val test_read = WireInit(test(r.addr))
@@ -105,7 +104,7 @@ class MultiWriteSram(size: Int, width: Int, reads: Int, writes: Int, synchronous
 }
 
 object MultiWriteSramTester extends App {
-  val writes = 2
+  val writes = 4
   val size = 16
   chisel3.iotesters.Driver.execute(
     Array(
@@ -126,7 +125,7 @@ object MultiWriteSramTester extends App {
           step(1)
         }
         // write to different addr
-        for(i <- 0 until 16 by 2){
+        for(i <- 0 until 16 by writes){
           for(j <- 0 until writes){
             poke(c.io.write(j).addr, i+j)
             poke(c.io.write(j).data, i+j)
@@ -145,7 +144,7 @@ object MultiWriteSramTester extends App {
           }
         }
         // write to same addr
-        for(i <- 0 until 16 by 2){
+        for(i <- 0 until 16 by writes){
           for(j <- 0 until writes){
             poke(c.io.write(j).addr, i)
             poke(c.io.write(j).data, i+j)
@@ -167,7 +166,7 @@ object MultiWriteSramTester extends App {
 
 class RdtSyncMem(implicit p: Parameters) extends RegisterDependencyTable {
 
-  val sram = Module(new MultiWriteSram(boomParams.numIntPhysRegisters, ibdaParams.ibda_tag_sz, ibdaParams.rdtIstMarkWidth, decodeWidth))
+  val sram = Module(new MultiWriteSram(boomParams.numIntPhysRegisters, ibdaParams.ibda_tag_sz, reads=ibdaParams.rdtIstMarkWidth, writes=decodeWidth))
   val in_ist = RegInit(VecInit(Seq.fill(boomParams.numIntPhysRegisters)(false.B)))
   val commit_dst_valid = WireInit(VecInit(Seq.fill(decodeWidth)(false.B)))
 
@@ -180,9 +179,9 @@ class RdtSyncMem(implicit p: Parameters) extends RegisterDependencyTable {
   val rdt2_mark_valid = Wire(Vec(ibdaParams.rdtIstMarkWidth, Bool()))
   val rdt2_sram_tag = Wire(Vec(ibdaParams.rdtIstMarkWidth, UInt(ibdaParams.ibda_tag_sz.W)))
   val rdt2_sram_in_ist = Reg(Vec(ibdaParams.rdtIstMarkWidth, Bool()))
-  val rdt2_bypass_tag = Reg(Vec(decodeWidth, UInt(ibdaParams.ibda_tag_sz.W)))
-  val rdt2_bypass_in_ist = Reg(Vec(decodeWidth, Bool()))
-  val rdt2_bypass_valid = Reg(Vec(decodeWidth, Bool()))
+  val rdt2_bypass_tag = Reg(Vec(ibdaParams.rdtIstMarkWidth, UInt(ibdaParams.ibda_tag_sz.W)))
+  val rdt2_bypass_in_ist = Reg(Vec(ibdaParams.rdtIstMarkWidth, Bool()))
+  val rdt2_bypass_valid = Reg(Vec(ibdaParams.rdtIstMarkWidth, Bool()))
   val rdt2_bypass_select = Reg(Vec(ibdaParams.rdtIstMarkWidth, Bool()))
 
 
