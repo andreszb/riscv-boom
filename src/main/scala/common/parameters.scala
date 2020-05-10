@@ -407,11 +407,12 @@ case class IbdaParams(
         uop.imm_packed,
       )
     )
+    else if(ibdaTagType == IBDA_TAG_HASH_PC) tag := hash(uop.debug_pc)
 
     else require(false, "ibda_get_tag not implemented for this tag")
     tag
   }
-  require(ibdaTagType != IBDA_TAG_HASH || hashBits != 0)
+  require((ibdaTagType != IBDA_TAG_HASH && ibdaTagType != IBDA_TAG_HASH_PC) || hashBits != 0)
 
   def rdtIstMarkSz: Int = {
     if (rdtIstMarkWidth == 1) {
@@ -429,6 +430,7 @@ case class IbdaParams(
       case IBDA_TAG_UOPC_LOB => UOPC_SZ + 6 //uopc + pc_lob
       case IBDA_TAG_INST_LOB => 32 + 6 //inst + pc_lob
       case IBDA_TAG_HASH => hashBits //inst + pc_lob
+      case IBDA_TAG_HASH_PC => hashBits //inst + pc_lob
       case _ => {
         require(false, "ibda_tag_sz not implemented for this tag")
         0

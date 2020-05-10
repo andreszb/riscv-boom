@@ -15,7 +15,8 @@ class CasDispatcher(implicit p: Parameters) extends Dispatcher {
     numEntries = casParams.numInqEntries,
     qName="INQ",
     deqWidth=casParams.inqDispatches,
-    enqWidth= casParams.slidingOffset)))
+    enqWidth= casParams.slidingOffset,
+    stallOnUse = true)))
 
   val sq = Module(new SramDispatchQueueCompactingShifting( DispatchQueueParams(
     numEntries = casParams.numSqEntries,

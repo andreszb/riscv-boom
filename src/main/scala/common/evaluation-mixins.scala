@@ -62,12 +62,51 @@ class WithHash14Ibda() extends Config((site, here, up) => {
   })}
 })
 
+class WithHashPc14Ibda() extends Config((site, here, up) => {
+  case BoomTilesKey => up(BoomTilesKey, site) map { b => b.copy(core = {
+    require(b.core.loadSliceMode || b.core.dnbMode, "IBDA only for LSC and DNB")
+    b.core.copy(
+      ibdaParams = Some(IbdaParams(
+        ibdaTagType = IBDA_TAG_HASH_PC,
+        rdtIstMarkWidth = 1,
+        hashBits = 14,
+      ))
+    )
+  })}
+})
+
+class WithHashPc40Ibda() extends Config((site, here, up) => {
+  case BoomTilesKey => up(BoomTilesKey, site) map { b => b.copy(core = {
+    require(b.core.loadSliceMode || b.core.dnbMode, "IBDA only for LSC and DNB")
+    b.core.copy(
+      ibdaParams = Some(IbdaParams(
+        ibdaTagType = IBDA_TAG_HASH_PC,
+        rdtIstMarkWidth = 1,
+        hashBits = 40,
+      ))
+    )
+  })}
+})
+
 class WithBloomIbda() extends Config((site, here, up) => {
   case BoomTilesKey => up(BoomTilesKey, site) map { b => b.copy(core = {
     require(b.core.loadSliceMode || b.core.dnbMode, "IBDA only for LSC and DNB")
     b.core.copy(
       ibdaParams = Some(IbdaParams(
         ibdaTagType = IBDA_TAG_INST_LOB,
+        rdtIstMarkWidth = 1,
+        bloomIst = true
+      ))
+    )
+  })}
+})
+
+class WithBloomPcIbda() extends Config((site, here, up) => {
+  case BoomTilesKey => up(BoomTilesKey, site) map { b => b.copy(core = {
+    require(b.core.loadSliceMode || b.core.dnbMode, "IBDA only for LSC and DNB")
+    b.core.copy(
+      ibdaParams = Some(IbdaParams(
+        ibdaTagType = IBDA_TAG_FULL_PC,
         rdtIstMarkWidth = 1,
         bloomIst = true
       ))

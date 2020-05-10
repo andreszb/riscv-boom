@@ -289,6 +289,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
             // CASINO events
             (f"SQ-dispatches: $i", () => rob.io.commit.valids(i) && rob.io.commit.uops(i).perf_cas_sq_dis.get),
             (f"INQ-dispatches: $i", () => rob.io.commit.valids(i) && rob.io.commit.uops(i).perf_cas_inq_dis.get),
+            ("nop", () => false.B),
           ) else Seq(
             (f"DIS$i", () => dispatcher.io.ren_uops(i).fire()),
             ("nop", () => false.B),

@@ -14,7 +14,8 @@ case class DispatchQueueParams(
                                 val numEntries: Int,
                                 val deqWidth: Int,
                                 val enqWidth: Int,
-                                val qName: String
+                                val qName: String,
+                                val stallOnUse: Boolean = false
                               )
 
 class DispatchQueueIO(
@@ -33,7 +34,8 @@ class DispatchQueueIO(
 abstract class DispatchQueue( val numEntries: Int = 8,
                               val deqWidth: Int = 1,
                               val enqWidth: Int = 2,
-                              val qName: String
+                              val qName: String,
+                              val stallOnUse: Boolean = false
                             )(implicit p: Parameters) extends BoomModule
 {
   val io = IO(new DispatchQueueIO(deqWidth, enqWidth))
@@ -253,7 +255,7 @@ class UopSram(numEntries: Int, numWrites: Int, numReads: Int)(implicit p: Parame
 }
 
 class SramDispatchQueueCompactingShifting(params: DispatchQueueParams,
-                                         )(implicit p: Parameters) extends DispatchQueue(params.numEntries, params.deqWidth, params.enqWidth, params.qName)
+                                         )(implicit p: Parameters) extends DispatchQueue(params.numEntries, params.deqWidth, params.enqWidth, params.qName, params.stallOnUse)
 {
 
 //  val sram_fifo = (0 until fifoWidth).map(i => SyncReadMem(numEntries, new MicroOp))
@@ -471,10 +473,16 @@ class SramDispatchQueueCompactingShifting(params: DispatchQueueParams,
   }
 
   // Pass out the heads. Here we connect the io to the head registers
+  var prev_fire = WireInit(true.B)
   for (i <- 0 until deqWidth) {
     io.heads(i).bits := heads_out_uop(i)
     io.heads(i).bits.br_mask := heads_out_brmask(i)
-    io.heads(i).valid := heads_out_valid(i)
+    if(stallOnUse){
+      io.heads(i).valid := heads_out_valid(i) && prev_fire
+      prev_fire = io.heads(i).fire()
+    } else{
+      io.heads(i).valid := heads_out_valid(i)
+    }
 
 
     // If we dequeue this head, update state to false next CC. This false will be overwritten more down if we

@@ -36,7 +36,7 @@ abstract class InstructionSliceTable(entries: Int=128, ways: Int=2)(implicit p: 
 }
 
 class InstructionSliceTableBloom(entries: Int=128, ways: Int=2)(implicit p: Parameters) extends InstructionSliceTable {
-  val bloom = Module(new BloomFilterModified(m = 2048, k = 6, inBits = boomParams.ibdaParams.get.ibda_tag_sz, reads = 2, collisionRate = 0.0001))
+  val bloom = Module(new BloomFilterModified(m = 4096, k = 6, inBits = boomParams.ibdaParams.get.ibda_tag_sz, reads = 2, collisionRate = 0.00001))
   require(ibdaParams.rdtIstMarkWidth == 1)
 
   bloom.io.insert.valid := io.mark(0).mark.valid
@@ -95,6 +95,8 @@ class InstructionSliceTableSyncMem(entries: Int=128, ways: Int=2, probabilistic:
     } else if (ibdaParams.ibdaTagType == IBDA_TAG_UOPC_LOB) {
       index := i(indexBits+2-1,2) ^ Cat(i(1), 0.U((indexBits-1).W))
     }else if (ibdaParams.ibdaTagType == IBDA_TAG_HASH) {
+      index := i(indexBits-1,0)
+    }else if (ibdaParams.ibdaTagType == IBDA_TAG_HASH_PC) {
       index := i(indexBits-1,0)
     }
     index

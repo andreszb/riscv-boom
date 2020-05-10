@@ -22,6 +22,7 @@ object Hash {
     //    probably would be a good idea to use a static seed
     //    r.setSeed(0)
     val random_data: Seq[UInt] = (0 until outBits).map(_ => math.abs(r.nextLong()).U)
+//    val random_data: Seq[UInt] = (0 until outBits).map(i => (1L << i).U)
 
     def fun(u: UInt): UInt = {
       val m = Module(new Hash_(inBits, outBits, random_data))
@@ -173,7 +174,7 @@ class Sram(size: Int, width: Int, reads: Int, synchronous: Boolean = true) exten
 }
 
 object GenerateVerilog extends App {
-  chisel3.Driver.execute(args, () => new BloomFilterModified(m = 2048, k = 6, inBits = 32, reads = 2, collisionRate = 0.0001))
+  chisel3.Driver.execute(args, () => new BloomFilterModified(m = 2048, k = 2, inBits = 32, reads = 2, collisionRate = 0.01))
   //  chisel3.Driver.execute(args, () => new HashTest(32, 12))
   //  chisel3.Driver.execute(args, () => new DistRamTest(2048, 1, 2))
 }
