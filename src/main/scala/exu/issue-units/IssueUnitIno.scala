@@ -118,6 +118,7 @@ class IssueUnitIno(
   }
 
   val grants = issue_slots.map(_.grant)
+  val valids = issue_slots.map(_.valid)
   val candidate_uops = issue_slots.map(_.uop)
   var previous_stalled = false.B
 
@@ -146,9 +147,10 @@ class IssueUnitIno(
       }
     }
     // Now check if this uop got all the iq ports it needed
-    val can_issue = uop_iq_ports_satisfied.reduce(_ && _) && !previous_stalled
+    val satisfied = uop_iq_ports_satisfied.reduce(_ && _)
+    val can_issue = satisfied && !previous_stalled
     if(boomParams.inoParams.exists(_.stallOnUse)){
-      previous_stalled = !can_issue
+      previous_stalled = (!satisfied && valids(i)) || previous_stalled
     }
     when (can_issue) {
       grants(i) := true.B
