@@ -91,7 +91,7 @@ case class BoomCoreParams(
   busyLookupParams: Option[BusyLookupParams] = None,
   dnbParams: Option[DnbParams] = None,
   casParams: Option[CasParams] = None,
-inoParams: Option[InoParams] = None
+  inoParams: Option[InoParams] = None
 
 ) extends freechips.rocketchip.tile.CoreParams
 {
@@ -105,8 +105,9 @@ inoParams: Option[InoParams] = None
   val dnbMode: Boolean = dnbParams.isDefined
   val casMode: Boolean = casParams.isDefined
   val inoMode: Boolean = inoParams.isDefined
+  val inoQueueMode: Boolean = inoParams.exists(_.queueMode)
   val ibdaMode: Boolean = loadSliceMode || dnbMode
-  val busyLookupMode: Boolean = loadSliceMode || dnbMode || casMode
+  val busyLookupMode: Boolean = loadSliceMode || dnbMode || casMode || inoQueueMode
 
   // Make sure we have enough lookup ports to the Busy Table
   if(busyLookupMode) {
@@ -119,6 +120,10 @@ inoParams: Option[InoParams] = None
 
     if (casMode) {
       require(busyLookupParams.get.lookupAtDisWidth == casParams.get.inqDispatches + casParams.get.windowSize)
+    }
+
+    if (inoQueueMode) {
+      require(busyLookupParams.get.lookupAtDisWidth == decodeWidth)
     }
   }
 
@@ -341,7 +346,10 @@ case class CasParams(
                     )
 {}
 
-case class InoParams()
+case class InoParams(
+  queueMode: Boolean = false,
+  stallOnUse: Boolean = true,
+)
 
 // Class for DnB Parameters
 case class DnbParams(

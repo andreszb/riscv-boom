@@ -99,9 +99,11 @@ class IssueUnitIO(
   // CASINO/LSC ports to Dispatch
   val q1_heads = if(boomParams.casMode) Some(Vec(boomParams.casParams.get.inqDispatches, Flipped(DecoupledIO(new MicroOp))))
   else if(boomParams.loadSliceMode && boomParams.unifiedIssueQueue) Some(Vec(boomParams.loadSliceCore.get.bDispatches, Flipped(DecoupledIO(new MicroOp))))
+  else if(boomParams.inoQueueMode) Some(Vec(boomParams.decodeWidth, Flipped(DecoupledIO(new MicroOp))))
   else None
   val q2_heads = if(boomParams.casMode) Some(Vec(boomParams.casParams.get.windowSize, Flipped(DecoupledIO(new MicroOp))))
   else if(boomParams.loadSliceMode && boomParams.unifiedIssueQueue) Some(Vec(boomParams.loadSliceCore.get.aDispatches, Flipped(DecoupledIO(new MicroOp))))
+  else if(boomParams.inoQueueMode) Some(Vec(0, Flipped(DecoupledIO(new MicroOp))))
   else None
 
 }
@@ -165,13 +167,13 @@ abstract class IssueUnit(
   // Issue Table
 
   val slots = for (i <- 0 until numIssueSlots) yield { val slot = Module(new IssueSlot(numWakeupPorts)); slot }
-  val issue_slots = if(!(boomParams.casMode || (boomParams.loadSliceMode && boomParams.unifiedIssueQueue))) {
+  val issue_slots = if(!(boomParams.casMode || (boomParams.loadSliceMode && boomParams.unifiedIssueQueue)  || boomParams.inoQueueMode)) {
     VecInit(slots.map(_.io))
   } else {
     null
   }
 
-  if (!(boomParams.casMode || (boomParams.loadSliceMode && boomParams.unifiedIssueQueue))) {
+  if (!(boomParams.casMode || (boomParams.loadSliceMode && boomParams.unifiedIssueQueue) || boomParams.inoQueueMode)) {
     io.event_empty := !(issue_slots.map(s => s.valid).reduce(_ | _))
     if (DEBUG_PRINTF_IQ) {
       printf(this.getType + " issue slots:\n")

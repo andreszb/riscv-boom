@@ -35,15 +35,17 @@ class DispatchIO(implicit p: Parameters) extends BoomBundle
   val fp_busy_req_uops = if(boomParams.busyLookupMode && usingFPU) Some(Output(Vec(boomParams.busyLookupParams.get.lookupAtDisWidth, new MicroOp))) else None
   val fp_busy_resps = if(boomParams.busyLookupMode && usingFPU) Some(Input(Vec(boomParams.busyLookupParams.get.lookupAtDisWidth, new BusyResp))) else None
   // brinfo & flush for LSC
-  val brinfo = if(boomParams.loadSliceMode || boomParams.dnbMode || boomParams.casMode) Some(Input(new BrResolutionInfo())) else None
-  val flush = if(boomParams.loadSliceMode || boomParams.dnbMode || boomParams.casMode) Some(Input(Bool())) else None
+  val brinfo = if(boomParams.loadSliceMode || boomParams.dnbMode || boomParams.casMode || boomParams.inoQueueMode) Some(Input(new BrResolutionInfo())) else None
+  val flush = if(boomParams.loadSliceMode || boomParams.dnbMode || boomParams.casMode || boomParams.inoQueueMode) Some(Input(Bool())) else None
 
   // CAS/LSC ports to UIQ
   val q1_heads = if(boomParams.casMode) Some(Vec(boomParams.casParams.get.inqDispatches, DecoupledIO(new MicroOp)))
   else if(boomParams.loadSliceMode && boomParams.unifiedIssueQueue) Some(Vec(boomParams.loadSliceCore.get.bDispatches, DecoupledIO(new MicroOp)))
+  else if(boomParams.inoQueueMode) Some(Vec(boomParams.decodeWidth, DecoupledIO(new MicroOp)))
   else None
   val q2_heads = if(boomParams.casMode) Some(Vec(boomParams.casParams.get.windowSize, DecoupledIO(new MicroOp)))
   else if(boomParams.loadSliceMode && boomParams.unifiedIssueQueue) Some(Vec(boomParams.loadSliceCore.get.bDispatches, DecoupledIO(new MicroOp)))
+  else if(boomParams.inoQueueMode) Some(Vec(0, DecoupledIO(new MicroOp)))
   else None
 
   // DnB ports to UIQ

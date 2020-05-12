@@ -119,6 +119,9 @@ class BoomCore(implicit p: Parameters) extends BoomModule
     } else if (boomParams.casMode) {
       unified_iss_unit = Module(new IssueUnitQueuesUnified(combIssueParam.get, numIntIssueWakeupPorts+numFpWakeupPorts))
       unified_iss_unit.suggestName("cas_issue_unit")
+    } else if (boomParams.inoQueueMode) {
+      unified_iss_unit = Module(new IssueUnitQueuesUnified(combIssueParam.get, numIntIssueWakeupPorts+numFpWakeupPorts))
+      unified_iss_unit.suggestName("ino_queue_issue_unit")
     } else if(boomParams.inoMode){
       unified_iss_unit = Module(new IssueUnitIno(combIssueParam.get, numIntIssueWakeupPorts+numFpWakeupPorts))
       unified_iss_unit.suggestName("ino_issue_unit")
@@ -146,6 +149,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
     Module(new SliceDispatcher)
   else if(boomParams.dnbMode) Module(new DnbDispatcher)
   else if(boomParams.casMode) Module(new CasDispatcher)
+  else if(boomParams.inoQueueMode) Module(new InoQueueDispatcher)
   else if(boomParams.inoMode) Module(new InoDispatcher)
   else Module(new BasicDispatcher)
 
@@ -810,7 +814,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
     unified_iss_unit.io.dlq_head.get <> dispatcher.io.dlq_head.get
     unified_iss_unit.io.crq_head.get <> dispatcher.io.crq_head.get
     unified_iss_unit.io.rob_head_idx.get := rob.io.rob_head_idx
-  }else if(boomParams.casMode ||(boomParams.loadSliceMode && boomParams.unifiedIssueQueue)) {
+  }else if(boomParams.casMode ||(boomParams.loadSliceMode && boomParams.unifiedIssueQueue)  || boomParams.inoQueueMode) {
     unified_iss_unit.io.q2_heads.get <> dispatcher.io.q2_heads.get
     unified_iss_unit.io.q1_heads.get <> dispatcher.io.q1_heads.get
   }
