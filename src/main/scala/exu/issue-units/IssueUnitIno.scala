@@ -148,7 +148,7 @@ class IssueUnitIno(
     // Now check if this uop got all the iq ports it needed
     val can_issue = uop_iq_ports_satisfied.reduce(_ && _) && !previous_stalled
     if(boomParams.inoParams.exists(_.stallOnUse)){
-      previous_stalled = can_issue
+      previous_stalled = !can_issue
     }
     when (can_issue) {
       grants(i) := true.B
