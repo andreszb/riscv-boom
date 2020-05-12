@@ -16,13 +16,25 @@ class Hash_(inBits: Int, outBits: Int, random_data: Seq[UInt]) extends Module {
 }
 
 object Hash {
+  val r = scala.util.Random
+  //    probably would be a good idea to use a static seed??
+  val seed = 1
+  r.setSeed(seed)
+  println(f"setting seed to ${seed}!!!!!!!!!!!!!!!")
+
+  def callStack = try { throw new Exception} catch { case ex => ex.getStackTrace drop 2 }
+
+  def printStackTrace = callStack drop 1 /* don't print ourselves! */ foreach println
   def apply(inBits: Int, outBits: Int): UInt => UInt = {
     require(inBits <= 63)
-    val r = scala.util.Random
-    //    probably would be a good idea to use a static seed
-    //    r.setSeed(0)
     val random_data: Seq[UInt] = (0 until outBits).map(_ => math.abs(r.nextLong()).U)
-//    val random_data: Seq[UInt] = (0 until outBits).map(i => (1L << i).U)
+    // this is the identity hash - usefull for debugging
+//    val random_data: Seq[UInt] = (0 until outBits).map(i => (1L << i).U).reverse
+//    printStackTrace
+    println("Hash Matrix:")
+    random_data.foreach(u =>
+      println(u.litValue().toLong.toBinaryString)
+    )
 
     def fun(u: UInt): UInt = {
       val m = Module(new Hash_(inBits, outBits, random_data))

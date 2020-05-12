@@ -389,13 +389,14 @@ case class IbdaParams(
 //    log2Ceil(icBlockBytes)+ //pc_lob 6
 //    LONGEST_IMM_SZ //imm_packed 20
 //  )
-  val hash = Hash(inBits, hashBits)
+  lazy val hash = Hash(inBits, hashBits)
   def ibda_get_tag(uop: MicroOp): UInt = {
     val tag = Wire(UInt(ibda_tag_sz.W))
     // IBDA_TAG_FULL_PC is handled in core
     if (ibdaTagType == IBDA_TAG_UOPC_LOB) tag := Cat(uop.uopc, uop.pc_lob)
     else if (ibdaTagType == IBDA_TAG_INST_LOB) tag := Cat(uop.inst, uop.pc_lob)
     else if (ibdaTagType == IBDA_TAG_DEBUG_PC) tag := uop.debug_pc
+    else if (ibdaTagType == IBDA_TAG_DEBUG) tag := uop.debug_pc
     else if (ibdaTagType == IBDA_TAG_HASH) tag := hash(
       Cat(
         uop.uopc,
@@ -427,6 +428,7 @@ case class IbdaParams(
     ibdaTagType match {
       case IBDA_TAG_FULL_PC => 40
       case IBDA_TAG_DEBUG_PC => 40
+      case IBDA_TAG_DEBUG => 40
       case IBDA_TAG_UOPC_LOB => UOPC_SZ + 6 //uopc + pc_lob
       case IBDA_TAG_INST_LOB => 32 + 6 //inst + pc_lob
       case IBDA_TAG_HASH => hashBits //inst + pc_lob

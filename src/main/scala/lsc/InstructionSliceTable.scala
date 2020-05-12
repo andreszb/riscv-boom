@@ -98,6 +98,8 @@ class InstructionSliceTableSyncMem(entries: Int=128, ways: Int=2, probabilistic:
       index := i(indexBits-1,0)
     }else if (ibdaParams.ibdaTagType == IBDA_TAG_HASH_PC) {
       index := i(indexBits-1,0)
+    }else if (ibdaParams.ibdaTagType == IBDA_TAG_DEBUG) {
+      index := i(indexBits-1,0)
     }
     index
   }

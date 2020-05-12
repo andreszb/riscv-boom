@@ -420,4 +420,5 @@ trait LoadSliceCoreConstants
   val IBDA_TAG_HASH = 3
   val IBDA_TAG_DEBUG_PC = 4
   val IBDA_TAG_HASH_PC = 5
+  val IBDA_TAG_DEBUG = 6
 }
