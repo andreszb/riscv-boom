@@ -349,6 +349,7 @@ case class CasParams(
 case class InoParams(
   queueMode: Boolean = false,
   stallOnUse: Boolean = true,
+  queueSize: Int = 8
 )
 
 // Class for DnB Parameters
