@@ -47,6 +47,8 @@ class InoQueueDispatcher(implicit p: Parameters) extends Dispatcher {
 
   val num_heads = coreWidth
 
+  val load_spec_dst = RegNext(io.spec_ld_wakeup.get.bits)
+  val load_spec_valid = RegNext(io.spec_ld_wakeup.get.valid) && !io.ld_miss.get
   for (i <- 0 until num_heads) {
 
     io.busy_req_uops.get(i) := heads(i)
@@ -58,6 +60,9 @@ class InoQueueDispatcher(implicit p: Parameters) extends Dispatcher {
 
     when(heads(i).lrs1_rtype === RT_FIX) {
       rs1_busy := io.busy_resps.get(i).prs1_busy
+      when(load_spec_valid && heads(i).prs1 === load_spec_dst){
+        rs1_busy := false.B
+      }
     }.elsewhen(heads(i).lrs1_rtype === RT_FLT) {
       rs1_busy := io.fp_busy_resps.get(i).prs1_busy
     }.otherwise {
@@ -66,6 +71,9 @@ class InoQueueDispatcher(implicit p: Parameters) extends Dispatcher {
 
     when(heads(i).lrs2_rtype === RT_FIX) {
       rs2_busy := io.busy_resps.get(i).prs2_busy
+      when(load_spec_valid && heads(i).prs2 === load_spec_dst){
+        rs2_busy := false.B
+      }
     }.elsewhen(heads(i).lrs2_rtype === RT_FLT) {
       rs2_busy := io.fp_busy_resps.get(i).prs2_busy
     }.otherwise {

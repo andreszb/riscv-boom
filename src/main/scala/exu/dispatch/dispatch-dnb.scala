@@ -159,6 +159,8 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
   //  A little more complicated as we need to pass along the updated ready info
   //  Connect uop to both FP and INT busy table. Pick the resp based on the lrs-types
 
+  val load_spec_dst = RegNext(io.spec_ld_wakeup.get.bits)
+  val load_spec_valid = RegNext(io.spec_ld_wakeup.get.valid) && !io.ld_miss.get
   for (i <- 0 until dnbParams.dlqDispatches) {
     io.busy_req_uops.get(i) := dlq.io.heads(i).bits
     io.fp_busy_req_uops.get(i) := dlq.io.heads(i).bits
@@ -169,6 +171,9 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
       io.dlq_head.get(i).bits.prs1_busy := io.fp_busy_resps.get(i).prs1_busy
     }.elsewhen(io.dlq_head.get(i).bits.lrs1_rtype === RT_FIX) {
       io.dlq_head.get(i).bits.prs1_busy := io.busy_resps.get(i).prs1_busy
+      when(load_spec_valid && io.dlq_head.get(i).bits.prs1 === load_spec_dst){
+        io.dlq_head.get(i).bits.prs1_busy  := false.B
+      }
     }.otherwise{
       io.dlq_head.get(i).bits.prs1_busy := false.B
     }
@@ -177,6 +182,9 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
       io.dlq_head.get(i).bits.prs2_busy := io.fp_busy_resps.get(i).prs2_busy
     }.elsewhen(io.dlq_head.get(i).bits.lrs2_rtype === RT_FIX) {
       io.dlq_head.get(i).bits.prs2_busy := io.busy_resps.get(i).prs2_busy
+      when(load_spec_valid && io.dlq_head.get(i).bits.prs2 === load_spec_dst){
+        io.dlq_head.get(i).bits.prs2_busy := false.B
+      }
     }.otherwise{
       io.dlq_head.get(i).bits.prs2_busy := false.B
     }

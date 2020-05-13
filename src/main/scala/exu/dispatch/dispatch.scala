@@ -53,6 +53,8 @@ class DispatchIO(implicit p: Parameters) extends BoomBundle
   val crq_head = if(boomParams.dnbMode) Some(Vec(boomParams.dnbParams.get.crqDispatches, DecoupledIO(new MicroOp))) else None
 
   val tsc_reg = Input(UInt(width=xLen.W))
+  val spec_ld_wakeup  = if(boomParams.loadSliceMode || boomParams.dnbMode || boomParams.casMode || boomParams.inoQueueMode) Some(Flipped(Valid(UInt(width=maxPregSz.W)))) else None
+  val ld_miss  = if(boomParams.loadSliceMode || boomParams.dnbMode || boomParams.casMode || boomParams.inoQueueMode) Some(Input(Bool())) else None
 
 }
 

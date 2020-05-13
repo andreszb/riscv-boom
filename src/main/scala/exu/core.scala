@@ -943,6 +943,8 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   issue_units map { iu =>
      iu.io.spec_ld_wakeup := io.lsu.spec_ld_wakeup
   }
+  dispatcher.io.spec_ld_wakeup.map(_ := io.lsu.spec_ld_wakeup)
+  dispatcher.io.ld_miss.map(_ := io.lsu.ld_miss)
 
   for ((renport, intport) <- rename_stage.io.wakeups zip int_ren_wakeups) {
     renport <> intport

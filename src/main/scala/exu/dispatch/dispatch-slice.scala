@@ -103,6 +103,8 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher {
 
   }
 
+  val load_spec_dst = RegNext(io.spec_ld_wakeup.get.bits)
+  val load_spec_valid = RegNext(io.spec_ld_wakeup.get.valid) && !io.ld_miss.get
   // annotate heads with busy information
   for ((uop, idx) <- (a_heads ++ b_heads).zipWithIndex) {
     io.busy_req_uops.get(idx) := uop
@@ -125,6 +127,13 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher {
         uop.prs2_busy := flt_busy_resp.prs2_busy
       }
       uop.prs3_busy := uop.frs3_en && flt_busy_resp.prs3_busy
+    }
+    // load spec
+    when(uop.lrs1_rtype === RT_FIX && load_spec_valid && uop.prs1 === load_spec_dst){
+      uop.prs1_busy := false.B
+    }
+    when(uop.lrs2_rtype === RT_FIX && load_spec_valid && uop.prs2 === load_spec_dst){
+      uop.prs2_busy := false.B
     }
   }
 
