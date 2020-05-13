@@ -226,6 +226,28 @@ abstract class IssueUnit(
     }
   }
 
+  if(boomParams.inoMode && boomParams.inoParams.exists(_.stallOnUse)){
+    val valid = RegInit(false.B)
+    val prev_seq = RegInit(0.U(xLen.W))
+    val max_seq = Wire(Vec(issueWidth+1, UInt(xLen.W)))
+    max_seq(0) := prev_seq
+    for(i <- 0 until issueWidth){
+      val seq = io.iss_uops(i).debug_events.fetch_seq
+      max_seq(i+1) := max_seq(i)
+      when(io.iss_valids(i)){
+        valid := true.B
+        assert(!valid || seq > prev_seq, "Ino didn't issue in order for stall on use!")
+        when(max_seq(i) < seq){
+          max_seq(i+1) := seq
+        }
+      }
+    }
+    // don't advance on load miss, as the execution could be
+    when(!io.ld_miss){
+      prev_seq := max_seq(issueWidth)
+    }
+  }
+
 
   def getType: String =
     if (iqType == IQT_INT.litValue) "int"
