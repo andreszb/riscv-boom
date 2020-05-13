@@ -11,14 +11,14 @@ import chisel3.internal.naming.chiselName
 class CasDispatcher(implicit p: Parameters) extends Dispatcher {
   val casParams = boomParams.casParams.get
 
-  val inq = Module(new SramDispatchQueueCompactingShifting( DispatchQueueParams(
+  val inq = Module(new NaiveDispatchQueueCompactingShifting( DispatchQueueParams(
     numEntries = casParams.numInqEntries,
     qName="INQ",
     deqWidth=casParams.inqDispatches,
     enqWidth= casParams.slidingOffset,
     stallOnUse = true)))
 
-  val sq = Module(new SramDispatchQueueCompactingShifting( DispatchQueueParams(
+  val sq = Module(new NaiveDispatchQueueCompactingShifting( DispatchQueueParams(
     numEntries = casParams.numSqEntries,
     qName="SQ",
     deqWidth=casParams.windowSize,

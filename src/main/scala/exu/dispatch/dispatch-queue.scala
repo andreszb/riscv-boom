@@ -39,7 +39,7 @@ abstract class DispatchQueue( val numEntries: Int = 8,
                             )(implicit p: Parameters) extends BoomModule
 {
   val io = IO(new DispatchQueueIO(deqWidth, enqWidth))
-  val qAddrSz: Int = log2Ceil(numEntries)
+  val qAddrSz: Int = if(numEntries==1) 1 else log2Ceil(numEntries)
   val fifoWidth = if (enqWidth>deqWidth) enqWidth else deqWidth
   val qWidthSz: Int = if (fifoWidth == 1) {
     1
@@ -254,6 +254,107 @@ class UopSram(numEntries: Int, numWrites: Int, numReads: Int)(implicit p: Parame
     }
 }
 
+
+class NaiveDispatchQueueCompactingShifting(params: DispatchQueueParams,
+                                         )(implicit p: Parameters) extends DispatchQueue(params.numEntries, params.deqWidth, params.enqWidth, params.qName, params.stallOnUse) {
+  val reg_uops = RegInit(VecInit(Seq.fill(numEntries)(NullMicroOp())))
+  val reg_valids = RegInit(VecInit(Seq.fill(numEntries)(false.B)))
+  val enq_uops = io.enq_uops.map(_.bits)
+  // use same logic as issue unit
+  val enq_valids = io.enq_uops.map(b =>
+    b.valid &&
+    !b.bits.exception &&
+    !b.bits.is_fence &&
+    !b.bits.is_fencei
+  )
+  // current uops
+  val uops = reg_uops ++ enq_uops
+  val valids = reg_valids ++ enq_valids
+
+  // modified uops
+  val mod_uops = WireInit(VecInit(uops))
+  val mod_valids = WireInit(VecInit(valids))
+  // after deq
+  val next_valids = WireInit(mod_valids)
+
+  // branch update
+  when(io.brinfo.valid) {
+    for((uop, i) <- uops.zipWithIndex){
+      val br_mask = uop.br_mask
+      val entry_match = valids(i) && maskMatch(io.brinfo.mask, br_mask)
+
+      when (entry_match && io.brinfo.mispredict) { // Mispredict
+        mod_valids(i) := false.B
+      }.elsewhen(entry_match && !io.brinfo.mispredict) { // Resolved
+        mod_uops(i).br_mask := (br_mask & ~io.brinfo.mask)
+      }
+    }
+  }
+
+  // flush update
+  when(io.flush){
+    mod_valids.foreach(_ := false.B)
+  }
+
+  var prev_fire = WireInit(true.B)
+  for(i <- 0 until deqWidth){
+    io.heads(i).bits := mod_uops(i)
+    if(stallOnUse){
+      io.heads(i).valid := mod_valids(i) && prev_fire
+      prev_fire = io.heads(i).fire()
+    } else{
+      io.heads(i).valid := mod_valids(i)
+    }
+    when(io.heads(i).fire()){
+      next_valids(i) := false.B
+    }
+  }
+
+  // update uop reg
+  // has this uop been placed?
+  var consumed = Array.fill(uops.length)(false.B)
+  for(i <- 0 until numEntries){
+    // not valid if nothing is filled in
+    reg_valids(i) := false.B
+    // has this slot been filled?
+    var entry_filled = false.B
+    // this slot or later
+    for(j <- i until uops.length){
+      val fill = !consumed(j) && next_valids(j) && !entry_filled
+      when(fill){
+        reg_uops(i) := mod_uops(j)
+        reg_valids(i) := true.B
+      }
+      consumed(j) = consumed(j) || fill
+      entry_filled = fill || entry_filled
+    }
+  }
+
+  val consumed_debug = WireInit(VecInit(consumed))
+  dontTouch(consumed_debug)
+
+  // can not use consumed because otherwise a combinational loop is created
+  for (i <- 0 until enqWidth) {
+    // set later enqs high if earlier ones are not used
+    val free_slots = (next_valids.take(numEntries)++enq_valids.take(i)).map(!_)
+    val num_free_slots = PopCount(free_slots)
+    io.enq_uops(i).ready := num_free_slots > i.U
+    // don't use fire because we use the other valid
+    assert(!((io.enq_uops(i).ready && enq_valids(i))^consumed_debug(numEntries+i)), f"enq($i).fire() <=> consumed! ")
+  }
+
+  if (O3PIPEVIEW_PRINTF) {
+    when(io.tsc_reg>=O3_START_CYCLE.U) {
+      for (i <- 0 until enqWidth) {
+        when(io.enq_uops(i).valid) {
+          printf("%d; O3PipeView:" + qName + ": %d\n",
+            io.enq_uops(i).bits.debug_events.fetch_seq,
+            io.tsc_reg)
+        }
+      }
+    }
+  }
+}
 class SramDispatchQueueCompactingShifting(params: DispatchQueueParams,
                                          )(implicit p: Parameters) extends DispatchQueue(params.numEntries, params.deqWidth, params.enqWidth, params.qName, params.stallOnUse)
 {

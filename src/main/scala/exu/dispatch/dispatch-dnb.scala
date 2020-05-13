@@ -23,14 +23,14 @@ import chisel3.internal.naming.chiselName
 class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
   // FIFOs
   val dnbParams = boomParams.dnbParams.get
-  val dlq = Module(new SramDispatchQueueCompactingShifting( DispatchQueueParams(
+  val dlq = Module(new NaiveDispatchQueueCompactingShifting( DispatchQueueParams(
     numEntries = dnbParams.numDlqEntries,
     qName="DLQ",
     deqWidth=dnbParams.dlqDispatches,
     enqWidth= coreWidth)))
 
 
-  val crq = Module(new SramDispatchQueueCompactingShifting( DispatchQueueParams(
+  val crq = Module(new NaiveDispatchQueueCompactingShifting( DispatchQueueParams(
     numEntries = dnbParams.numCrqEntries,
     qName="CRQ",
     deqWidth=dnbParams.crqDispatches,

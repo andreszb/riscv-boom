@@ -20,8 +20,8 @@ import freechips.rocketchip.config.Parameters
 @chiselName
 class InoQueueDispatcher(implicit p: Parameters) extends Dispatcher {
 
-  val inq = Module(new SramDispatchQueueCompactingShifting( DispatchQueueParams(
-    numEntries = 8,
+  val inq = Module(new NaiveDispatchQueueCompactingShifting( DispatchQueueParams(
+    numEntries = boomParams.inoParams.get.queueSize,
     qName="INQ",
     deqWidth=coreWidth,
     enqWidth=coreWidth,
