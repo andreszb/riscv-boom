@@ -318,8 +318,12 @@ class NaiveDispatchQueueCompactingShifting(params: DispatchQueueParams,
     reg_valids(i) := false.B
     // has this slot been filled?
     var entry_filled = false.B
-    // this slot or later
-    for(j <- i until uops.length){
+    // this slot until deqWidth slots later
+    val potential_slots_indices = i until scala.math.min(numEntries, i+deqWidth+1)
+    // all enqs
+    val enq_indices = numEntries until numEntries + enqWidth
+    require(uops.length == (numEntries + enqWidth))
+    for(j <- potential_slots_indices++enq_indices){
       val fill = !consumed(j) && next_valids(j) && !entry_filled
       when(fill){
         reg_uops(i) := mod_uops(j)
@@ -330,8 +334,16 @@ class NaiveDispatchQueueCompactingShifting(params: DispatchQueueParams,
     }
   }
 
+  for(i <- 1 until numEntries){
+    assert(!(valids(i) && !valids(i-1)), "valids may not have holes!")
+  }
+
   val consumed_debug = WireInit(VecInit(consumed))
   dontTouch(consumed_debug)
+
+  for(i <- 1 until numEntries){
+    assert(!(consumed_debug(i)^next_valids(i)), "consumed <=> next_valid for slots")
+  }
 
   // can not use consumed because otherwise a combinational loop is created
   for (i <- 0 until enqWidth) {
@@ -355,6 +367,8 @@ class NaiveDispatchQueueCompactingShifting(params: DispatchQueueParams,
     }
   }
 }
+
+
 class SramDispatchQueueCompactingShifting(params: DispatchQueueParams,
                                          )(implicit p: Parameters) extends DispatchQueue(params.numEntries, params.deqWidth, params.enqWidth, params.qName, params.stallOnUse)
 {
