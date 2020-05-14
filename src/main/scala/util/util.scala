@@ -230,7 +230,9 @@ object WrapInc
 {
   // "n" is the number of increments, so we wrap at n-1.
   def apply(value: UInt, n: Int): UInt = {
-    if (isPow2(n)) {
+    if(n==1){
+      0.U
+    } else if (isPow2(n)) {
       (value + 1.U)(log2Ceil(n)-1,0)
     } else {
       val wrap = (value === (n-1).U)
@@ -247,7 +249,9 @@ object WrapDec
 {
   // "n" is the number of increments, so we wrap at n-1.
   def apply(value: UInt, n: Int): UInt = {
-    if (isPow2(n)) {
+    if(n==1){
+      0.U
+    } else if (isPow2(n)) {
       (value - 1.U)(log2Ceil(n)-1,0)
     } else {
       val wrap = (value === 0.U)

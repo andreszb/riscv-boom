@@ -53,22 +53,20 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher {
   val a_heads = WireInit(VecInit(a_queue.io.heads.map(_.bits)))
   val b_heads = WireInit(VecInit(b_queue.io.heads.map(_.bits)))
 
-  //TODO: make this more fine-grained
-  val a_ready = a_queue.io.enq_uops.map(_.ready).reduce(_ && _)
-  val b_ready = b_queue.io.enq_uops.map(_.ready).reduce(_ && _)
-
-
-  val queues_ready = a_ready && b_ready
+  var previous_ready = true.B
   for (w <- 0 until coreWidth) {
-    // TODO: check if it is possible to use only some of the ren_uops
-    // only accept uops from rename if both queues are ready
-    io.ren_uops(w).ready := queues_ready
     val uop = io.ren_uops(w).bits
     // check if b queue can actually process insn
     // TODO: Analyse: Is it necessary to add a guard protecting agains branches on B-Q? (In case of aliasing in IST)
     val can_use_b_alu = uop.fu_code_is(FUConstants.FU_ALU | FUConstants.FU_MUL | FUConstants.FU_DIV | (FUConstants.FU_BRU)) && !uop.is_br_or_jmp
     val use_b_queue = (uop.uopc === uopLD) || uop.uopc === uopSTA || (uop.is_lsc_b && can_use_b_alu)
     val use_a_queue = (uop.uopc =/= uopLD) && (!uop.is_lsc_b || !can_use_b_alu)
+
+    // only accept uops from rename if both queues are ready and prev insn was also ready to preserve in order
+    io.ren_uops(w).ready := previous_ready &&
+      (b_queue.io.enq_uops(w).ready) &&
+      (a_queue.io.enq_uops(w).ready)
+    previous_ready = io.ren_uops(w).ready
 
     // enqueue logic
     a_queue.io.enq_uops(w).valid := io.ren_uops(w).fire() && use_a_queue
