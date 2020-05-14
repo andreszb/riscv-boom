@@ -56,8 +56,11 @@ class IssueUnitQueuesUnified(
   }
 
   // FIFO heads "request" issue when they are valid and not-busy
-  val requests = io.q1_heads.get.map(h => h.valid && uop_ready(h.bits)) ++
-                 io.q2_heads.get.map(h => h.valid && uop_ready(h.bits))
+  val requests = (io.q1_heads.get ++ io.q2_heads.get).map(h => (h.valid &&
+    !h.bits.exception &&
+    !h.bits.is_fence &&
+    !h.bits.is_fencei
+    ) && uop_ready(h.bits))
 
   // Issue Unit Grants are connected to the ready signals => signalling dequeue
   val grants =  io.q1_heads.get.map(h => h.ready) ++

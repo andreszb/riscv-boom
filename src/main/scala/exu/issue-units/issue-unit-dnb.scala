@@ -98,14 +98,13 @@ class IssueUnitDnbUnified(
   }
 
   //-------------------------------------------------------------
-
+  val dis_will_be_valid = (0 until dispatchWidth).map(i => io.dis_uops(i).valid &&
+    !dis_uops(i).exception &&
+    !dis_uops(i).is_fence &&
+    !dis_uops(i).is_fencei)
   // which entries' uops will still be next cycle? (not being issued and vacated)
   val will_be_valid = (0 until numIssueSlots).map(i => issue_slots(i).will_be_valid) ++
-    dlq_will_be_valid ++
-    (0 until dispatchWidth).map(i => io.dis_uops(i).valid &&
-      !dis_uops(i).exception &&
-      !dis_uops(i).is_fence &&
-      !dis_uops(i).is_fencei)
+    dlq_will_be_valid ++ dis_will_be_valid
 
   val debug_shift_src = WireInit(VecInit(Seq.fill(numIssueSlots)(0.U(10.W))))
   dontTouch(debug_shift_src)
@@ -146,7 +145,7 @@ class IssueUnitDnbUnified(
     dlq_to_slot(i) := queue_added(i) && dlq_will_be_valid(i)
   }
   for (w <- 0 until dispatchWidth) {
-    assert(!(!queue_added(w+dnbParams.dlqDispatches) && io.dis_uops(w).fire()), f"IQ: dispatch $w had ready logic error")
+    assert(!(!queue_added(w+dnbParams.dlqDispatches) && (io.dis_uops(w).ready && dis_will_be_valid(w))), f"IQ: dispatch $w had ready logic error")
     io.dis_uops(w).ready := RegNext(num_available > (w+dnbParams.dlqDispatches).U)
   }
   //-------------------------------------------------------------
