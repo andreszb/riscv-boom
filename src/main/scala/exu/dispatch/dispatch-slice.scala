@@ -29,13 +29,13 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher {
   require(!boomParams.ibdaParams.get.branchIbda)
 
   // slice queues
-  val a_queue = Module(new NaiveDispatchQueueCompactingShifting( DispatchQueueParams(
+  val a_queue = Module(new LayeredDispatchQueueCompactingShifting( DispatchQueueParams(
     numEntries = boomParams.loadSliceCore.get.numAqEntries,
     qName = "a_queue",
     deqWidth = boomParams.loadSliceCore.get.aDispatches,
     enqWidth = coreWidth))
   )
-  val b_queue = Module(new NaiveDispatchQueueCompactingShifting( DispatchQueueParams(
+  val b_queue = Module(new LayeredDispatchQueueCompactingShifting( DispatchQueueParams(
     numEntries = boomParams.loadSliceCore.get.numBqEntries,
     qName = "b_queue",
     deqWidth = boomParams.loadSliceCore.get.bDispatches,
