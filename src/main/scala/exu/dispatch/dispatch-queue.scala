@@ -122,13 +122,12 @@ class UopSram(numEntries: Int, numWrites: Int, numReads: Int)(implicit p: Parame
     "uop_sram_is_rvc",
     "uop_sram_iq_type",
     "uop_sram_fu_code",
-    "uop_sram_iw_p1_poisoned",
-    "uop_sram_iw_p2_poisoned",
     "uop_sram_is_br_or_jmp",
     "uop_sram_is_jump",
     "uop_sram_is_jal",
     "uop_sram_is_ret",
     "uop_sram_is_call",
+    "uop_sram_br_mask",
     "uop_sram_br_tag",
     "uop_sram_br_prediction_btb_blame",
     "uop_sram_br_prediction_btb_hit",
@@ -147,10 +146,13 @@ class UopSram(numEntries: Int, numWrites: Int, numReads: Int)(implicit p: Parame
     "uop_sram_prs1",
     "uop_sram_prs2",
     "uop_sram_prs3",
+    "uop_sram_exception",
     "uop_sram_bypassable",
     "uop_sram_mem_cmd",
     "uop_sram_mem_size",
     "uop_sram_mem_signed",
+    "uop_sram_is_fence",
+    "uop_sram_is_fencei",
     "uop_sram_is_amo",
     "uop_sram_uses_ldq",
     "uop_sram_uses_stq",
@@ -160,41 +162,33 @@ class UopSram(numEntries: Int, numWrites: Int, numReads: Int)(implicit p: Parame
     "uop_sram_lrs2_rtype",
     "uop_sram_frs3_en",
     "uop_sram_fp_val",
+//    "uop_sram_perf_dnb_dlq",
+//    "uop_sram_perf_dnb_crq",
+//    "uop_sram_perf_dnb_iq",
+    //optional
+    "uop_sram_debug_events_fetch_seq",
   )
 
-//  val mem = SyncReadMem(numEntries, MixedVec(whitelist.map(n => default_hm.get(n).get)))
-//  for(wp <- io.writes){
-//    val write_hm = bundle_to_hashmap(wp.bits.data)
-//    val mv = WireInit(MixedVecInit(whitelist.map(n => write_hm.get(n).get)))
-//    when(wp.valid){
-//      mem(wp.bits.addr) := mv
-//    }
-//  }
-//  val bypasses = RegNext(io.writes)
-//  for((req, resp) <- io.read_req zip io.read_resp){
-//    val read_hm = bundle_to_hashmap(resp.bits.data)
-//    resp.bits.data := DontCare
-//    val mv = mem.read(req.bits.addr, req.valid)
-//    for ((n, d) <- (whitelist zip mv)) {
-//      read_hm.get(n).get := d
-//    }
-//    resp.valid := RegNext(req.valid)
-//    val bypass_addr = RegNext(req.bits.addr)
-//    for(bp <- bypasses){
-//      when(bp.valid && bypass_addr === bp.bits.addr){
-//        resp.bits.data := bp.bits.data
-//      }
-//    }
-//  }
-  val mem = SyncReadMem(numEntries, new MicroOp())
+//  print(default_hm.keySet.reduce(_ + ",\n"+_))
+//  println()
+//  println()
+//  print(whitelist.toSet.diff(default_hm.keySet).reduce(_ + ",\n"+_))
+  val uop_sram_compact = SyncReadMem(numEntries, MixedVec(whitelist.map(n => default_hm.get(n).get)))
   for(wp <- io.writes){
+    val write_hm = bundle_to_hashmap(wp.bits.data)
+    val mv = WireInit(MixedVecInit(whitelist.map(n => write_hm(n))))
     when(wp.valid){
-      mem(wp.bits.addr) := wp.bits.data
+      uop_sram_compact(wp.bits.addr) := mv
     }
   }
   val bypasses = RegNext(io.writes)
   for((req, resp) <- io.read_req zip io.read_resp){
-    resp.bits.data := mem.read(req.bits.addr, req.valid)
+    val read_hm = bundle_to_hashmap(resp.bits.data)
+    resp.bits.data := DontCare
+    val mv = uop_sram_compact.read(req.bits.addr, req.valid)
+    for ((n, d) <- (whitelist zip mv)) {
+      read_hm(n) := d
+    }
     resp.valid := RegNext(req.valid)
     val bypass_addr = RegNext(req.bits.addr)
     for(bp <- bypasses){
@@ -203,6 +197,24 @@ class UopSram(numEntries: Int, numWrites: Int, numReads: Int)(implicit p: Parame
       }
     }
   }
+
+//  val uop_sram = SyncReadMem(numEntries, new MicroOp())
+//  for(wp <- io.writes){
+//    when(wp.valid){
+//      uop_sram(wp.bits.addr) := wp.bits.data
+//    }
+//  }
+//  val bypasses = RegNext(io.writes)
+//  for((req, resp) <- io.read_req zip io.read_resp){
+//    resp.bits.data := uop_sram.read(req.bits.addr, req.valid)
+//    resp.valid := RegNext(req.valid)
+//    val bypass_addr = RegNext(req.bits.addr)
+//    for(bp <- bypasses){
+//      when(bp.valid && bypass_addr === bp.bits.addr){
+//        resp.bits.data := bp.bits.data
+//      }
+//    }
+//  }
 
 
   //  def generateMems(d: Data, name: String = "uop_sram", memDict: mutable.HashMap[String, SyncReadMem[Data]] = null): mutable.HashMap[String, SyncReadMem[Data]] = {
