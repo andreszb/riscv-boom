@@ -9,6 +9,7 @@ import chisel3.internal.naming.chiselName
 import freechips.rocketchip.util.DescribedSRAM
 
 import scala.collection.mutable
+import scala.collection.mutable.ListBuffer
 
 case class DispatchQueueParams(
                                 val numEntries: Int,
@@ -626,12 +627,16 @@ class InternalSramDispatchQueue(params: DispatchQueueParams,
   // go through from the back - relies on there being one continuous section of valids
   var (previous_r, previous_c) = (0,0)
   var transitions_mod_valids: List[Bool] = Nil
+  // use Mux1H to prevent expensive long priority mux
+  val mod_tail_mux_selector = new ListBuffer[Bool];
+  val mod_tail_mux_row = new ListBuffer[UInt];
+  val mod_tail_mux_col = new ListBuffer[UInt];
   for (r <- (0 until numEntries).reverse) {
     for (c <- (0 until fifoWidth).reverse) {
-      when(mod_valids(r)(c) && !mod_valids(previous_r)(previous_c)){
-        mod_tail_row := previous_r.U
-        mod_tail_col := previous_c.U
-      }
+      mod_tail_mux_selector += mod_valids(r)(c) && !mod_valids(previous_r)(previous_c)
+      mod_tail_mux_row += previous_r.U
+      mod_tail_mux_col += previous_c.U
+
       transitions_mod_valids = (mod_valids(r)(c) && !mod_valids(previous_r)(previous_c)) :: transitions_mod_valids
       previous_r = r
       previous_c = c
@@ -642,6 +647,9 @@ class InternalSramDispatchQueue(params: DispatchQueueParams,
   when(!mod_valids.map(r => r.reduce(_||_)).reduce(_||_)){
     mod_tail_row := head_row
     mod_tail_col := head_col
+  }.otherwise{
+    mod_tail_row := Mux1H(mod_tail_mux_selector, mod_tail_mux_row)
+    mod_tail_col := Mux1H(mod_tail_mux_selector, mod_tail_mux_col)
   }
 
   val next_valids = WireInit(mod_valids)
