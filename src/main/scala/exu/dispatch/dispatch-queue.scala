@@ -57,16 +57,35 @@ abstract class DispatchQueue( val numEntries: Int = 8,
     }
     out
   }
+
+  if(stallOnUse){
+    val valid = RegInit(false.B)
+    val prev_seq = RegInit(0.U(xLen.W))
+    val max_seq = Wire(Vec(deqWidth+1, UInt(xLen.W)))
+    max_seq(0) := prev_seq
+    for(i <- 0 until deqWidth){
+      val seq = io.heads(i).bits.debug_events.fetch_seq
+      max_seq(i+1) := max_seq(i)
+      when(io.heads(i).valid){
+        valid := true.B
+        assert(!valid || seq > prev_seq, f"Stall on use queue $qName didn't issue in order!")
+        when(max_seq(i) < seq){
+          max_seq(i+1) := seq
+        }
+      }
+    }
+    prev_seq := max_seq(deqWidth)
+  }
 }
 
 class UopSram(numEntries: Int, numWrites: Int, numReads: Int)(implicit p: Parameters) extends BoomModule{
   val io = IO(new Bundle{
     val writes = Input(Vec(numWrites, Valid(new Bundle{
-      val addr = UInt()
+      val addr = UInt(log2Ceil(numEntries).W)
       val data = new MicroOp()
     })))
     val read_req = Input(Vec(numReads, Valid(new Bundle{
-      val addr = UInt()
+      val addr = UInt(log2Ceil(numEntries).W)
     })))
     val read_resp = Output(Vec(numReads, Valid(new Bundle{
       val data = new MicroOp()
@@ -368,6 +387,314 @@ class NaiveDispatchQueueCompactingShifting(params: DispatchQueueParams,
   }
 }
 
+class LayeredDispatchQueueCompactingShifting(params: DispatchQueueParams,
+                                         )(implicit p: Parameters) extends DispatchQueue(params.numEntries, params.deqWidth, params.enqWidth, params.qName, params.stallOnUse) {
+  val internal_queue = Module(new InternalSramDispatchQueue(params.copy(stallOnUse = true)))
+  internal_queue.io.flush := io.flush
+  internal_queue.io.brinfo := io.brinfo
+  // no tsc for internal queue
+  internal_queue.io.tsc_reg := 0.U
+
+  val numHeads = deqWidth
+
+  val reg_head_uops = RegInit(VecInit(Seq.fill(numHeads)(NullMicroOp())))
+  val reg_head_valids = RegInit(VecInit(Seq.fill(numHeads)(false.B)))
+  val enq_uops = io.enq_uops.map(_.bits)
+  // use same logic as issue unit
+  val enq_valids = io.enq_uops.map(b =>
+    b.valid &&
+    !b.bits.exception &&
+    !b.bits.is_fence &&
+    !b.bits.is_fencei
+  )
+
+  val internal_uops = internal_queue.io.heads.map(_.bits)
+  val internal_valids = internal_queue.io.heads.map(_.valid)
+  //TODO: prevent double-processing of internal uops
+
+  // current uops
+  val uops = reg_head_uops ++ internal_uops ++ enq_uops
+  val valids = reg_head_valids ++ internal_valids ++ enq_valids
+
+  // modified uops
+  val mod_uops = WireInit(VecInit(uops))
+  val mod_valids = WireInit(VecInit(valids))
+  // after deq
+  val next_valids = WireInit(mod_valids)
+
+  // branch update
+  when(io.brinfo.valid) {
+    for((uop, i) <- uops.zipWithIndex){
+      val br_mask = uop.br_mask
+      val entry_match = valids(i) && maskMatch(io.brinfo.mask, br_mask)
+
+      when (entry_match && io.brinfo.mispredict) { // Mispredict
+        mod_valids(i) := false.B
+      }.elsewhen(entry_match && !io.brinfo.mispredict) { // Resolved
+        mod_uops(i).br_mask := (br_mask & ~io.brinfo.mask)
+      }
+    }
+  }
+
+  // flush update
+  when(io.flush){
+    mod_valids.foreach(_ := false.B)
+  }
+
+  var prev_fire = WireInit(true.B)
+  for(i <- 0 until deqWidth){
+    io.heads(i).bits := mod_uops(i)
+    if(stallOnUse){
+      io.heads(i).valid := mod_valids(i) && prev_fire
+      prev_fire = io.heads(i).fire()
+    } else{
+      io.heads(i).valid := mod_valids(i)
+    }
+    when(io.heads(i).fire()){
+      next_valids(i) := false.B
+    }
+  }
+
+  for(i <- 1 until numHeads){
+    assert(!(valids(i) && !valids(i-1)), "valids may not have holes!")
+  }
+
+  // update uop reg
+  // has this uop been placed?
+  var consumed = Array.fill(uops.length)(false.B)
+  for(i <- 0 until numHeads){
+    // not valid if nothing is filled in
+    reg_head_valids(i) := false.B
+    // has this slot been filled?
+    var entry_filled = false.B
+    // all starting from current are potential candidates for head
+    val potential_indices = i until numHeads + deqWidth + enqWidth
+    for(j <- potential_indices){
+      val fill = !consumed(j) && next_valids(j) && !entry_filled
+      when(fill){
+        reg_head_uops(i) := mod_uops(j)
+        reg_head_valids(i) := true.B
+      }
+      consumed(j) = consumed(j) || fill
+      entry_filled = fill || entry_filled
+    }
+  }
+
+  // enq to internal
+  for(i <- 0 until enqWidth){
+    internal_queue.io.enq_uops(i).valid := false.B
+    internal_queue.io.enq_uops(i).bits := DontCare
+    // has this slot been filled?
+    var entry_filled = !internal_queue.io.enq_uops(i).ready
+    val enq_indices = numHeads+deqWidth until numHeads+deqWidth + enqWidth
+    for(j <- enq_indices){
+      val fill = !consumed(j) && next_valids(j) && !entry_filled
+      when(fill){
+        internal_queue.io.enq_uops(i).valid := true.B
+        internal_queue.io.enq_uops(i).bits := mod_uops(j)
+      }
+      consumed(j) = consumed(j) || fill
+      entry_filled = fill || entry_filled
+    }
+  }
+
+  val consumed_debug = WireInit(VecInit(consumed))
+  dontTouch(consumed_debug)
+
+  // deq from internal
+  for(i <- 0 until deqWidth) {
+    internal_queue.io.heads(i).ready := consumed_debug(numHeads+i)
+  }
+
+  for(i <- 1 until numHeads){
+    assert(!(consumed_debug(i)^next_valids(i)), "consumed <=> next_valid for slots")
+  }
+
+  // can not use consumed because otherwise a combinational loop is created
+  for (i <- 0 until enqWidth) {
+    // set later enqs high if earlier ones are not used
+    io.enq_uops(i).ready := internal_queue.io.enq_uops(i).ready
+    // don't use fire because we use the other valid
+    assert(!((io.enq_uops(i).ready && enq_valids(i))^consumed_debug(numHeads+deqWidth+i)), f"enq($i).fire() <=> consumed! ")
+  }
+
+  if (O3PIPEVIEW_PRINTF) {
+    when(io.tsc_reg>=O3_START_CYCLE.U) {
+      for (i <- 0 until enqWidth) {
+        when(io.enq_uops(i).valid) {
+          printf("%d; O3PipeView:" + qName + ": %d\n",
+            io.enq_uops(i).bits.debug_events.fetch_seq,
+            io.tsc_reg)
+        }
+      }
+    }
+  }
+}
+
+
+class InternalSramDispatchQueue(params: DispatchQueueParams,
+                                         )(implicit p: Parameters) extends DispatchQueue(params.numEntries, params.deqWidth, params.enqWidth, params.qName, params.stallOnUse)
+{
+  require(stallOnUse, "InternalSramDispatchQueue relies on stall on use!")
+  val sram_fifo = (0 until fifoWidth).map(i => Module(new UopSram(numEntries, 1, 1)))
+
+  // Branch mask and valid bits are still stored in Regs
+  val totalEntires = numEntries*fifoWidth
+
+  val br_masks = Reg(Vec(numEntries, Vec(fifoWidth,UInt(maxBrCount.W) )))
+  val valids = RegInit(VecInit(Seq.fill(numEntries)(VecInit(Seq.fill(fifoWidth)(false.B)))))
+  val head_row = RegInit(0.U(qAddrSz.W))
+  val head_col = RegInit(0.U(qWidthSz.W))
+  val tail_row = RegInit(0.U(qAddrSz.W))
+  val tail_col = RegInit(0.U(qWidthSz.W))
+
+  def forward(row: UInt, col: UInt): (UInt, UInt) = {
+    val row_wrap = row === (fifoWidth-1).U
+    val new_row = Mux(row_wrap, 0.U(qAddrSz.W), row + 1.U)
+    val col_wrap = col === (numEntries-1).U
+    val new_col = Mux(row_wrap, Mux(col_wrap, 0.U(qWidthSz.W), col + 1.U), col)
+    (new_row, new_col)
+  }
+
+  val mod_valids = WireInit(valids)
+  val mod_br_masks = WireInit(br_masks)
+
+  // branch update
+  when(io.brinfo.valid) {
+    for (r <- 0 until numEntries) {
+      for (c <- 0 until fifoWidth) {
+        val br_mask = br_masks(r)(c)
+        val entry_match = valids(r)(c) && maskMatch(io.brinfo.mask, br_mask)
+        when (entry_match && io.brinfo.mispredict) { // Mispredict
+          mod_valids(r)(c) := false.B
+        }.elsewhen(entry_match && !io.brinfo.mispredict) { // Resolved
+          mod_br_masks(r)(c) := (br_mask & ~io.brinfo.mask)
+        }
+      }
+    }
+  }
+  // up here so writes can go directly to br_masks below
+  br_masks := mod_br_masks
+
+  // update tail - branch
+  val mod_tail_row = WireInit(tail_row)
+  val mod_tail_col = WireInit(tail_col)
+  // go through from the back - relies on there being one continuous section of valids
+  var previous_mod_valid = mod_valids(0)(0)
+  var transitions_mod_valids: List[Bool] = Nil
+  for (r <- (0 until numEntries).reverse) {
+    for (c <- (0 until fifoWidth).reverse) {
+      when(mod_valids(r)(c) && !previous_mod_valid){
+        mod_tail_row := r.U
+        mod_tail_col := c.U
+      }
+      previous_mod_valid = mod_valids(r)(c)
+      transitions_mod_valids = (mod_valids(r)(c) && !previous_mod_valid) :: transitions_mod_valids
+    }
+  }
+  assert(PopCount(transitions_mod_valids) <= 1.U, f"holes in mod_valids of $qName!")
+  // noting valid - set to head
+  when(!mod_valids.map(r => r.reduce(_||_)).reduce(_||_)){
+    mod_tail_row := head_row
+    mod_tail_col := head_col
+  }
+
+  val next_valids = WireInit(mod_valids)
+  // update tail - enq
+  val next_tail_row = WireInit(mod_tail_row)
+  val next_tail_col = WireInit(mod_tail_col)
+  var (enq_tail_row, enq_tail_col) = forward(mod_tail_row, mod_tail_col)
+  var previous_valid = true.B
+  val sram_write_valids = Wire(Vec(fifoWidth, Bool()))
+  val sram_write_addrs = Wire(Vec(fifoWidth, UInt()))
+  val sram_write_data = Wire(Vec(fifoWidth, new MicroOp()))
+  (0 until fifoWidth).foreach(w => {
+    sram_write_valids.foreach(_:= false.B)
+    sram_write_addrs := DontCare
+    sram_write_data := DontCare
+    sram_fifo(w).io.writes(0).valid := sram_write_valids(w)
+    sram_fifo(w).io.writes(0).bits.addr := sram_write_addrs(w)
+    sram_fifo(w).io.writes(0).bits.data := sram_write_data(w)
+  })
+  for(i <- 0 until enqWidth){
+    assert(previous_valid || !io.enq_uops(i).valid, f"enq($i) has to happen compacted!")
+    previous_valid = io.enq_uops(i).valid
+    io.enq_uops(i).ready := !mod_valids(enq_tail_row)(enq_tail_col)
+    when(io.enq_uops(i).fire()){
+      // set valid
+      next_valids(enq_tail_row)(enq_tail_col) := true.B
+      // write sram
+      sram_write_valids(enq_tail_col) := true.B
+      sram_write_addrs(enq_tail_col) := enq_tail_row
+      sram_write_data(enq_tail_col) := io.enq_uops(i).bits
+      // set br_mask
+      br_masks(enq_tail_row)(enq_tail_col) := io.enq_uops(i).bits.br_mask
+      // move tail
+      next_tail_row := enq_tail_row
+      next_tail_col := enq_tail_col
+    }
+    val (tmp_enq_tail_row, tmp_enq_tail_col) = forward(enq_tail_row, enq_tail_col)
+    enq_tail_row = tmp_enq_tail_row
+    enq_tail_col = tmp_enq_tail_col
+  }
+
+  // head advancement logic
+  val next_head_row = WireInit(head_row)
+  val next_head_col = WireInit(head_col)
+  // reads for current cycle
+  var (deq_head_row, deq_head_col) = (head_row, head_col)
+  // reads for next cycle
+  var (read_next_head_row, read_next_head_col) = (next_head_row, next_head_col)
+  val sram_read_resp_data = Wire(Vec(fifoWidth, new MicroOp()))
+  val sram_read_req_addr = Wire(Vec(fifoWidth, UInt()))
+  (0 until fifoWidth).foreach(w => {
+    sram_read_req_addr := DontCare
+    sram_fifo(w).io.read_req(0).valid := true.B
+    sram_fifo(w).io.read_req(0).bits.addr := sram_read_req_addr(w)
+    sram_read_resp_data(w) := sram_fifo(w).io.read_resp(0).bits.data
+  })
+  var previous_fire = true.B
+  for(i <- 0 until deqWidth){
+    io.heads(i).valid := mod_valids(deq_head_row)(deq_head_col)
+    // use head_col here because it depends on previous cycle
+    io.heads(i).bits := sram_read_resp_data(deq_head_col)
+    // TODO: use mod_br_masks here?
+    io.heads(i).bits.br_mask := br_masks(deq_head_row)(deq_head_col)
+    // sram read
+    assert(previous_fire || !io.heads(i).fire(), "heads didn't fire in order")
+    previous_fire = previous_fire && io.heads(i).fire()
+    sram_read_req_addr(read_next_head_col) := read_next_head_row
+    when(io.heads(i).fire()){
+      next_valids(deq_head_row)(deq_head_col) := false.B
+      next_head_row := deq_head_row
+      next_head_col := deq_head_col
+    }
+    val (tmp_deq_head_row, tmp_deq_head_col) = forward(deq_head_row, deq_head_col)
+    deq_head_row = tmp_deq_head_row
+    deq_head_col = tmp_deq_head_col
+    val (tmp_read_next_head_row, tmp_read_next_head_col) = forward(read_next_head_row, read_next_head_col)
+    read_next_head_row = tmp_read_next_head_row
+    read_next_head_col = tmp_read_next_head_col
+  }
+
+  val any_valid = valids.map(_.reduce(_||_)).reduce(_||_)
+  assert(valids(head_row)(head_col) || !any_valid, "head doesn't point to correct spot!")
+
+  head_row := next_head_row
+  head_col := next_head_col
+  tail_row := next_tail_row
+  tail_col := next_tail_col
+  valids := next_valids
+
+  when(io.flush){
+    mod_valids.foreach(r=>r.foreach(_ := false.B))
+    valids.foreach(r=>r.foreach(_ := false.B))
+    head_row := head_row
+    head_col := head_col
+    tail_row := head_row
+    tail_col := head_col
+  }
+}
 
 class SramDispatchQueueCompactingShifting(params: DispatchQueueParams,
                                          )(implicit p: Parameters) extends DispatchQueue(params.numEntries, params.deqWidth, params.enqWidth, params.qName, params.stallOnUse)
