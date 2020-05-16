@@ -174,7 +174,7 @@ class UopSram(numEntries: Int, numWrites: Int, numReads: Int)(implicit p: Parame
 //  println()
 //  println()
 //  print(whitelist.toSet.diff(default_hm.keySet).reduce(_ + ",\n"+_))
-  val uop_sram_compact = SyncReadMem(numEntries, MixedVec(whitelist.map(n => default_hm.get(n).get)))
+  val uop_sram_compact = SyncReadMem(numEntries, MixedVec(whitelist.map(n => default_hm(n))))
   for(wp <- io.writes){
     val write_hm = bundle_to_hashmap(wp.bits.data)
     val mv = WireInit(MixedVecInit(whitelist.map(n => write_hm(n))))

@@ -165,7 +165,7 @@ class IssueUnitIno(
     }
     when(candidate_uops(i).iq_type === IQT_MFP) {
       assert(! (grants(i) && !(PopCount(port_reserved) === 2.U) ), "[cas-ino] fsd didnt reserve 2 ports")
-      assert(!( grants(i) && !(PopCount(io.iss_uops.map(_.inst === candidate_uops(i).inst)) === 2.U )), "[cas-ino] fsd went wrong")
+      assert(!( grants(i) && !(PopCount(io.iss_uops.map(_.debug_events.fetch_seq === candidate_uops(i).debug_events.fetch_seq)) === 2.U )), "[cas-ino] fsd went wrong")
     }
   }
 
