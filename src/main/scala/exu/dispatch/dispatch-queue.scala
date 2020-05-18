@@ -7,6 +7,7 @@ import boom.common.{IQT_MFP, MicroOp, O3PIPEVIEW_PRINTF, O3_START_CYCLE, uopLD, 
 import boom.util._
 import chisel3.internal.naming.chiselName
 import freechips.rocketchip.util.DescribedSRAM
+import lsc.{MultiWriteSram, MultiWriteSramBase, MultiWriteSramTester}
 
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
@@ -16,7 +17,8 @@ case class DispatchQueueParams(
                                 val deqWidth: Int,
                                 val enqWidth: Int,
                                 val qName: String,
-                                val stallOnUse: Boolean = false
+                                val stallOnUse: Boolean = false,
+                                val headRegisters: Boolean = true,
                               )
 
 class DispatchQueueIO(
@@ -79,7 +81,7 @@ abstract class DispatchQueue( val numEntries: Int = 8,
   }
 }
 
-class UopSram(numEntries: Int, numWrites: Int, numReads: Int)(implicit p: Parameters) extends BoomModule{
+class UopSram(numEntries: Int, numWrites: Int, numReads: Int, registerBased: Boolean = false)(implicit p: Parameters) extends BoomModule{
   val io = IO(new Bundle{
     val writes = Input(Vec(numWrites, Valid(new Bundle{
       val addr = UInt(log2Ceil(numEntries).W)
@@ -128,7 +130,8 @@ class UopSram(numEntries: Int, numWrites: Int, numReads: Int)(implicit p: Parame
     "uop_sram_is_jal",
     "uop_sram_is_ret",
     "uop_sram_is_call",
-    "uop_sram_br_mask",
+    // not needed as it is stored seperately
+//    "uop_sram_br_mask",
     "uop_sram_br_tag",
     "uop_sram_br_prediction_btb_blame",
     "uop_sram_br_prediction_btb_hit",
@@ -169,32 +172,83 @@ class UopSram(numEntries: Int, numWrites: Int, numReads: Int)(implicit p: Parame
     //optional
     "uop_sram_debug_events_fetch_seq",
   )
+  val mv_type = MixedVec(whitelist.map(n => default_hm(n)))
 
-//  print(default_hm.keySet.reduce(_ + ",\n"+_))
-//  println()
-//  println()
-//  print(whitelist.toSet.diff(default_hm.keySet).reduce(_ + ",\n"+_))
-  val uop_sram_compact = SyncReadMem(numEntries, MixedVec(whitelist.map(n => default_hm(n))))
-  for(wp <- io.writes){
-    val write_hm = bundle_to_hashmap(wp.bits.data)
-    val mv = WireInit(MixedVecInit(whitelist.map(n => write_hm(n))))
-    when(wp.valid){
-      uop_sram_compact(wp.bits.addr) := mv
+  if(registerBased){
+    val reg = Reg(Vec(numEntries, new MicroOp()))
+    for(wp <- io.writes){
+      when(wp.valid){
+        reg(wp.bits.addr) := wp.bits.data
+      }
     }
-  }
-  val bypasses = RegNext(io.writes)
-  for((req, resp) <- io.read_req zip io.read_resp){
-    val read_hm = bundle_to_hashmap(resp.bits.data)
-    resp.bits.data := DontCare
-    val mv = uop_sram_compact.read(req.bits.addr, req.valid)
-    for ((n, d) <- (whitelist zip mv)) {
-      read_hm(n) := d
+    for((req, resp) <- io.read_req zip io.read_resp){
+      resp.valid := RegNext(req.valid)
+      val prev_addr = RegNext(req.bits.addr)
+      when(resp.valid){
+        resp.bits.data := reg(prev_addr)
+      }.otherwise(
+        resp.bits := DontCare
+      )
     }
-    resp.valid := RegNext(req.valid)
-    val bypass_addr = RegNext(req.bits.addr)
-    for(bp <- bypasses){
-      when(bp.valid && bypass_addr === bp.bits.addr){
-        resp.bits.data := bp.bits.data
+  } else if(numWrites==1){
+    //  print(default_hm.keySet.reduce(_ + ",\n"+_))
+    //  println()
+    //  println()
+    //  print(whitelist.toSet.diff(default_hm.keySet).reduce(_ + ",\n"+_))
+    val uop_sram_compact = SyncReadMem(numEntries, mv_type)
+    for(wp <- io.writes){
+      val write_hm = bundle_to_hashmap(wp.bits.data)
+      val mv = WireInit(MixedVecInit(whitelist.map(n => write_hm(n))))
+      when(wp.valid){
+        uop_sram_compact(wp.bits.addr) := mv
+      }
+    }
+    val bypasses = RegNext(io.writes)
+    for((req, resp) <- io.read_req zip io.read_resp){
+      val read_hm = bundle_to_hashmap(resp.bits.data)
+      resp.bits.data := DontCare
+      val mv = uop_sram_compact.read(req.bits.addr, req.valid)
+      for ((n, d) <- (whitelist zip mv)) {
+        read_hm(n) := d
+      }
+      resp.valid := RegNext(req.valid)
+      val bypass_addr = RegNext(req.bits.addr)
+      for(bp <- bypasses){
+        when(bp.valid && bypass_addr === bp.bits.addr){
+          resp.bits.data := bp.bits.data
+        }
+      }
+    }
+  }else {
+    //  print(default_hm.keySet.reduce(_ + ",\n"+_))
+    //  println()
+    //  println()
+    //  print(whitelist.toSet.diff(default_hm.keySet).reduce(_ + ",\n"+_))
+    val uop_sram_compact = Module(new MultiWriteSramBase(
+      numEntries, UInt(), numReads, numWrites
+    ))
+    for((wp, i) <- io.writes.zipWithIndex){
+      val write_hm = bundle_to_hashmap(wp.bits.data)
+      val mv = WireInit(MixedVecInit(whitelist.map(n => write_hm(n))))
+      uop_sram_compact.io.write(i).addr := wp.bits.addr
+      uop_sram_compact.io.write(i).data := mv.asUInt()
+      uop_sram_compact.io.write(i).en := wp.valid
+    }
+    val bypasses = RegNext(io.writes)
+    for(((req, resp), i) <- io.read_req zip io.read_resp zipWithIndex){
+      val read_hm = bundle_to_hashmap(resp.bits.data)
+      resp.bits.data := DontCare
+      val mv = uop_sram_compact.io.read(i).data.asTypeOf(mv_type)
+      uop_sram_compact.io.read(i).addr := req.bits.addr
+      for ((n, d) <- (whitelist zip mv)) {
+        read_hm(n) := d
+      }
+      resp.valid := RegNext(req.valid)
+      val bypass_addr = RegNext(req.bits.addr)
+      for(bp <- bypasses){
+        when(bp.valid && bypass_addr === bp.bits.addr){
+          resp.bits.data := bp.bits.data
+        }
       }
     }
   }
@@ -217,105 +271,6 @@ class UopSram(numEntries: Int, numWrites: Int, numReads: Int)(implicit p: Parame
 //    }
 //  }
 
-
-  //  def generateMems(d: Data, name: String = "uop_sram", memDict: mutable.HashMap[String, SyncReadMem[Data]] = null): mutable.HashMap[String, SyncReadMem[Data]] = {
-  //    val md = if(memDict == null){
-  //      new mutable.HashMap[String, SyncReadMem[Data]]();
-  //    } else {
-  //      memDict
-  //    }
-  //
-  //    d match {
-  //      case vec: Vec[_] =>
-  //        for ((c, i) <- vec.zipWithIndex) {
-  //          generateMems(c, s"${name}_${i}", md)
-  //        }
-  //      case bundle: Bundle =>
-  //        bundle.elements.toList.foreach {
-  //          case (st, d) => generateMems(d, s"${name}_${st}", md)
-  //        }
-  //      case element: Element => {
-  //        val sr = SyncReadMem(numEntries, d)
-  //        sr.suggestName(name)
-  //        md.put(name, sr)
-  //      }
-  //      case _ => throw new scala.Exception(s"unknown type: $name")
-  //    }
-  //
-  //    md
-  //  }
-  //
-  //  def connectWrites(idx: UInt, d: Data, name: String = "uop_sram", md: mutable.HashMap[String, SyncReadMem[Data]]): Unit = {
-  //    d match {
-  //      case vec: Vec[_] =>
-  //        for ((c, i) <- vec.zipWithIndex) {
-  //          connectWrites(idx, c, s"${name}_${i}", md)
-  //        }
-  //      case bundle: Bundle =>
-  //        bundle.elements.toList.foreach {
-  //          case (st, d) => connectWrites(idx, d, s"${name}_${st}", md)
-  //        }
-  //      case element: Element => md.get(name).get.write(idx, d)
-  //      case _ => throw new scala.Exception(s"unknown type: $name")
-  //    }
-  //  }
-  //
-  //  def connectReads(idx: UInt, d: Data, name: String = "uop_sram", md: mutable.HashMap[String, SyncReadMem[Data]]): Unit = {
-  //    d match {
-  //      case vec: Vec[_] =>
-  //        for ((c, i) <- vec.zipWithIndex) {
-  //          connectReads(idx, c, s"${name}_${i}", md)
-  //        }
-  //      case bundle: Bundle =>
-  //        bundle.elements.toList.foreach {
-  //          case (st, d) => connectReads(idx, d, s"${name}_${st}", md)
-  //        }
-  //      case element: Element => d := md.get(name).get.read(idx)
-  //      case _ => throw new scala.Exception(s"unknown type: $name")
-  //    }
-  //  }
-
-  //  val memDict = generateMems(new MicroOp())
-  //  for(wp <- io.writes){
-  //    when(wp.valid){
-  //      connectWrites(wp.bits.addr, wp.bits.data, md=memDict)
-  //    }
-  //  }
-  //  for((req, resp) <- io.read_req zip io.read_resp){
-  //    when(req.valid){
-  //      connectReads(req.bits.addr, resp.bits.data, md=memDict)
-  //    }.otherwise(
-  //      resp.bits := DontCare
-  //    )
-  //    resp.valid := RegNext(req.valid)
-  //  }
-
-
-//  val reg = Reg(Vec(numEntries, new MicroOp()))
-//  val bypasses = RegNext(io.writes)
-//  for(wp <- io.writes){
-//    when(wp.valid){
-//      reg(wp.bits.addr) := wp.bits.data
-//    }
-//  }
-//  for((req, resp) <- io.read_req zip io.read_resp){
-//    val tmp = Reg(new MicroOp())
-//    tmp := DontCare
-//    resp.bits.data := tmp
-//    when(req.valid){
-//      tmp := reg(req.bits.addr)
-//    }.otherwise(
-//      resp.bits := DontCare
-//    )
-//    resp.valid := RegNext(req.valid)
-//
-//    val bypass_addr = RegNext(req.bits.addr)
-//    for(bp <- bypasses){
-//      when(bp.valid && bypass_addr === bp.bits.addr){
-//        resp.bits.data := bp.bits.data
-//      }
-//    }
-//  }
 }
 
 
@@ -434,16 +389,17 @@ class NaiveDispatchQueueCompactingShifting(params: DispatchQueueParams,
 
 class LayeredDispatchQueueCompactingShifting(params: DispatchQueueParams,
                                          )(implicit p: Parameters) extends DispatchQueue(params.numEntries, params.deqWidth, params.enqWidth, params.qName, params.stallOnUse) {
-  val internal_queue = Module(new InternalSramDispatchQueue(params.copy(stallOnUse = true, qName = qName+"_inner")))
+  val internal_queue = Module(new InternalSingleSramDispatchQueue(params.copy(stallOnUse = true, qName = qName+"_inner")))
   internal_queue.io.flush := io.flush
   internal_queue.io.brinfo := io.brinfo
   // no tsc for internal queue
   internal_queue.io.tsc_reg := 0.U
 
-  val numHeads = deqWidth
+  val numHeads = if(params.headRegisters) deqWidth else 0
+  require(params.headRegisters || params.stallOnUse, "not using stall on use requires head registers")
 
-  val reg_head_uops = RegInit(VecInit(Seq.fill(numHeads)(NullMicroOp())))
-  val reg_head_valids = RegInit(VecInit(Seq.fill(numHeads)(false.B)))
+  val reg_head_uops = if(params.headRegisters) RegInit(VecInit(Seq.fill(numHeads)(NullMicroOp()))) else Seq()
+  val reg_head_valids = if(params.headRegisters) RegInit(VecInit(Seq.fill(numHeads)(false.B))) else Seq()
   val enq_uops = io.enq_uops.map(_.bits)
   // use same logic as issue unit
   val enq_valids = io.enq_uops.map(b =>
@@ -486,8 +442,13 @@ class LayeredDispatchQueueCompactingShifting(params: DispatchQueueParams,
     mod_valids.foreach(_ := false.B)
   }
 
+
+  // has this uop been placed/dequeued?
+  var consumed = Array.fill(uops.length)(false.B)
+
   var prev_fire = WireInit(true.B)
   for(i <- 0 until deqWidth){
+    // if there are head registers they will be used - otherwise the heads of the internal queue are used
     io.heads(i).bits := mod_uops(i)
     if(stallOnUse){
       io.heads(i).valid := mod_valids(i) && prev_fire
@@ -495,6 +456,7 @@ class LayeredDispatchQueueCompactingShifting(params: DispatchQueueParams,
     } else{
       io.heads(i).valid := mod_valids(i)
     }
+    consumed(i) = io.heads(i).fire()
     when(io.heads(i).fire()){
       next_valids(i) := false.B
     }
@@ -505,8 +467,6 @@ class LayeredDispatchQueueCompactingShifting(params: DispatchQueueParams,
   }
 
   // update uop reg
-  // has this uop been placed?
-  var consumed = Array.fill(uops.length)(false.B)
   for(i <- 0 until numHeads){
     // not valid if nothing is filled in
     reg_head_valids(i) := false.B
@@ -552,7 +512,7 @@ class LayeredDispatchQueueCompactingShifting(params: DispatchQueueParams,
   }
 
   for(i <- 1 until numHeads){
-    assert(!(consumed_debug(i)^next_valids(i)), "consumed <=> next_valid for slots")
+    assert(!(consumed_debug(i)^next_valids(i)^io.heads(i).fire()), "consumed <=> next_valid for slots")
   }
 
   // can not use consumed because otherwise a combinational loop is created
@@ -577,7 +537,151 @@ class LayeredDispatchQueueCompactingShifting(params: DispatchQueueParams,
 }
 
 
-class InternalSramDispatchQueue(params: DispatchQueueParams,
+class InternalSingleSramDispatchQueue(params: DispatchQueueParams,
+                                         )(implicit p: Parameters) extends DispatchQueue(params.numEntries, params.deqWidth, params.enqWidth, params.qName, params.stallOnUse)
+{
+  require(stallOnUse, "InternalSramDispatchQueue relies on stall on use!")
+  val sram_fifo = Module(new UopSram(numEntries, enqWidth, deqWidth))
+
+  // Branch mask and valid bits are still stored in Regs
+  val totalEntires = numEntries*fifoWidth
+
+  val br_masks = Reg(Vec(numEntries, UInt(maxBrCount.W) ))
+  val valids = RegInit(VecInit(Seq.fill(numEntries)(false.B)))
+  val head = RegInit(0.U(qAddrSz.W))
+  val tail = RegInit(0.U(qAddrSz.W))
+
+  val mod_valids = WireInit(valids)
+  val mod_br_masks = WireInit(br_masks)
+
+  // branch update
+  when(io.brinfo.valid) {
+    for (r <- 0 until numEntries) {
+      val br_mask = br_masks(r)
+      val entry_match = valids(r) && maskMatch(io.brinfo.mask, br_mask)
+      when (entry_match && io.brinfo.mispredict) { // Mispredict
+        mod_valids(r) := false.B
+      }.elsewhen(entry_match && !io.brinfo.mispredict) { // Resolved
+        mod_br_masks(r) := (br_mask & ~io.brinfo.mask)
+      }
+    }
+  }
+  // up here so writes can go directly to br_masks below
+  br_masks := mod_br_masks
+
+  // update tail - branch
+  val mod_tail = WireInit(tail)
+  // go through from the back - relies on there being one continuous section of valids
+  var previous = 0
+  var transitions_mod_valids: List[Bool] = Nil
+  // use Mux1H to prevent expensive long priority mux
+  val mod_tail_mux_selector = new ListBuffer[Bool];
+  val mod_tail_mux_val = new ListBuffer[UInt];
+  for (r <- (0 until numEntries).reverse) {
+    mod_tail_mux_selector += mod_valids(r) && !mod_valids(previous)
+    mod_tail_mux_val += previous.U
+
+    transitions_mod_valids = (mod_valids(r) && !mod_valids(previous)) :: transitions_mod_valids
+    previous = r
+  }
+  assert(PopCount(transitions_mod_valids) <= 1.U, f"holes in mod_valids of $qName!")
+  // noting valid - set to head
+  when(!mod_valids.reduce(_||_)){
+    mod_tail := head
+  }.otherwise{
+    mod_tail := Mux1H(mod_tail_mux_selector, mod_tail_mux_val)
+  }
+
+  val next_valids = WireInit(mod_valids)
+  // update tail - enq
+  val next_tail = WireInit(mod_tail)
+  var enq_tail = mod_tail
+  var previous_valid = true.B
+  val sram_write_valids = Wire(Vec(enqWidth, Bool()))
+  val sram_write_addrs = Wire(Vec(enqWidth, UInt()))
+  val sram_write_data = Wire(Vec(enqWidth, new MicroOp()))
+  (0 until enqWidth).foreach(w => {
+    sram_write_valids.foreach(_:= false.B)
+    sram_write_addrs := DontCare
+    sram_write_data := DontCare
+    sram_fifo.io.writes(w).valid := sram_write_valids(w)
+    sram_fifo.io.writes(w).bits.addr := sram_write_addrs(w)
+    sram_fifo.io.writes(w).bits.data := sram_write_data(w)
+  })
+
+  def forward(int: UInt): UInt = WrapInc(int, numEntries)
+
+  for(i <- 0 until enqWidth){
+    assert(previous_valid || !io.enq_uops(i).valid, f"enq($i) has to happen compacted!")
+    previous_valid = io.enq_uops(i).valid
+    io.enq_uops(i).ready := !mod_valids(enq_tail)
+    val tmp_enq_tail = forward(enq_tail)
+    when(io.enq_uops(i).fire()){
+      // set valid
+      next_valids(enq_tail) := true.B
+      // write sram
+      sram_write_valids(i) := true.B
+      sram_write_addrs(i) := enq_tail
+      sram_write_data(i) := io.enq_uops(i).bits
+      // set br_mask
+      br_masks(enq_tail) := io.enq_uops(i).bits.br_mask
+      // move tail
+      next_tail := tmp_enq_tail
+    }
+    enq_tail = tmp_enq_tail
+  }
+
+  // head advancement logic
+  val next_head = WireInit(head)
+  // reads for current cycle
+  var deq_head = head
+  // reads for next cycle
+  var read_next_head = next_head
+  val sram_read_resp_data = Wire(Vec(deqWidth, new MicroOp()))
+  val sram_read_req_addr = Wire(Vec(deqWidth, UInt()))
+  (0 until deqWidth).foreach(w => {
+    sram_read_req_addr := DontCare
+    sram_fifo.io.read_req(w).valid := true.B
+    sram_fifo.io.read_req(w).bits.addr := sram_read_req_addr(w)
+    sram_read_resp_data(w) := sram_fifo.io.read_resp(w).bits.data
+  })
+  var previous_fire = true.B
+  for(i <- 0 until deqWidth){
+    io.heads(i).valid := mod_valids(deq_head)
+    // use head_col here because it depends on previous cycle
+    io.heads(i).bits := sram_read_resp_data(i)
+    // TODO: use mod_br_masks here?
+    io.heads(i).bits.br_mask := br_masks(deq_head)
+    // sram read
+    assert(previous_fire || !io.heads(i).fire(), "heads didn't fire in order")
+    previous_fire = previous_fire && io.heads(i).fire()
+    sram_read_req_addr(i) := read_next_head
+    val tmp_deq_head = forward(deq_head)
+    when(io.heads(i).fire()){
+      next_valids(deq_head) := false.B
+      next_head := tmp_deq_head
+    }
+    deq_head = tmp_deq_head
+    val tmp_read_next_head = forward(read_next_head)
+    read_next_head = tmp_read_next_head
+  }
+
+  val any_valid = valids.reduce(_||_)
+  assert(valids(head) || !any_valid, "head doesn't point to correct spot!")
+
+  head := next_head
+  tail := next_tail
+  valids := next_valids
+
+  when(io.flush){
+    mod_valids.foreach(_ := false.B)
+    valids.foreach(_ := false.B)
+    head := head
+    tail := head
+  }
+}
+
+class InternalMultiSramDispatchQueue(params: DispatchQueueParams,
                                          )(implicit p: Parameters) extends DispatchQueue(params.numEntries, params.deqWidth, params.enqWidth, params.qName, params.stallOnUse)
 {
   require(stallOnUse, "InternalSramDispatchQueue relies on stall on use!")
