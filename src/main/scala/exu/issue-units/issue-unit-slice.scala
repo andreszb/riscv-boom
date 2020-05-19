@@ -40,11 +40,6 @@ class IssueUnitSlice(
     when (io.dis_uops(i).fire()) {
       issue_slots(i).in_uop.valid := true.B
     }
-    issue_slots(i).wakeup_ports := io.wakeup_ports
-    issue_slots(i).ldspec_dst   := io.spec_ld_wakeup
-    issue_slots(i).ldspec_miss  := io.ld_miss
-    issue_slots(i).brinfo       := io.brinfo
-    issue_slots(i).kill         := io.flush_pipeline
     issue_slots(i).clear        := false.B
   }
 

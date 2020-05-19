@@ -9,7 +9,6 @@ import freechips.rocketchip.diplomacy.{AsynchronousCrossing, RationalCrossing, S
 import freechips.rocketchip.rocket._
 import freechips.rocketchip.tile._
 import boom.ifu._
-import boom.bpu._
 import boom.exu.{IssueParams, _}
 import boom.lsu._
 

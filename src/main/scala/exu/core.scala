@@ -47,7 +47,7 @@ import boom.ifu.{GlobalHistory, HasBoomFrontendParameters}
 import boom.exu.FUConstants._
 import boom.common.BoomTilesKey
 import boom.util._
-import boom.util.{AlignPCToBoundary, BoolToChar, BoomCoreStringPrefix, DromajoCosimBlackBox, GetNewUopAndBrMask, RobTypeToChars, Sext, WrapInc}
+import boom.util.{AlignPCToBoundary, BoolToChar, BoomCoreStringPrefix, GetNewUopAndBrMask, RobTypeToChars, Sext, WrapInc}
 import lsc.{InstructionSliceTable, InstructionSliceTableBloom, InstructionSliceTableSyncMem, RdtSyncMem}
 
 
@@ -301,7 +301,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
         ("nop", () => false.B),
         ("nop", () => false.B),
         ("nop", () => false.B),
-        ("branch resolved", () => br_unit.brinfo.valid),
+        ("branch resolved", () => brinfos.map(b => b.valid).head),
         ("nop", () => false.B),
         ("nop", () => false.B),
       )),
@@ -312,17 +312,18 @@ class BoomCore(implicit p: Parameters) extends BoomModule
         ("nop", () => false.B),
         ("I$ blocked", () => icache_blocked),
         ("nop", () => false.B),
-        ("branch misprediction", () => br_unit.brinfo.mispredict),
-        ("control-flow target misprediction", () => br_unit.brinfo.mispredict &&
-          br_unit.brinfo.is_jr),
+        ("branch misprediction", () => brinfos.map(b => b.mispredict && b.valid).head),
+//        ("control-flow target misprediction", () => br_unit.brinfo.mispredict &&
+//          br_unit.brinfo.is_jr),
+        ("nop", () => false.B),
         ("flush", () => rob.io.flush.valid),
       )),
 
       new freechips.rocketchip.rocket.EventSet((mask, hits) => (mask & hits).orR, Seq(
-        ("I$ miss", () => io.ifu.perf.acquire),
+        ("nop - I$ miss", () => false.B),
         ("nop - D$ miss",     () => false.B),
         ("nop -'D$ release",  () => false.B),
-        ("ITLB miss", () => io.ifu.perf.tlbMiss),
+        ("nop - ITLB miss", () => false.B),
         ("nop - DTLB miss",   () => false.B),
         ("L2 TLB miss", () => io.ptw.perf.l2miss),
       ))) ++ (0 until coreWidth).map { i =>
@@ -349,7 +350,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
             ("nop", () => false.B),
           ))
     })
-  perfEvents.print()
+//  perfEvents.print()
 
 
   val csr = Module(new freechips.rocketchip.rocket.CSRFile(perfEvents, boomParams.customCSRs.decls))
@@ -627,7 +628,15 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   val xcpt_idx = PriorityEncoder(dec_xcpts)
   xcpt_pc_req.valid    := dec_xcpts.reduce(_||_)
   xcpt_pc_req.bits     := dec_uops(xcpt_idx).ftq_idx
-  rob.io.xcpt_fetch_pc := RegEnable(io.ifu.get_pc.fetch_pc, dis_ready)
+  //rob.io.xcpt_fetch_pc := RegEnable(io.ifu.get_pc.fetch_pc, dis_ready)
+  rob.io.xcpt_fetch_pc := io.ifu.get_pc(0).pc
+
+  flush_pc_req.valid   := rob.io.flush.valid
+  flush_pc_req.bits    := rob.io.flush.bits.ftq_idx
+
+  // Mispredict requests (to get the correct target)
+  io.ifu.get_pc(1).ftq_idx := oldest_mispredict_ftq_idx
+
 
   //-------------------------------------------------------------
   // Decode/Rename1 pipeline logic
@@ -751,6 +760,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   val has_stalled = if (boomParams.ibdaMode) Some(Reg(Vec(decodeWidth, Bool()))) else None
 
   if (boomParams.ibdaMode) {
+    require(brinfos.length == 1)
     // IST check. We have to deal with pipeline stalls
     for (w <- 0 until coreWidth) {
       val in_ist = ist.get.io.check(w).in_ist.bits
@@ -763,7 +773,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
         has_stalled.get(w) := false.B
       }.otherwise {
         has_stalled.get(w) := (ist.get.io.check(w).in_ist.valid || has_stalled.get(w)) &&
-                              !(br_unit.brinfo.mispredict && br_unit.brinfo.valid) // This only counts as a stall when we have valid in_ist
+                              !(brinfos(0).mispredict && brinfos(0).valid) // This only counts as a stall when we have valid in_ist
       }
 
     }
@@ -938,7 +948,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
       fp_rename_stage.io.dis_busy_req_uops.get := dispatcher.io.fp_busy_req_uops.get
       dispatcher.io.fp_busy_resps.get := fp_rename_stage.io.dis_busy_resps.get
     }
-    dispatcher.io.brinfo.get := br_unit.brinfo
+    dispatcher.io.brupdate.get := brinfos(0)
     dispatcher.io.flush.get := rob.io.flush.valid
   }
   dispatcher.io.tsc_reg := debug_tsc_reg // needed for pipeview
@@ -986,11 +996,11 @@ class BoomCore(implicit p: Parameters) extends BoomModule
 
   if(!boomParams.unifiedIssueQueue){
     fp_issue_unit.io.tsc_reg := debug_tsc_reg
-    fp_issue_unit.io.brinfo := br_unit.brinfo
+    fp_issue_unit.io.brupdate := brupdate
     fp_issue_unit.io.flush_pipeline := rob.io.flush.valid
     // Don't support ld-hit speculation to FP window.
-    fp_issue_unit.io.spec_ld_wakeup.valid := false.B
-    fp_issue_unit.io.spec_ld_wakeup.bits := 0.U
+    fp_issue_unit.io.spec_ld_wakeup.map(_.valid := false.B)
+    fp_issue_unit.io.spec_ld_wakeup.map(_.bits := 0.U)
     fp_issue_unit.io.ld_miss := false.B
     fp_issue_unit.io.fu_types := fp_pipeline.io.iss.fu_types
     fp_issue_unit.io.wakeup_ports := fp_pipeline.io.iss.wakeup_ports
@@ -1145,6 +1155,8 @@ class BoomCore(implicit p: Parameters) extends BoomModule
         // But it takes a cycle to get to the Exe stage, so it can't tell us it is busy yet.
         val idiv_issued = iss_valids(iss_idx) && iss_uops(iss_idx).fu_code_is(FU_DIV)
         fu_types = fu_types & RegNext(~Mux(idiv_issued, FU_DIV, 0.U))
+      } else if (exe_unit.hasMem) {
+        fu_types = Mux(pause_mem, 0.U, fu_types)
       }
       if(boomParams.unifiedIssueQueue){
         iss_valids(iss_idx) := unified_iss_unit.io.iss_valids(uni_iss_cnt)
@@ -1156,7 +1168,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
       } else if (exe_unit.hasMem) {
         iss_valids(iss_idx) := mem_iss_unit.io.iss_valids(mem_iss_cnt)
         iss_uops(iss_idx)   := mem_iss_unit.io.iss_uops(mem_iss_cnt)
-        mem_iss_unit.io.fu_types(mem_iss_cnt) := Mux(pause_mem, 0.U, fu_types)
+        mem_iss_unit.io.fu_types(mem_iss_cnt) := fu_types
         mem_iss_cnt += 1
       } else {
         iss_valids(iss_idx) := int_iss_unit.io.iss_valids(int_iss_cnt)

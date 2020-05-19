@@ -41,11 +41,6 @@ class IssueUnitSliceUnified(
     for ((s, p) <- issue_slots(i).wakeup_ports zip io.wakeup_ports){
       s.bits.reg_type.get := p.bits.reg_type.get
     }
-    issue_slots(i).wakeup_ports := io.wakeup_ports
-    issue_slots(i).ldspec_dst   := io.spec_ld_wakeup
-    issue_slots(i).ldspec_miss  := io.ld_miss
-    issue_slots(i).brinfo       := io.brinfo
-    issue_slots(i).kill         := io.flush_pipeline
     issue_slots(i).clear        := false.B
   }
 

@@ -56,6 +56,8 @@ class MicroOp(implicit p: Parameters) extends BoomBundle
   val is_jal           = Bool()                      // is this a JAL (doesn't include JR)? used for branch unit
   val is_sfb           = Bool()                      // is this a sfb or in the shadow of a sfb
 
+  def is_br_or_jmp = is_jal || is_jalr || is_br
+
   val br_mask          = UInt(maxBrCount.W)  // which branches are we being speculated under?
   val br_tag           = UInt(brTagSz.W)
 

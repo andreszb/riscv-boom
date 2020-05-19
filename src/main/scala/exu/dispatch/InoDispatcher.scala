@@ -12,7 +12,7 @@
 
 package boom.exu
 
-import boom.common.{O3PIPEVIEW_PRINTF, O3_START_CYCLE, uopLD, _}
+import boom.common.{uopLD, _}
 import chisel3._
 import chisel3.internal.naming.chiselName
 import freechips.rocketchip.config.Parameters

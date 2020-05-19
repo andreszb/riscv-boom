@@ -15,7 +15,7 @@ package boom.exu
 import chisel3._
 import chisel3.util._
 import freechips.rocketchip.config.Parameters
-import boom.common.{IQT_MFP, MicroOp, O3PIPEVIEW_PRINTF, uopLD, _}
+import boom.common.{IQT_MFP, MicroOp, uopLD, _}
 import boom.util._
 import chisel3.internal.naming.chiselName
 
@@ -44,8 +44,8 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher {
   )
   a_queue.io.flush := io.flush.get
   b_queue.io.flush := io.flush.get
-  a_queue.io.brinfo := io.brinfo.get
-  b_queue.io.brinfo := io.brinfo.get
+  a_queue.io.brupdate := io.brupdate.get
+  b_queue.io.brupdate := io.brupdate.get
 
   a_queue.io.tsc_reg := io.tsc_reg
   b_queue.io.tsc_reg := io.tsc_reg
@@ -58,7 +58,7 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher {
     val uop = io.ren_uops(w).bits
     // check if b queue can actually process insn
     // TODO: Analyse: Is it necessary to add a guard protecting agains branches on B-Q? (In case of aliasing in IST)
-    val can_use_b_alu = uop.fu_code_is(FUConstants.FU_ALU | FUConstants.FU_MUL | FUConstants.FU_DIV | (FUConstants.FU_BRU)) && !uop.is_br_or_jmp
+    val can_use_b_alu = uop.fu_code_is(FUConstants.FU_ALU | FUConstants.FU_MUL | FUConstants.FU_DIV | (FUConstants.FU_JMP)) && !uop.is_br_or_jmp
     val use_b_queue = (uop.uopc === uopLD) || uop.uopc === uopSTA || (uop.is_lsc_b && can_use_b_alu)
     val use_a_queue = (uop.uopc =/= uopLD) && (!uop.is_lsc_b || !can_use_b_alu)
 
@@ -101,8 +101,8 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher {
 
   }
 
-  val load_spec_dst = RegNext(io.spec_ld_wakeup.get.bits)
-  val load_spec_valid = RegNext(io.spec_ld_wakeup.get.valid) && !io.ld_miss.get
+  val load_spec_dsts = io.spec_ld_wakeup.get.map(w => RegNext(w.bits))
+  val load_spec_valids = io.spec_ld_wakeup.get.map(w => RegNext(w.valid) && !io.ld_miss.get)
   // annotate heads with busy information
   for ((uop, idx) <- (a_heads ++ b_heads).zipWithIndex) {
     io.busy_req_uops.get(idx) := uop
@@ -127,11 +127,14 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher {
       uop.prs3_busy := uop.frs3_en && flt_busy_resp.prs3_busy
     }
     // load spec
-    when(uop.lrs1_rtype === RT_FIX && load_spec_valid && uop.prs1 === load_spec_dst){
-      uop.prs1_busy := false.B
-    }
-    when(uop.lrs2_rtype === RT_FIX && load_spec_valid && uop.prs2 === load_spec_dst){
-      uop.prs2_busy := false.B
+
+    for((ld, lv) <- load_spec_dsts zip load_spec_valids) {
+      when(uop.lrs1_rtype === RT_FIX && lv && uop.prs1 === ld) {
+        uop.prs1_busy := false.B
+      }
+      when(uop.lrs2_rtype === RT_FIX && lv && uop.prs2 === ld) {
+        uop.prs2_busy := false.B
+      }
     }
   }
 
@@ -254,21 +257,6 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher {
         b_mem_dispatch.valid := true.B
       }.otherwise {
         b_int_dispatch.valid := true.B
-      }
-    }
-  }
-
-  if(O3PIPEVIEW_PRINTF){ // dispatch is here because it does not happen driectly after rename anymore
-    when(io.tsc_reg>=O3_START_CYCLE.U) {
-      for (i <- 0 until boomParams.loadSliceCore.get.aDispatches) {
-        when(a_queue.io.heads(i).fire()) {
-          printf("%d; O3PipeView:dispatch: %d\n", a_queue.io.heads(i).bits.debug_events.fetch_seq, io.tsc_reg)
-        }
-      }
-      for (i <- 0 until boomParams.loadSliceCore.get.bDispatches) {
-        when(b_queue.io.heads(i).fire()) {
-          printf("%d; O3PipeView:dispatch: %d\n", b_queue.io.heads(i).bits.debug_events.fetch_seq, io.tsc_reg)
-        }
       }
     }
   }

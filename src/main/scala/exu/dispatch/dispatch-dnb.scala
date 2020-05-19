@@ -15,7 +15,7 @@ package boom.exu
 import chisel3._
 import chisel3.util._
 import freechips.rocketchip.config.Parameters
-import boom.common.{IQT_MFP, MicroOp, O3PIPEVIEW_PRINTF, O3_START_CYCLE, uopLD, _}
+import boom.common.{IQT_MFP, MicroOp, uopLD, _}
 import boom.util._
 import chisel3.internal.naming.chiselName
 
@@ -40,9 +40,9 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
   require(dnbParams.dlqDispatches == boomParams.busyLookupParams.get.lookupAtDisWidth)
 
   // Route brinfo and flush into the fifos
-  dlq.io.brinfo := io.brinfo.get
+  dlq.io.brupdate := io.brupdate.get
   dlq.io.flush := io.flush.get
-  crq.io.brinfo := io.brinfo.get
+  crq.io.brupdate := io.brupdate.get
   crq.io.flush  := io.flush.get
 
   // Route in tsc for pipeview
@@ -56,7 +56,7 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
     val uop = WireInit(io.ren_uops(i).bits)
     val uop_critical = uop.is_lsc_b
     val uop_iq = if(boomParams.ibdaParams.get.branchIbda) {
-      uop.is_br_or_jmp
+      uop.is_lsc_b || uop.is_br_or_jmp
     } else {
       uop.uopc === uopLD || uop.uopc === uopSTA || uop.uopc === uopSTD //TODO: FP STW?
     }
@@ -142,16 +142,6 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
     }
   }
 
-  if(O3PIPEVIEW_PRINTF){ // dispatch is here because it only happens for IQ and not dlq/crq
-    when(io.tsc_reg>=O3_START_CYCLE.U) {
-      io.dis_uops(LSC_DIS_COMB_PORT_IDX).foreach(port => {
-        when(port.fire()) {
-          printf("%d; O3PipeView:dispatch: %d\n", port.bits.debug_events.fetch_seq, io.tsc_reg)
-        }
-      })
-    }
-  }
-
   // Handle CRQ dequeue
   io.crq_head.get <> crq.io.heads
 
@@ -159,8 +149,8 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
   //  A little more complicated as we need to pass along the updated ready info
   //  Connect uop to both FP and INT busy table. Pick the resp based on the lrs-types
 
-  val load_spec_dst = RegNext(io.spec_ld_wakeup.get.bits)
-  val load_spec_valid = RegNext(io.spec_ld_wakeup.get.valid) && !io.ld_miss.get
+  val load_spec_dsts = io.spec_ld_wakeup.get.map(w => RegNext(w.bits))
+  val load_spec_valids = io.spec_ld_wakeup.get.map(w => RegNext(w.valid) && !io.ld_miss.get)
   for (i <- 0 until dnbParams.dlqDispatches) {
     io.busy_req_uops.get(i) := dlq.io.heads(i).bits
     io.fp_busy_req_uops.get(i) := dlq.io.heads(i).bits
@@ -171,8 +161,11 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
       io.dlq_head.get(i).bits.prs1_busy := io.fp_busy_resps.get(i).prs1_busy
     }.elsewhen(io.dlq_head.get(i).bits.lrs1_rtype === RT_FIX) {
       io.dlq_head.get(i).bits.prs1_busy := io.busy_resps.get(i).prs1_busy
-      when(load_spec_valid && io.dlq_head.get(i).bits.prs1 === load_spec_dst){
-        io.dlq_head.get(i).bits.prs1_busy  := false.B
+
+      for((ld, lv) <- load_spec_dsts zip load_spec_valids) {
+        when(lv && io.dlq_head.get(i).bits.prs1 === ld){
+          io.dlq_head.get(i).bits.prs1_busy  := false.B
+        }
       }
     }.otherwise{
       io.dlq_head.get(i).bits.prs1_busy := false.B
@@ -182,8 +175,10 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
       io.dlq_head.get(i).bits.prs2_busy := io.fp_busy_resps.get(i).prs2_busy
     }.elsewhen(io.dlq_head.get(i).bits.lrs2_rtype === RT_FIX) {
       io.dlq_head.get(i).bits.prs2_busy := io.busy_resps.get(i).prs2_busy
-      when(load_spec_valid && io.dlq_head.get(i).bits.prs2 === load_spec_dst){
-        io.dlq_head.get(i).bits.prs2_busy := false.B
+      for((ld, lv) <- load_spec_dsts zip load_spec_valids) {
+        when(lv && io.dlq_head.get(i).bits.prs2 === ld) {
+          io.dlq_head.get(i).bits.prs2_busy := false.B
+        }
       }
     }.otherwise{
       io.dlq_head.get(i).bits.prs2_busy := false.B

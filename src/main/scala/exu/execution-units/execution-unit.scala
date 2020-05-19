@@ -113,11 +113,6 @@ abstract class ExecutionUnit(
     val ll_iresp = if (writesLlIrf) new DecoupledIO(new ExeUnitResp(dataWidth)) else null
     val ll_fresp = if (writesLlFrf) new DecoupledIO(new ExeUnitResp(dataWidth)) else null
 
-
-    if(boomParams.loadSliceMode||boomParams.dnbMode){
-      assert(!io.req.valid || io.req.bits.uop.iq_type === iqType.U, "wrong IQ-Type for exu")
-    }
-
     val bypass   = Output(Vec(numBypassStages, Valid(new ExeUnitResp(dataWidth))))
     val brupdate = Input(new BrUpdateInfo())
 
@@ -140,6 +135,10 @@ abstract class ExecutionUnit(
     // TODO move this out of ExecutionUnit
     val com_exception = if (hasMem || hasRocc) Input(Bool()) else null
   })
+
+  if(boomParams.loadSliceMode||boomParams.dnbMode){
+    assert(!io.req.valid || io.req.bits.uop.iq_type === iqType.U, "wrong IQ-Type for exu")
+  }
 
   if (writesIrf)   {
     io.iresp.bits.fflags.valid := false.B

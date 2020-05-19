@@ -77,12 +77,6 @@ class IssueUnitIno(
         }
       }
     }
-    issue_slots(i).wakeup_ports := io.wakeup_ports
-    issue_slots(i).ldspec_dst   := io.spec_ld_wakeup
-    issue_slots(i).ldspec_miss  := io.ld_miss
-    issue_slots(i).brinfo       := io.brinfo
-    issue_slots(i).kill         := io.flush_pipeline
-    issue_slots(i).clear        := shamts_oh(i) =/= 0.U
   }
 
   //-------------------------------------------------------------
@@ -165,7 +159,7 @@ class IssueUnitIno(
     }
     when(candidate_uops(i).iq_type === IQT_MFP) {
       assert(! (grants(i) && !(PopCount(port_reserved) === 2.U) ), "[cas-ino] fsd didnt reserve 2 ports")
-      assert(!( grants(i) && !(PopCount(io.iss_uops.map(_.debug_events.fetch_seq === candidate_uops(i).debug_events.fetch_seq)) === 2.U )), "[cas-ino] fsd went wrong")
+//      assert(!( grants(i) && !(PopCount(io.iss_uops.map(_.debug_events.fetch_seq === candidate_uops(i).debug_events.fetch_seq)) === 2.U )), "[cas-ino] fsd went wrong")
     }
   }
 
