@@ -77,6 +77,7 @@ class IssueUnitIno(
         }
       }
     }
+    issue_slots(i).clear        := shamts_oh(i) =/= 0.U
   }
 
   //-------------------------------------------------------------

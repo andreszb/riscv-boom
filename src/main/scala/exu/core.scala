@@ -301,7 +301,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
         ("nop", () => false.B),
         ("nop", () => false.B),
         ("nop", () => false.B),
-        ("branch resolved", () => brinfos.map(b => b.valid).head),
+        ("branch resolved", () => brinfos.map(b => b.valid).reduce(_ || _)),
         ("nop", () => false.B),
         ("nop", () => false.B),
       )),
@@ -312,7 +312,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
         ("nop", () => false.B),
         ("I$ blocked", () => icache_blocked),
         ("nop", () => false.B),
-        ("branch misprediction", () => brinfos.map(b => b.mispredict && b.valid).head),
+        ("branch misprediction", () => brinfos.map(b => b.mispredict && b.valid).reduce(_ || _)),
 //        ("control-flow target misprediction", () => br_unit.brinfo.mispredict &&
 //          br_unit.brinfo.is_jr),
         ("nop", () => false.B),
@@ -760,7 +760,6 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   val has_stalled = if (boomParams.ibdaMode) Some(Reg(Vec(decodeWidth, Bool()))) else None
 
   if (boomParams.ibdaMode) {
-    require(brinfos.length == 1)
     // IST check. We have to deal with pipeline stalls
     for (w <- 0 until coreWidth) {
       val in_ist = ist.get.io.check(w).in_ist.bits
@@ -773,7 +772,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
         has_stalled.get(w) := false.B
       }.otherwise {
         has_stalled.get(w) := (ist.get.io.check(w).in_ist.valid || has_stalled.get(w)) &&
-                              !(brinfos(0).mispredict && brinfos(0).valid) // This only counts as a stall when we have valid in_ist
+                              !(brinfos.map(b => b.mispredict && b.valid).reduce(_ || _)) // This only counts as a stall when we have valid in_ist
       }
 
     }
@@ -943,12 +942,13 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   // connect dispatch to busy table in LSC mode
   if(boomParams.busyLookupMode){
     rename_stage.io.dis_busy_req_uops.get := dispatcher.io.busy_req_uops.get
+    pred_rename_stage.io.dis_busy_req_uops.get.foreach(_ := DontCare)
     dispatcher.io.busy_resps.get := rename_stage.io.dis_busy_resps.get
     if(usingFPU){
       fp_rename_stage.io.dis_busy_req_uops.get := dispatcher.io.fp_busy_req_uops.get
       dispatcher.io.fp_busy_resps.get := fp_rename_stage.io.dis_busy_resps.get
     }
-    dispatcher.io.brupdate.get := brinfos(0)
+    dispatcher.io.brupdate.get := brupdate
     dispatcher.io.flush.get := rob.io.flush.valid
   }
   dispatcher.io.tsc_reg := debug_tsc_reg // needed for pipeview
@@ -1004,6 +1004,8 @@ class BoomCore(implicit p: Parameters) extends BoomModule
     fp_issue_unit.io.ld_miss := false.B
     fp_issue_unit.io.fu_types := fp_pipeline.io.iss.fu_types
     fp_issue_unit.io.wakeup_ports := fp_pipeline.io.iss.wakeup_ports
+    fp_issue_unit.io.pred_wakeup_port.valid := false.B
+    fp_issue_unit.io.pred_wakeup_port.bits := DontCare
     fp_pipeline.io.iss.iss_uops := fp_issue_unit.io.iss_uops
     fp_pipeline.io.iss.iss_valids := fp_issue_unit.io.iss_valids
   }
@@ -1134,7 +1136,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   // If we issue loads back-to-back endlessly (probably because we are executing some tight loop)
   // the store buffer will never drain, breaking the memory-model forward-progress guarantee
   // If we see a large number of loads saturate the LSU, pause for a cycle to let a store drain
-  val loads_saturating = (mem_iss_unit.io.iss_valids(0) && mem_iss_unit.io.iss_uops(0).uses_ldq)
+  val loads_saturating = WireInit(false.B)
   val saturating_loads_counter = RegInit(0.U(5.W))
   when (loads_saturating) { saturating_loads_counter := saturating_loads_counter + 1.U }
   .otherwise { saturating_loads_counter := 0.U }
@@ -1146,6 +1148,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   var mem_iss_cnt = 0
 
   println(s"exl: ${exe_units.length}, fpw: ${numFpWakeupPorts}, iw: ${numIntIssueWakeupPorts}")
+  var load_sat = false.B
   for (w <- 0 until exe_units.length) {
     var fu_types = exe_units(w).io.fu_types
     val exe_unit = exe_units(w)
@@ -1157,6 +1160,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
         fu_types = fu_types & RegNext(~Mux(idiv_issued, FU_DIV, 0.U))
       } else if (exe_unit.hasMem) {
         fu_types = Mux(pause_mem, 0.U, fu_types)
+        load_sat |= (iss_valids(iss_idx) && iss_uops(iss_idx).uses_ldq)
       }
       if(boomParams.unifiedIssueQueue){
         iss_valids(iss_idx) := unified_iss_unit.io.iss_valids(uni_iss_cnt)
@@ -1179,6 +1183,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
       iss_idx += 1
     }
   }
+  loads_saturating := load_sat
   require(iss_idx == exe_units.numIrfReaders)
   if(boomParams.unifiedIssueQueue){
     for (w <- 0 until fpIssueParam.issueWidth) {
@@ -1196,7 +1201,9 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   issue_units.map(_.io.flush_pipeline := RegNext(rob.io.flush.valid))
 
   // Load-hit Misspeculations
-  require (mem_iss_unit.issueWidth <= 2)
+  if(!boomParams.unifiedIssueQueue) {
+    require(mem_iss_unit.issueWidth <= 2)
+  }
   issue_units.map(_.io.ld_miss := io.lsu.ld_miss)
 
   mem_units.map(u => u.io.com_exception := RegNext(rob.io.flush.valid))

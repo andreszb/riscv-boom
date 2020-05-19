@@ -207,7 +207,172 @@ class WithMediumBooms extends Config((site, here, up) => {
   case SystemBusKey => up(SystemBusKey, site).copy(beatBytes = 8)
   case XLen => 64
   case MaxHartIdBits => log2Up(site(BoomTilesKey).size)
+})
 
+class WithMediumSliceBooms extends Config((site, here, up) => {
+  case BoomTilesKey => up(BoomTilesKey, site) map { b => b.copy(
+    core = b.core.copy(
+      fetchWidth = 4,
+      decodeWidth = 2,
+      numRobEntries = 64,
+      issueParams = Seq(
+        IssueParams(issueWidth=2, numEntries=0, iqType=IQT_INT.litValue, dispatchWidth=0), // INT
+        IssueParams(issueWidth=1, numEntries=0, iqType=IQT_MEM.litValue, dispatchWidth=0), // MEM
+        IssueParams(issueWidth=1, numEntries=0, iqType=IQT_FP.litValue , dispatchWidth=0), // FP
+        IssueParams(issueWidth=4, numEntries=0, iqType=IQT_COMB.litValue, dispatchWidth=0), // combined
+      ),
+      numIntPhysRegisters = 80,
+      numFpPhysRegisters = 64,
+      numLdqEntries = 16,
+      numStqEntries = 16,
+      maxBrCount = 12,
+      numFetchBufferEntries = 16,
+      ftq = FtqParameters(nEntries=32),
+      nPerfCounters = 6,
+      fpu = Some(freechips.rocketchip.tile.FPUParams(sfmaLatency=4, dfmaLatency=4, divSqrt=true)),
+      loadSliceCore = Some(LoadSliceCoreParams(
+        numAqEntries = 16,
+        numBqEntries = 16,
+        unifiedIssueQueue = true,
+        aDispatches = 2,
+        bDispatches = 2
+      )),
+      ibdaParams = Some(IbdaParams(
+        ibdaTagType = IBDA_TAG_DEBUG_PC,
+        rdtIstMarkWidth = 1,
+        //        bloomIst = true
+      )),
+      busyLookupParams = Some(BusyLookupParams(
+        lookupAtRename = false,
+        lookupAtDisWidth = 4
+      ))
+    ),
+    dcache = Some(DCacheParams(rowBits = site(SystemBusKey).beatBits,
+                                 nSets=64, nWays=4, nMSHRs=2, nTLBEntries=8)),
+    icache = Some(ICacheParams(rowBits = site(SystemBusKey).beatBits, nSets=64, nWays=4, fetchBytes=2*4))
+    )}
+  case SystemBusKey => up(SystemBusKey, site).copy(beatBytes = 8)
+  case XLen => 64
+  case MaxHartIdBits => log2Up(site(BoomTilesKey).size)
+})
+
+class WithMediumCasBooms extends Config((site, here, up) => {
+  case BoomTilesKey => up(BoomTilesKey, site) map { b => b.copy(
+    core = b.core.copy(
+      fetchWidth = 4,
+      decodeWidth = 2,
+      numRobEntries = 64,
+      issueParams = Seq(
+        IssueParams(issueWidth=2, numEntries=0, iqType=IQT_INT.litValue, dispatchWidth=0), // INT
+        IssueParams(issueWidth=1, numEntries=0, iqType=IQT_MEM.litValue, dispatchWidth=0), // MEM
+        IssueParams(issueWidth=1, numEntries=0, iqType=IQT_FP.litValue , dispatchWidth=0), // FP
+        IssueParams(issueWidth=4, numEntries=0, iqType=IQT_COMB.litValue, dispatchWidth=0), // combined
+      ),
+      numIntPhysRegisters = 80,
+      numFpPhysRegisters = 64,
+      numLdqEntries = 16,
+      numStqEntries = 16,
+      maxBrCount = 12,
+      numFetchBufferEntries = 16,
+      ftq = FtqParameters(nEntries=32),
+      nPerfCounters = 6,
+      fpu = Some(freechips.rocketchip.tile.FPUParams(sfmaLatency=4, dfmaLatency=4, divSqrt=true)),
+      casParams= Some(CasParams(
+        numInqEntries = 12,
+        numSqEntries = 4,
+        slidingOffset = 1,
+        windowSize = 2,
+        inqDispatches = 2
+      )),
+      busyLookupParams = Some(BusyLookupParams(
+        lookupAtRename = false,
+        lookupAtDisWidth = 4
+      ))
+    ),
+    dcache = Some(DCacheParams(rowBits = site(SystemBusKey).beatBits,
+                                 nSets=64, nWays=4, nMSHRs=2, nTLBEntries=8)),
+    icache = Some(ICacheParams(rowBits = site(SystemBusKey).beatBits, nSets=64, nWays=4, fetchBytes=2*4))
+    )}
+  case SystemBusKey => up(SystemBusKey, site).copy(beatBytes = 8)
+  case XLen => 64
+  case MaxHartIdBits => log2Up(site(BoomTilesKey).size)
+})
+
+class WithMediumDnbBooms extends Config((site, here, up) => {
+  case BoomTilesKey => up(BoomTilesKey, site) map { b => b.copy(
+    core = b.core.copy(
+      fetchWidth = 4,
+      decodeWidth = 2,
+      numRobEntries = 64,
+      issueParams = Seq(
+        IssueParams(issueWidth=2, numEntries=0, iqType=IQT_INT.litValue, dispatchWidth=0), // INT
+        IssueParams(issueWidth=1, numEntries=0, iqType=IQT_MEM.litValue, dispatchWidth=0), // MEM
+        IssueParams(issueWidth=1, numEntries=0, iqType=IQT_FP.litValue , dispatchWidth=0), // FP
+        IssueParams(issueWidth=4, numEntries=16, iqType=IQT_COMB.litValue, dispatchWidth=2), // combined
+      ),
+      numIntPhysRegisters = 80,
+      numFpPhysRegisters = 64,
+      numLdqEntries = 16,
+      numStqEntries = 16,
+      maxBrCount = 12,
+      numFetchBufferEntries = 16,
+      ftq = FtqParameters(nEntries=32),
+      nPerfCounters = 6,
+      fpu = Some(freechips.rocketchip.tile.FPUParams(sfmaLatency=4, dfmaLatency=4, divSqrt=true)),
+      dnbParams = Some(DnbParams(
+        numCrqEntries = 16,
+        numDlqEntries = 16,
+        crqDispatches = 2,
+        dlqDispatches = 2,
+      )),
+      ibdaParams = Some(IbdaParams(
+        ibdaTagType = IBDA_TAG_DEBUG_PC,
+        rdtIstMarkWidth = 1
+      )),
+      busyLookupParams = Some(BusyLookupParams(
+        lookupAtRename = true,
+        lookupAtDisWidth = 2
+      ))
+    ),
+    dcache = Some(DCacheParams(rowBits = site(SystemBusKey).beatBits,
+                                 nSets=64, nWays=4, nMSHRs=2, nTLBEntries=8)),
+    icache = Some(ICacheParams(rowBits = site(SystemBusKey).beatBits, nSets=64, nWays=4, fetchBytes=2*4))
+    )}
+  case SystemBusKey => up(SystemBusKey, site).copy(beatBytes = 8)
+  case XLen => 64
+  case MaxHartIdBits => log2Up(site(BoomTilesKey).size)
+})
+
+class WithMediumInoBooms extends Config((site, here, up) => {
+  case BoomTilesKey => up(BoomTilesKey, site) map { b => b.copy(
+    core = b.core.copy(
+      fetchWidth = 4,
+      decodeWidth = 2,
+      numRobEntries = 64,
+      issueParams = Seq(
+        IssueParams(issueWidth=1, numEntries=12, iqType=IQT_MEM.litValue, dispatchWidth=2),
+        IssueParams(issueWidth=2, numEntries=20, iqType=IQT_INT.litValue, dispatchWidth=2),
+        IssueParams(issueWidth=1, numEntries=16, iqType=IQT_FP.litValue , dispatchWidth=2),
+        IssueParams(issueWidth=4, numEntries=2, iqType=IQT_COMB.litValue, dispatchWidth=2),
+      ),
+      numIntPhysRegisters = 80,
+      numFpPhysRegisters = 64,
+      numLdqEntries = 16,
+      numStqEntries = 16,
+      maxBrCount = 12,
+      numFetchBufferEntries = 16,
+      ftq = FtqParameters(nEntries=32),
+      nPerfCounters = 6,
+      fpu = Some(freechips.rocketchip.tile.FPUParams(sfmaLatency=4, dfmaLatency=4, divSqrt=true)),
+      inoParams = Some(InoParams())
+    ),
+    dcache = Some(DCacheParams(rowBits = site(SystemBusKey).beatBits,
+                                 nSets=64, nWays=4, nMSHRs=2, nTLBEntries=8)),
+    icache = Some(ICacheParams(rowBits = site(SystemBusKey).beatBits, nSets=64, nWays=4, fetchBytes=2*4))
+    )}
+  case SystemBusKey => up(SystemBusKey, site).copy(beatBytes = 8)
+  case XLen => 64
+  case MaxHartIdBits => log2Up(site(BoomTilesKey).size)
 })
 
 // DOC include start: LargeBoomConfig

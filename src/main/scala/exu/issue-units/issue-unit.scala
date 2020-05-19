@@ -179,23 +179,27 @@ abstract class IssueUnit(
     null
   }
 
-  for (i <- 0 until numIssueSlots) {
-    issue_slots(i).wakeup_ports     := io.wakeup_ports
-    issue_slots(i).pred_wakeup_port := io.pred_wakeup_port
-    issue_slots(i).spec_ld_wakeup   := io.spec_ld_wakeup
-    issue_slots(i).ldspec_miss      := io.ld_miss
-    issue_slots(i).brupdate         := io.brupdate
-    issue_slots(i).kill             := io.flush_pipeline
+  if(!(boomParams.casMode || (boomParams.loadSliceMode && boomParams.unifiedIssueQueue)  || boomParams.inoQueueMode)) {
+    for (i <- 0 until numIssueSlots) {
+      issue_slots(i).wakeup_ports := io.wakeup_ports
+      issue_slots(i).pred_wakeup_port := io.pred_wakeup_port
+      issue_slots(i).spec_ld_wakeup := io.spec_ld_wakeup
+      issue_slots(i).ldspec_miss := io.ld_miss
+      issue_slots(i).brupdate := io.brupdate
+      issue_slots(i).kill := io.flush_pipeline
+    }
+
+    io.event_empty := !(issue_slots.map(s => s.valid).reduce(_ | _))
+
+    val count = PopCount(slots.map(_.io.valid))
+    dontTouch(count)
+
+    //-------------------------------------------------------------
+
+    assert(PopCount(issue_slots.map(s => s.grant)) <= issueWidth.U, "[issue] window giving out too many grants.")
+  } else{
+    io.event_empty := false.B
   }
-
-  io.event_empty := !(issue_slots.map(s => s.valid).reduce(_|_))
-
-  val count = PopCount(slots.map(_.io.valid))
-  dontTouch(count)
-
-  //-------------------------------------------------------------
-
-  assert (PopCount(issue_slots.map(s => s.grant)) <= issueWidth.U, "[issue] window giving out too many grants.")
 
 
 

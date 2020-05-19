@@ -95,181 +95,181 @@ class UopSram(numEntries: Int, numWrites: Int, numReads: Int, registerBased: Boo
     })))
   })
 
-  def bundle_to_hashmap(d: Data, name: String = "uop_sram", hashMap: mutable.HashMap[String, Data] = null): mutable.HashMap[String, Data] = {
-    val hm = if(hashMap == null){
-      new mutable.HashMap[String, Data]();
-    } else {
-      hashMap
-    }
-    d match {
-      case vec: Vec[_] =>
-        for ((c, i) <- vec.zipWithIndex) {
-          bundle_to_hashmap(c, s"${name}_${i}", hm)
-        }
-      case bundle: Bundle =>
-        bundle.elements.toList.foreach {
-          case (st, d) => bundle_to_hashmap(d, s"${name}_${st}", hm)
-        }
-      case element: Element => {
-        hm.put(name, d)
-      }
-      case _ => throw new scala.Exception(s"unknown type: $name")
-    }
-    hm
-  }
-
-  val default_hm = bundle_to_hashmap(new MicroOp())
-
-  val whitelist = Seq[String](
-    "uop_sram_uopc",
-    "uop_sram_is_rvc",
-    "uop_sram_iq_type",
-    "uop_sram_fu_code",
-    "uop_sram_is_br_or_jmp",
-    "uop_sram_is_jump",
-    "uop_sram_is_jal",
-    "uop_sram_is_ret",
-    "uop_sram_is_call",
-    // not needed as it is stored seperately
-//    "uop_sram_br_mask",
-    "uop_sram_br_tag",
-    "uop_sram_br_prediction_btb_blame",
-    "uop_sram_br_prediction_btb_hit",
-    "uop_sram_br_prediction_btb_taken",
-    "uop_sram_br_prediction_bpd_blame",
-    "uop_sram_br_prediction_bpd_taken",
-    "uop_sram_ftq_idx",
-    "uop_sram_cfi_idx",
-    "uop_sram_edge_inst",
-    "uop_sram_pc_lob",
-    "uop_sram_imm_packed",
-    "uop_sram_rob_idx",
-    "uop_sram_ldq_idx",
-    "uop_sram_stq_idx",
-    "uop_sram_pdst",
-    "uop_sram_prs1",
-    "uop_sram_prs2",
-    "uop_sram_prs3",
-    "uop_sram_exception",
-    "uop_sram_bypassable",
-    "uop_sram_mem_cmd",
-    "uop_sram_mem_size",
-    "uop_sram_mem_signed",
-    "uop_sram_is_fence",
-    "uop_sram_is_fencei",
-    "uop_sram_is_amo",
-    "uop_sram_uses_ldq",
-    "uop_sram_uses_stq",
-    "uop_sram_ldst_val",
-    "uop_sram_dst_rtype",
-    "uop_sram_lrs1_rtype",
-    "uop_sram_lrs2_rtype",
-    "uop_sram_frs3_en",
-    "uop_sram_fp_val",
-//    "uop_sram_perf_dnb_dlq",
-//    "uop_sram_perf_dnb_crq",
-//    "uop_sram_perf_dnb_iq",
-    //optional
-    "uop_sram_debug_events_fetch_seq",
-  )
-  val mv_type = MixedVec(whitelist.map(n => default_hm(n)))
-
-  if(registerBased){
-    val reg = Reg(Vec(numEntries, new MicroOp()))
-    for(wp <- io.writes){
-      when(wp.valid){
-        reg(wp.bits.addr) := wp.bits.data
-      }
-    }
-    for((req, resp) <- io.read_req zip io.read_resp){
-      resp.valid := RegNext(req.valid)
-      val prev_addr = RegNext(req.bits.addr)
-      when(resp.valid){
-        resp.bits.data := reg(prev_addr)
-      }.otherwise(
-        resp.bits := DontCare
-      )
-    }
-  } else if(numWrites==1){
-    //  print(default_hm.keySet.reduce(_ + ",\n"+_))
-    //  println()
-    //  println()
-    //  print(whitelist.toSet.diff(default_hm.keySet).reduce(_ + ",\n"+_))
-    val uop_sram_compact = SyncReadMem(numEntries, mv_type)
-    for(wp <- io.writes){
-      val write_hm = bundle_to_hashmap(wp.bits.data)
-      val mv = WireInit(MixedVecInit(whitelist.map(n => write_hm(n))))
-      when(wp.valid){
-        uop_sram_compact(wp.bits.addr) := mv
-      }
-    }
-    val bypasses = RegNext(io.writes)
-    for((req, resp) <- io.read_req zip io.read_resp){
-      val read_hm = bundle_to_hashmap(resp.bits.data)
-      resp.bits.data := DontCare
-      val mv = uop_sram_compact.read(req.bits.addr, req.valid)
-      for ((n, d) <- (whitelist zip mv)) {
-        read_hm(n) := d
-      }
-      resp.valid := RegNext(req.valid)
-      val bypass_addr = RegNext(req.bits.addr)
-      for(bp <- bypasses){
-        when(bp.valid && bypass_addr === bp.bits.addr){
-          resp.bits.data := bp.bits.data
-        }
-      }
-    }
-  }else {
-    //  print(default_hm.keySet.reduce(_ + ",\n"+_))
-    //  println()
-    //  println()
-    //  print(whitelist.toSet.diff(default_hm.keySet).reduce(_ + ",\n"+_))
-    val uop_sram_compact = Module(new MultiWriteSramBase(
-      numEntries, UInt(), numReads, numWrites
-    ))
-    for((wp, i) <- io.writes.zipWithIndex){
-      val write_hm = bundle_to_hashmap(wp.bits.data)
-      val mv = WireInit(MixedVecInit(whitelist.map(n => write_hm(n))))
-      uop_sram_compact.io.write(i).addr := wp.bits.addr
-      uop_sram_compact.io.write(i).data := mv.asUInt()
-      uop_sram_compact.io.write(i).en := wp.valid
-    }
-    val bypasses = RegNext(io.writes)
-    for(((req, resp), i) <- io.read_req zip io.read_resp zipWithIndex){
-      val read_hm = bundle_to_hashmap(resp.bits.data)
-      resp.bits.data := DontCare
-      val mv = uop_sram_compact.io.read(i).data.asTypeOf(mv_type)
-      uop_sram_compact.io.read(i).addr := req.bits.addr
-      for ((n, d) <- (whitelist zip mv)) {
-        read_hm(n) := d
-      }
-      resp.valid := RegNext(req.valid)
-      val bypass_addr = RegNext(req.bits.addr)
-      for(bp <- bypasses){
-        when(bp.valid && bypass_addr === bp.bits.addr){
-          resp.bits.data := bp.bits.data
-        }
-      }
-    }
-  }
-
-//  val uop_sram = SyncReadMem(numEntries, new MicroOp())
-//  for(wp <- io.writes){
-//    when(wp.valid){
-//      uop_sram(wp.bits.addr) := wp.bits.data
+//  def bundle_to_hashmap(d: Data, name: String = "uop_sram", hashMap: mutable.HashMap[String, Data] = null): mutable.HashMap[String, Data] = {
+//    val hm = if(hashMap == null){
+//      new mutable.HashMap[String, Data]();
+//    } else {
+//      hashMap
 //    }
+//    d match {
+//      case vec: Vec[_] =>
+//        for ((c, i) <- vec.zipWithIndex) {
+//          bundle_to_hashmap(c, s"${name}_${i}", hm)
+//        }
+//      case bundle: Bundle =>
+//        bundle.elements.toList.foreach {
+//          case (st, d) => bundle_to_hashmap(d, s"${name}_${st}", hm)
+//        }
+//      case element: Element => {
+//        hm.put(name, d)
+//      }
+//      case _ => throw new scala.Exception(s"unknown type: $name")
+//    }
+//    hm
 //  }
-//  val bypasses = RegNext(io.writes)
-//  for((req, resp) <- io.read_req zip io.read_resp){
-//    resp.bits.data := uop_sram.read(req.bits.addr, req.valid)
-//    resp.valid := RegNext(req.valid)
-//    val bypass_addr = RegNext(req.bits.addr)
-//    for(bp <- bypasses){
-//      when(bp.valid && bypass_addr === bp.bits.addr){
-//        resp.bits.data := bp.bits.data
+//
+//  val default_hm = bundle_to_hashmap(new MicroOp())
+//
+//  val whitelist = Seq[String](
+//    "uop_sram_uopc",
+//    "uop_sram_is_rvc",
+//    "uop_sram_iq_type",
+//    "uop_sram_fu_code",
+//    "uop_sram_is_br_or_jmp",
+//    "uop_sram_is_jump",
+//    "uop_sram_is_jal",
+//    "uop_sram_is_ret",
+//    "uop_sram_is_call",
+//    // not needed as it is stored seperately
+////    "uop_sram_br_mask",
+//    "uop_sram_br_tag",
+//    "uop_sram_br_prediction_btb_blame",
+//    "uop_sram_br_prediction_btb_hit",
+//    "uop_sram_br_prediction_btb_taken",
+//    "uop_sram_br_prediction_bpd_blame",
+//    "uop_sram_br_prediction_bpd_taken",
+//    "uop_sram_ftq_idx",
+//    "uop_sram_cfi_idx",
+//    "uop_sram_edge_inst",
+//    "uop_sram_pc_lob",
+//    "uop_sram_imm_packed",
+//    "uop_sram_rob_idx",
+//    "uop_sram_ldq_idx",
+//    "uop_sram_stq_idx",
+//    "uop_sram_pdst",
+//    "uop_sram_prs1",
+//    "uop_sram_prs2",
+//    "uop_sram_prs3",
+//    "uop_sram_exception",
+//    "uop_sram_bypassable",
+//    "uop_sram_mem_cmd",
+//    "uop_sram_mem_size",
+//    "uop_sram_mem_signed",
+//    "uop_sram_is_fence",
+//    "uop_sram_is_fencei",
+//    "uop_sram_is_amo",
+//    "uop_sram_uses_ldq",
+//    "uop_sram_uses_stq",
+//    "uop_sram_ldst_val",
+//    "uop_sram_dst_rtype",
+//    "uop_sram_lrs1_rtype",
+//    "uop_sram_lrs2_rtype",
+//    "uop_sram_frs3_en",
+//    "uop_sram_fp_val",
+////    "uop_sram_perf_dnb_dlq",
+////    "uop_sram_perf_dnb_crq",
+////    "uop_sram_perf_dnb_iq",
+//    //optional
+//    "uop_sram_debug_events_fetch_seq",
+//  )
+//  val mv_type = MixedVec(whitelist.map(n => default_hm(n)))
+
+//  if(registerBased){
+//    val reg = Reg(Vec(numEntries, new MicroOp()))
+//    for(wp <- io.writes){
+//      when(wp.valid){
+//        reg(wp.bits.addr) := wp.bits.data
+//      }
+//    }
+//    for((req, resp) <- io.read_req zip io.read_resp){
+//      resp.valid := RegNext(req.valid)
+//      val prev_addr = RegNext(req.bits.addr)
+//      when(resp.valid){
+//        resp.bits.data := reg(prev_addr)
+//      }.otherwise(
+//        resp.bits := DontCare
+//      )
+//    }
+//  } else if(numWrites==1){
+//    //  print(default_hm.keySet.reduce(_ + ",\n"+_))
+//    //  println()
+//    //  println()
+//    //  print(whitelist.toSet.diff(default_hm.keySet).reduce(_ + ",\n"+_))
+//    val uop_sram_compact = SyncReadMem(numEntries, mv_type)
+//    for(wp <- io.writes){
+//      val write_hm = bundle_to_hashmap(wp.bits.data)
+//      val mv = WireInit(MixedVecInit(whitelist.map(n => write_hm(n))))
+//      when(wp.valid){
+//        uop_sram_compact(wp.bits.addr) := mv
+//      }
+//    }
+//    val bypasses = RegNext(io.writes)
+//    for((req, resp) <- io.read_req zip io.read_resp){
+//      val read_hm = bundle_to_hashmap(resp.bits.data)
+//      resp.bits.data := DontCare
+//      val mv = uop_sram_compact.read(req.bits.addr, req.valid)
+//      for ((n, d) <- (whitelist zip mv)) {
+//        read_hm(n) := d
+//      }
+//      resp.valid := RegNext(req.valid)
+//      val bypass_addr = RegNext(req.bits.addr)
+//      for(bp <- bypasses){
+//        when(bp.valid && bypass_addr === bp.bits.addr){
+//          resp.bits.data := bp.bits.data
+//        }
+//      }
+//    }
+//  }else {
+//    //  print(default_hm.keySet.reduce(_ + ",\n"+_))
+//    //  println()
+//    //  println()
+//    //  print(whitelist.toSet.diff(default_hm.keySet).reduce(_ + ",\n"+_))
+//    val uop_sram_compact = Module(new MultiWriteSramBase(
+//      numEntries, UInt(), numReads, numWrites
+//    ))
+//    for((wp, i) <- io.writes.zipWithIndex){
+//      val write_hm = bundle_to_hashmap(wp.bits.data)
+//      val mv = WireInit(MixedVecInit(whitelist.map(n => write_hm(n))))
+//      uop_sram_compact.io.write(i).addr := wp.bits.addr
+//      uop_sram_compact.io.write(i).data := mv.asUInt()
+//      uop_sram_compact.io.write(i).en := wp.valid
+//    }
+//    val bypasses = RegNext(io.writes)
+//    for(((req, resp), i) <- io.read_req zip io.read_resp zipWithIndex){
+//      val read_hm = bundle_to_hashmap(resp.bits.data)
+//      resp.bits.data := DontCare
+//      val mv = uop_sram_compact.io.read(i).data.asTypeOf(mv_type)
+//      uop_sram_compact.io.read(i).addr := req.bits.addr
+//      for ((n, d) <- (whitelist zip mv)) {
+//        read_hm(n) := d
+//      }
+//      resp.valid := RegNext(req.valid)
+//      val bypass_addr = RegNext(req.bits.addr)
+//      for(bp <- bypasses){
+//        when(bp.valid && bypass_addr === bp.bits.addr){
+//          resp.bits.data := bp.bits.data
+//        }
 //      }
 //    }
 //  }
+
+  val uop_sram = SyncReadMem(numEntries, new MicroOp())
+  for(wp <- io.writes){
+    when(wp.valid){
+      uop_sram(wp.bits.addr) := wp.bits.data
+    }
+  }
+  val bypasses = RegNext(io.writes)
+  for((req, resp) <- io.read_req zip io.read_resp){
+    resp.bits.data := uop_sram.read(req.bits.addr, req.valid)
+    resp.valid := RegNext(req.valid)
+    val bypass_addr = RegNext(req.bits.addr)
+    for(bp <- bypasses){
+      when(bp.valid && bypass_addr === bp.bits.addr){
+        resp.bits.data := bp.bits.data
+      }
+    }
+  }
 
 }
 
@@ -525,15 +525,13 @@ class InternalSingleSramDispatchQueue(params: DispatchQueueParams,
   val mod_br_masks = WireInit(br_masks)
 
   // branch update
-  when(io.brinfo.valid) {
-    for (r <- 0 until numEntries) {
+  for (r <- 0 until numEntries) {
+    for (c <- 0 until fifoWidth) {
       val br_mask = br_masks(r)
-      val entry_match = valids(r) && maskMatch(io.brinfo.mask, br_mask)
-      when (entry_match && io.brinfo.mispredict) { // Mispredict
+      when (IsKilledByBranch(io.brupdate, br_mask)) { // Mispredict
         mod_valids(r) := false.B
-      }.elsewhen(entry_match && !io.brinfo.mispredict) { // Resolved
-        mod_br_masks(r) := (br_mask & ~io.brinfo.mask)
       }
+      mod_br_masks(r) := GetNewBrMask(io.brupdate, br_mask)
     }
   }
   // up here so writes can go directly to br_masks below
