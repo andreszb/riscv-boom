@@ -1,7 +1,7 @@
 package lsc
 
 import boom.exu.CommitSignals
-import chisel3._
+import chisel3.{Data, _}
 import chisel3.util._
 import freechips.rocketchip.config.Parameters
 import boom.common._
@@ -54,54 +54,62 @@ class MultiWriteSramSimple(size: Int, width: Int, reads: Int, writes: Int, synch
     r.data := sram.read(r.addr)
   })
 }
-class MultiWriteSram(size: Int, width: Int, reads: Int, writes: Int) extends Module {
-  val io = IO(new Bundle() {
-    val write = Input(Vec(writes, new Bundle {
-      val addr = UInt(log2Up(size).W)
-      val data = UInt(width.W)
-      val en = Bool()
-    }))
-    val read = Vec(reads, new Bundle() {
-      val addr = Input(UInt(log2Up(size).W))
-      val data = Output(UInt(width.W))
-    })
-  })
+class MultiWriteSramBase[T <: Data](size: Int, data: T, reads: Int, writes: Int) extends Module {
+
+  class MyBundleWrite[U <: Data](private val gen: U) extends Bundle {
+    val addr = UInt(log2Up(size).W)
+    val data = gen
+    val en = Bool()
+  }
+  class MyBundleRead[U <: Data](private val gen: U) extends Bundle {
+    val addr = Input(UInt(log2Up(size).W))
+    val data = Output(gen)
+  }
+  class MyBundle[U <: Data](private val gen: U) extends Bundle {
+    val write = Input(Vec(writes, new MyBundleWrite(gen)))
+    val read = Vec(reads, new MyBundleRead(gen))
+  }
+  val io = IO(new MyBundle(data))
   // this will be turned to bits because it needs multiple writes - sync because it is read in the same cycle as the srams
   val ways = SyncReadMem(size, UInt(log2Up(writes).W))
 
-  val srams = io.write.map(_ => SyncReadMem(size, UInt(width.W)))
-  val test = SyncReadMem(size, UInt(width.W))
-  val test_valid = RegInit(VecInit(Seq.fill(size)(false.B)))
+  val srams = io.write.map(_ => SyncReadMem(size, data))
+//  val test = SyncReadMem(size,data)
+//  val test_valid = RegInit(VecInit(Seq.fill(size)(false.B)))
   for ((w, i) <- io.write zipWithIndex) {
     when(w.en) {
       srams(i).write(w.addr, w.data)
       // TODO: check colliding writes
       ways(w.addr) := i.U
-      test(w.addr) := w.data
-      test_valid(w.addr) := true.B
+//      test(w.addr) := w.data
+//      test_valid(w.addr) := true.B
     }
   }
 
   io.read.foreach(r => {
     val way = if(writes==1) WireInit(0.U) else WireInit(ways.read(r.addr))
-    way.suggestName("way")
-    dontTouch(way)
+//    way.suggestName("way")
+//    dontTouch(way)
     val reads = WireInit(VecInit(srams.map(s => s.read(r.addr))))
-    reads.suggestName("reads")
+//    reads.suggestName("reads")
 //    dontTouch(reads)
     val read_data = WireInit(reads(way))
-    read_data.suggestName("read_data")
-    dontTouch(read_data)
+//    read_data.suggestName("read_data")
+//    dontTouch(read_data)
     r.data := read_data
-    val read_valid = WireInit(test_valid(RegNext(r.addr)))
-    read_valid.suggestName("read_valid")
-    dontTouch(read_valid)
-    val test_read = WireInit(test(r.addr))
-    test_read.suggestName("test_read")
-    dontTouch(test_read)
-    assert(!read_valid || (test_read === read_data), "failure in MultiWriteSram")
+//    val read_valid = WireInit(test_valid(RegNext(r.addr)))
+//    read_valid.suggestName("read_valid")
+//    dontTouch(read_valid)
+//    val test_read = WireInit(test(r.addr))
+//    test_read.suggestName("test_read")
+//    dontTouch(test_read)
+//    assert(!read_valid || (test_read === read_data), "failure in MultiWriteSram")
   })
 }
+
+class MultiWriteSram(size: Int, width: Int, reads: Int, writes: Int) extends MultiWriteSramBase(
+  size, UInt(width.W), reads, writes
+)
 
 object MultiWriteSramTester extends App {
   val writes = 4

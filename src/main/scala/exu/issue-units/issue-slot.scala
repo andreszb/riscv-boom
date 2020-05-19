@@ -35,6 +35,7 @@ class IssueSlotIO(val numWakeupPorts: Int)(implicit p: Parameters) extends BoomB
   val will_be_valid = Output(Bool()) // TODO code review, do we need this signal so explicitely?
   val request       = Output(Bool())
   val request_hp    = Output(Bool())
+  val squash_grant  = Output(Bool())
   val grant         = Input(Bool())
 
   val brupdate        = Input(new BrUpdateInfo())
@@ -263,6 +264,7 @@ class IssueSlot(val numWakeupPorts: Int)(implicit p: Parameters)
   // micro-op will vacate due to grant.
   val may_vacate = io.grant && ((state === s_valid_1) || (state === s_valid_2) && p1 && p2 && ppred)
   val squash_grant = io.ldspec_miss && (p1_poisoned || p2_poisoned)
+  io.squash_grant := squash_grant
   io.will_be_valid := is_valid && !(may_vacate && !squash_grant)
 
   io.out_uop            := slot_uop
