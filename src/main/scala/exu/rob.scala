@@ -347,6 +347,17 @@ class Rob(
         rob_bsy(row_idx)      := false.B
         rob_unsafe(row_idx)   := false.B
         rob_predicated(row_idx)  := wb_resp.bits.predicated
+
+        if (boomParams.casMode) {
+          rob_uop(row_idx).perf_cas_sq_dis.get := wb_uop.perf_cas_sq_dis.get
+          rob_uop(row_idx).perf_cas_inq_dis.get := wb_uop.perf_cas_inq_dis.get
+        } else if (boomParams.dnbMode) {
+          rob_uop(row_idx).perf_dnb_dlq.get := wb_uop.perf_dnb_dlq.get
+          rob_uop(row_idx).perf_dnb_crq.get := wb_uop.perf_dnb_crq.get
+          rob_uop(row_idx).perf_dnb_iq.get := wb_uop.perf_dnb_iq.get
+
+        } else if (boomParams.loadSliceMode)
+          rob_uop(row_idx).is_lsc_b := wb_uop.is_lsc_b
       }
       // TODO check that fflags aren't overwritten
       // TODO check that the wb is to a valid ROB entry, give it a time stamp

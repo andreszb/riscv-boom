@@ -86,6 +86,11 @@ abstract class AbstractRenameStage(
 
     val debug_rob_empty = Input(Bool())
     val debug = Output(new DebugRenameStageIO(numPhysRegs))
+
+    //lsc
+    require(coreWidth == plWidth) // make sure we can use coreWidth and plWidth interchangeably
+    val dis_busy_req_uops = if(boomParams.busyLookupMode) Some(Input(Vec(boomParams.busyLookupParams.get.lookupAtDisWidth, new MicroOp))) else None
+    val dis_busy_resps = if(boomParams.busyLookupMode) Some(Output(Vec(boomParams.busyLookupParams.get.lookupAtDisWidth, new BusyResp))) else None
   })
 
   def BypassAllocations(uop: MicroOp, older_uops: Seq[MicroOp], alloc_reqs: Seq[Bool]): MicroOp
@@ -305,25 +310,48 @@ class RenameStage(
 
   //-------------------------------------------------------------
   // Busy Table
+  assert (!(io.wakeups.map(x => x.valid && x.bits.uop.dst_rtype =/= rtype).reduce(_||_)),
+    "[rename] Wakeup has wrong rtype.")
 
+  // newly allocated physical registers - to be marked as busy
   busytable.io.ren_uops := ren2_uops  // expects pdst to be set up.
   busytable.io.rebusy_reqs := ren2_alloc_reqs
+  // write back information - to be removed from busy
   busytable.io.wb_valids := io.wakeups.map(_.valid)
   busytable.io.wb_pdsts := io.wakeups.map(_.bits.uop.pdst)
 
-  assert (!(io.wakeups.map(x => x.valid && x.bits.uop.dst_rtype =/= rtype).reduce(_||_)),
-   "[rename] Wakeup has wrong rtype.")
+  var busytable_req_idx = 0
 
-  for ((uop, w) <- ren2_uops.zipWithIndex) {
-    val busy = busytable.io.busy_resps(w)
+  if(boomParams.busyLookupParams.map(_.lookupAtRename).getOrElse(true)) {
+    // Default. We do busy lookup at ren2 before dispatching to IQs
+    // We use req_idx variable to then later add other ports to the busy table
+    // uops to be annotated
+    for (i <- 0 until decodeWidth) {
+      busytable.io.req_uops(busytable_req_idx) := ren2_uops(i)
+      busytable_req_idx+=1
+    }
+    // annotate uops with busy information
+    for ((uop, w) <- ren2_uops.zipWithIndex) {
+      val busy = busytable.io.busy_resps(w)
 
-    uop.prs1_busy := uop.lrs1_rtype === rtype && busy.prs1_busy
-    uop.prs2_busy := uop.lrs2_rtype === rtype && busy.prs2_busy
-    uop.prs3_busy := uop.frs3_en && busy.prs3_busy
+      uop.prs1_busy := uop.lrs1_rtype === rtype && busy.prs1_busy
+      uop.prs2_busy := uop.lrs2_rtype === rtype && busy.prs2_busy
+      uop.prs3_busy := uop.frs3_en && busy.prs3_busy
 
-    val valid = ren2_valids(w)
-    assert (!(valid && busy.prs1_busy && rtype === RT_FIX && uop.lrs1 === 0.U), "[rename] x0 is busy??")
-    assert (!(valid && busy.prs2_busy && rtype === RT_FIX && uop.lrs2 === 0.U), "[rename] x0 is busy??")
+      val valid = ren2_valids(w)
+      assert(!(valid && busy.prs1_busy && rtype === RT_FIX && uop.lrs1 === 0.U), "[rename] x0 is busy??")
+      assert(!(valid && busy.prs2_busy && rtype === RT_FIX && uop.lrs2 === 0.U), "[rename] x0 is busy??")
+    }
+
+  }
+  if(boomParams.busyLookupParams.map(_.lookupAtDisWidth > 0).getOrElse(false)) {
+    // Additional ports for busyLookup at Dispatch. Used by LSC and later DNB
+    // The busytable_req_idx counter is used for combining lookupAtRename AND dispatch
+    for(i <- 0 until boomParams.busyLookupParams.get.lookupAtDisWidth) {
+      busytable.io.req_uops(busytable_req_idx) := io.dis_busy_req_uops.get(i)
+      io.dis_busy_resps.get(i) := busytable.io.busy_resps(busytable_req_idx)
+      busytable_req_idx += 1
+    }
   }
 
   //-------------------------------------------------------------

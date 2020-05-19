@@ -90,6 +90,17 @@ class GetPCFromFtqIO(implicit p: Parameters) extends BoomBundle
 }
 
 /**
+  * IO to provide the IST and RDT ports to the FTQ to get the PC of the instructions
+  * Is used with the ibdaParams
+  */
+
+class GetPCSlice(implicit  p: Parameters) extends BoomBundle
+{
+  val ftq_idx  = Input(UInt(log2Ceil(ftqSz).W))
+  val fetch_pc = Output(UInt(vaddrBitsExtended.W))
+}
+
+/**
  * Queue to store the fetch PC and other relevant branch predictor signals that are inflight in the
  * processor.
  *
@@ -112,7 +123,7 @@ class FetchTargetQueue(implicit p: Parameters) extends BoomModule
 
     // Give PC info to BranchUnit.
     val get_ftq_pc = Vec(2, new GetPCFromFtqIO())
-
+    val get_pc_slice = if (boomParams.ibdaParams.map(_.ibdaTagType == IBDA_TAG_FULL_PC).getOrElse(false))  Some(Vec(coreWidth, new GetPCSlice())) else None
 
     // Used to regenerate PC for trace port stuff in FireSim
     // Don't tape this out, this blows up the FTQ
@@ -335,6 +346,13 @@ class FetchTargetQueue(implicit p: Parameters) extends BoomModule
     prev_pc    := bpd_pc
 
     ram(RegNext(io.redirect.bits)) := RegNext(redirect_new_entry)
+  }
+
+  if (boomParams.ibdaParams.map(_.ibdaTagType == IBDA_TAG_FULL_PC).getOrElse(false)) {
+    val get_pc_slice = io.get_pc_slice.get
+    for (w <- 0 until coreWidth) {
+      get_pc_slice(w).fetch_pc := ram(get_pc_slice(w).ftq_idx).fetch_pc
+    }
   }
 
   //-------------------------------------------------------------

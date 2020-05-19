@@ -18,6 +18,7 @@ import freechips.rocketchip.devices.tilelink.{BootROMParams, CLINTParams, PLICPa
 import boom.ifu._
 import boom.exu._
 import boom.lsu._
+import lsc.Hash
 
 /**
  * Default BOOM core parameters
@@ -94,7 +95,14 @@ case class BoomCoreParams(
   /* debug stuff */
   enableCommitLogPrintf: Boolean = false,
   enableBranchPrintf: Boolean = false,
-  enableMemtracePrintf: Boolean = false
+  enableMemtracePrintf: Boolean = false,
+  /* lsc stuff */
+  loadSliceCore: Option[LoadSliceCoreParams] = None,
+  ibdaParams: Option[IbdaParams] = None,
+  busyLookupParams: Option[BusyLookupParams] = None,
+  dnbParams: Option[DnbParams] = None,
+  casParams: Option[CasParams] = None,
+  inoParams: Option[InoParams] = None
 
 // DOC include end: BOOM Parameters
 ) extends freechips.rocketchip.tile.CoreParams
@@ -105,7 +113,34 @@ case class BoomCoreParams(
   val lrscCycles: Int = 80 // worst case is 14 mispredicted branches + slop
   val retireWidth = decodeWidth
   val jumpInFrontend: Boolean = false // unused in boom
+  val loadSliceMode: Boolean = loadSliceCore.isDefined
+  val dnbMode: Boolean = dnbParams.isDefined
+  val casMode: Boolean = casParams.isDefined
+  val inoMode: Boolean = inoParams.isDefined
+  val inoQueueMode: Boolean = inoParams.exists(_.queueMode)
+  val ibdaMode: Boolean = loadSliceMode || dnbMode
+  val busyLookupMode: Boolean = loadSliceMode || dnbMode || casMode || inoQueueMode
 
+  // Make sure we have enough lookup ports to the Busy Table
+  if(busyLookupMode) {
+    if (loadSliceMode) {
+      require(busyLookupParams.get.lookupAtDisWidth == loadSliceCore.get.dispatches())
+    }
+    if (dnbMode) {
+      require(busyLookupParams.get.lookupAtDisWidth == dnbParams.get.dlqDispatches)
+    }
+
+    if (casMode) {
+      require(busyLookupParams.get.lookupAtDisWidth == casParams.get.inqDispatches + casParams.get.windowSize)
+    }
+
+    if (inoQueueMode) {
+      require(busyLookupParams.get.lookupAtDisWidth == decodeWidth)
+    }
+  }
+
+
+  val unifiedIssueQueue: Boolean = loadSliceCore.exists(_.unifiedIssueQueue) || dnbMode || casMode || inoMode
 
   override def customCSRs(implicit p: Parameters) = new BoomCustomCSRs
 }
@@ -199,11 +234,16 @@ trait HasBoomCoreParameters extends freechips.rocketchip.tile.HasCoreParameters
 
   val intIssueParam = issueParams.find(_.iqType == IQT_INT.litValue).get
   val memIssueParam = issueParams.find(_.iqType == IQT_MEM.litValue).get
+  val fpIssueParam = issueParams.find(_.iqType == IQT_FP.litValue).get
+  val combIssueParam = issueParams.find(_.iqType == IQT_COMB.litValue)
 
   val intWidth = intIssueParam.issueWidth
   val memWidth = memIssueParam.issueWidth
 
-  issueParams.map(x => require(x.dispatchWidth <= coreWidth && x.dispatchWidth > 0))
+
+  if(!boomParams.unifiedIssueQueue){
+    issueParams.map(x => require(x.dispatchWidth <= coreWidth && x.dispatchWidth > 0))
+  }
 
   //************************************
   // Load/Store Unit
@@ -282,4 +322,146 @@ trait HasBoomCoreParameters extends freechips.rocketchip.tile.HasCoreParameters
 
   val corePAddrBits = paddrBits
   val corePgIdxBits = pgIdxBits
+}
+
+
+// CASINO Parameters
+
+case class CasParams(
+                    numInqEntries: Int = 8,
+                    numSqEntries: Int = 8,
+                    slidingOffset: Int = 1,
+                    inqDispatches: Int = 2,
+                    windowSize: Int = 2
+                    )
+{}
+
+case class InoParams(
+  queueMode: Boolean = false,
+  stallOnUse: Boolean = true,
+  queueSize: Int = 8
+)
+
+// Class for DnB Parameters
+case class DnbParams(
+                                numCrqEntries: Int = 8,
+                                numDlqEntries: Int = 8,
+                                dlqRobUrgentDist: Int = 2,
+                                crqDispatches: Int = 1,
+                                dlqDispatches: Int = 1
+                              ){
+  def dispatches(): Int = crqDispatches + dlqDispatches
+}
+
+// Case class for LoadSliceCore parameters.
+//  TODO: Consider moving this to separate file?
+// TODO: case class vs class
+case class LoadSliceCoreParams(
+                                numAqEntries: Int = 8,
+                                numBqEntries: Int = 8,
+                                unifiedIssueQueue: Boolean = false,
+                                aDispatches: Int = 1,
+                                bDispatches: Int = 1
+){
+  def dispatches(): Int = aDispatches+bDispatches
+
+}
+
+/**
+  * IBDA Params, used by LsC and DnB
+ */
+case class IbdaParams(
+                 ibdaTagType: Int = IBDA_TAG_FULL_PC,
+                 rdtIstMarkWidth: Int = 4,
+                 branchIbda: Boolean = false,
+                 bloomIst: Boolean = false,
+                 hashBits: Int = 0
+                     )
+{
+  // TODO: ugly hack for now...
+  val inBits = 59//(
+//    UOPC_SZ+ //uopc 9
+//    lregSz+ //ldst 6
+//    lregSz+ //lrs1 6
+//    lregSz+ //lrs2 6
+//    lregSz+ //lrs3 6
+//    log2Ceil(icBlockBytes)+ //pc_lob 6
+//    LONGEST_IMM_SZ //imm_packed 20
+//  )
+  lazy val hash = Hash(inBits, hashBits)
+  def ibda_get_tag(uop: MicroOp): UInt = {
+    val tag = Wire(UInt(ibda_tag_sz.W))
+    // IBDA_TAG_FULL_PC is handled in core
+    if (ibdaTagType == IBDA_TAG_UOPC_LOB) tag := Cat(uop.uopc, uop.pc_lob)
+    else if (ibdaTagType == IBDA_TAG_INST_LOB) tag := Cat(uop.inst, uop.pc_lob)
+    else if (ibdaTagType == IBDA_TAG_DEBUG_PC) tag := uop.debug_pc
+    else if (ibdaTagType == IBDA_TAG_DEBUG) tag := uop.debug_pc
+    else if (ibdaTagType == IBDA_TAG_HASH) tag := hash(
+      Cat(
+        uop.uopc,
+        uop.ldst,
+        uop.lrs1,
+        uop.lrs2,
+        uop.lrs3,
+        uop.pc_lob,
+        uop.imm_packed,
+      )
+    )
+    else if(ibdaTagType == IBDA_TAG_HASH_PC) tag := hash(uop.debug_pc)
+
+    else require(false, "ibda_get_tag not implemented for this tag")
+    tag
+  }
+  require((ibdaTagType != IBDA_TAG_HASH && ibdaTagType != IBDA_TAG_HASH_PC) || hashBits != 0)
+
+  def rdtIstMarkSz: Int = {
+    if (rdtIstMarkWidth == 1) {
+      1
+    } else {
+      log2Ceil(rdtIstMarkWidth)
+    }
+  }
+
+  // Get tag size.
+  def ibda_tag_sz: Int = {
+    ibdaTagType match {
+      case IBDA_TAG_FULL_PC => 40
+      case IBDA_TAG_DEBUG_PC => 40
+      case IBDA_TAG_DEBUG => 40
+      case IBDA_TAG_UOPC_LOB => UOPC_SZ + 6 //uopc + pc_lob
+      case IBDA_TAG_INST_LOB => 32 + 6 //inst + pc_lob
+      case IBDA_TAG_HASH => hashBits //inst + pc_lob
+      case IBDA_TAG_HASH_PC => hashBits //inst + pc_lob
+      case _ => {
+        require(false, "ibda_tag_sz not implemented for this tag")
+        0
+      }
+    }
+  }
+
+  def is_ibda(uop: MicroOp): Bool = {
+    if(branchIbda){
+      uop.is_lsc_b || uop.is_br_or_jmp
+    } else{
+      uop.is_lsc_b || uop.uopc === uopLD || uop.uopc === uopSTA || uop.uopc === uopSTD
+    }
+  }
+}
+
+/**
+  * Busy lookup params. Deciding how we read the busy table of the REN stage
+  */
+case class BusyLookupParams(
+                           lookupAtRename: Boolean = true, //Should we do busy-looup at ren2 (default behaviour of boom)
+                           lookupAtDisWidth: Int = 0, // How many read ports should we have to the busy-table from the Dispatch port?
+                           )
+{
+  // Unfortunate that we have to pass the coreWidth into this function. But we dont have that parameter accessible here.
+  def busyTableReqWidth(plWidth: Int): Int = {
+    if (lookupAtRename) {
+      lookupAtDisWidth + plWidth
+    } else {
+      lookupAtDisWidth
+    }
+  }
 }

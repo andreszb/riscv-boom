@@ -123,6 +123,9 @@ class MicroOp(implicit p: Parameters) extends BoomBundle
   val lrs2_rtype       = UInt(2.W)
   val frs3_en          = Bool()
 
+  // LSC info
+  val is_lsc_b          = Bool()
+
   // floating point information
   val fp_val           = Bool()             // is a floating-point instruction (F- or D-extension)?
                                             // If it's non-ld/st it will write back exception bits to the fcsr.
@@ -144,6 +147,16 @@ class MicroOp(implicit p: Parameters) extends BoomBundle
   // Do we allocate a branch tag for this?
   // SFB branches don't get a mask, they get a predicate bit
   def allocate_brtag   = (is_br && !is_sfb) || is_jalr
+
+  // lsc Performance counters
+  val perf_dnb_dlq: Option[Bool] = if (boomParams.dnbMode) Some(Bool()) else None
+  val perf_dnb_crq: Option[Bool] = if (boomParams.dnbMode) Some(Bool()) else None
+  val perf_dnb_iq: Option[Bool] = if (boomParams.dnbMode) Some(Bool()) else None
+
+  val perf_cas_sq_dis: Option[Bool] = if (boomParams.casMode) Some(Bool()) else None
+  val perf_cas_inq_dis: Option[Bool] = if (boomParams.casMode) Some(Bool()) else None
+
+
 
   // Does this register write-back
   def rf_wen           = dst_rtype =/= RT_X

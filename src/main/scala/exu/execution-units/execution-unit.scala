@@ -86,6 +86,7 @@ abstract class ExecutionUnit(
   val writesLlFrf      : Boolean       = false,
   val numBypassStages  : Int,
   val dataWidth        : Int,
+  val iqType           : BigInt,
   val bypassable       : Boolean       = false, // TODO make override def for code clarity
   val alwaysBypassable : Boolean       = false,
   val hasMem           : Boolean       = false,
@@ -112,6 +113,10 @@ abstract class ExecutionUnit(
     val ll_iresp = if (writesLlIrf) new DecoupledIO(new ExeUnitResp(dataWidth)) else null
     val ll_fresp = if (writesLlFrf) new DecoupledIO(new ExeUnitResp(dataWidth)) else null
 
+
+    if(boomParams.loadSliceMode||boomParams.dnbMode){
+      assert(!io.req.valid || io.req.bits.uop.iq_type === iqType.U, "wrong IQ-Type for exu")
+    }
 
     val bypass   = Output(Vec(numBypassStages, Valid(new ExeUnitResp(dataWidth))))
     val brupdate = Input(new BrUpdateInfo())
@@ -208,6 +213,7 @@ class ALUExeUnit(
     numBypassStages  =
       if (hasAlu && hasMul) 3 //TODO XXX p(tile.TileKey).core.imulLatency
       else if (hasAlu) 1 else 0,
+    iqType           = if(hasMem) IQT_MEM.litValue() else IQT_INT.litValue(),
     dataWidth        = p(tile.XLen) + 1,
     bypassable       = hasAlu,
     alwaysBypassable = hasAlu && !(hasMem || hasJmpUnit || hasMul || hasDiv || hasCSR || hasIfpu || hasRocc),
@@ -434,6 +440,7 @@ class FPUExeUnit(
     writesIrf = false,
     numBypassStages = 0,
     dataWidth = p(tile.TileKey).core.fpu.get.fLen + 1,
+    iqType = IQT_FP.litValue(),
     bypassable = false,
     hasFpu  = hasFpu,
     hasFdiv = hasFdiv,

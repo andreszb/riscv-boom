@@ -160,7 +160,9 @@ object WrapAdd
 {
   // "n" is the number of increments, so we wrap at n-1.
   def apply(value: UInt, amt: UInt, n: Int): UInt = {
-    if (isPow2(n)) {
+    if(n==1){
+      0.U
+    } else if (isPow2(n)) {
       (value + amt)(log2Ceil(n)-1,0)
     } else {
       val sum = Cat(0.U(1.W), value) + Cat(0.U(1.W), amt)
@@ -179,7 +181,9 @@ object WrapSub
 {
   // "n" is the number of increments, so we wrap to n-1.
   def apply(value: UInt, amt: Int, n: Int): UInt = {
-    if (isPow2(n)) {
+    if(n==1){
+      0.U
+    } else if (isPow2(n)) {
        (value - amt.U)(log2Ceil(n)-1,0)
     } else {
       val v = Cat(0.U(1.W), value)
@@ -187,6 +191,24 @@ object WrapSub
       Mux(value >= amt.U,
           value - amt.U,
           n.U - amt.U + value)
+    }
+  }
+}
+
+object WrapSubUInt
+{
+  // "n" is the number of increments, so we wrap to n-1.
+  def apply(value: UInt, amt: UInt, n: Int): UInt = {
+    if(n==1){
+      0.U
+    } else if (isPow2(n)) {
+      (value - amt)(log2Ceil(n)-1,0)
+    } else {
+      val v = Cat(0.U(1.W), value)
+      val b = Cat(0.U(1.W), amt)
+      Mux(value >= amt,
+        value - amt,
+        n.U - amt + value)
     }
   }
 }
@@ -199,7 +221,9 @@ object WrapInc
 {
   // "n" is the number of increments, so we wrap at n-1.
   def apply(value: UInt, n: Int): UInt = {
-    if (isPow2(n)) {
+    if(n==1){
+      0.U
+    } else if (isPow2(n)) {
       (value + 1.U)(log2Ceil(n)-1,0)
     } else {
       val wrap = (value === (n-1).U)
@@ -216,7 +240,9 @@ object WrapDec
 {
   // "n" is the number of increments, so we wrap at n-1.
   def apply(value: UInt, n: Int): UInt = {
-    if (isPow2(n)) {
+    if(n==1){
+      0.U
+    } else if (isPow2(n)) {
       (value - 1.U)(log2Ceil(n)-1,0)
     } else {
       val wrap = (value === 0.U)
@@ -224,6 +250,8 @@ object WrapDec
     }
   }
 }
+
+
 
 /**
  * Object to mask off lower bits of a PC to align to a "b"

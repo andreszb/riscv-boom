@@ -33,11 +33,13 @@ class RenameBusyTable(
   (implicit p: Parameters) extends BoomModule
 {
   val pregSz = log2Ceil(numPregs)
-
+  val reqWidth = boomParams.busyLookupParams.map(_.busyTableReqWidth(plWidth)).getOrElse(plWidth)
   val io = IO(new BoomBundle()(p) {
     val ren_uops = Input(Vec(plWidth, new MicroOp))
-    val busy_resps = Output(Vec(plWidth, new BusyResp))
     val rebusy_reqs = Input(Vec(plWidth, Bool()))
+    
+    val req_uops = Input(Vec(reqWidth, new MicroOp))
+    val busy_resps = Output(Vec(reqWidth, new BusyResp))
 
     val wb_pdsts = Input(Vec(numWbPorts, UInt(pregSz.W)))
     val wb_valids = Input(Vec(numWbPorts, Bool()))
@@ -56,17 +58,21 @@ class RenameBusyTable(
   busy_table := busy_table_next
 
   // Read the busy table.
-  for (i <- 0 until plWidth) {
-    val prs1_was_bypassed = (0 until i).map(j =>
-      io.ren_uops(i).lrs1 === io.ren_uops(j).ldst && io.rebusy_reqs(j)).foldLeft(false.B)(_||_)
-    val prs2_was_bypassed = (0 until i).map(j =>
-      io.ren_uops(i).lrs2 === io.ren_uops(j).ldst && io.rebusy_reqs(j)).foldLeft(false.B)(_||_)
-    val prs3_was_bypassed = (0 until i).map(j =>
-      io.ren_uops(i).lrs3 === io.ren_uops(j).ldst && io.rebusy_reqs(j)).foldLeft(false.B)(_||_)
+  for (i <- 0 until reqWidth) {
+    // bypass seems to enable marking newly allocated registers as busy
+    val prs1_was_bypassed = if(bypass) (0 until plWidth).map(j =>
+      io.req_uops(i).lrs1 === io.ren_uops(j).ldst && io.rebusy_reqs(j)).foldLeft(false.B)(_||_)
+    else false.B
+    val prs2_was_bypassed = if(bypass) (0 until plWidth).map(j =>
+      io.req_uops(i).lrs2 === io.ren_uops(j).ldst && io.rebusy_reqs(j)).foldLeft(false.B)(_||_)
+    else false.B
+    val prs3_was_bypassed = if(bypass) (0 until plWidth).map(j =>
+      io.req_uops(i).lrs3 === io.ren_uops(j).ldst && io.rebusy_reqs(j)).foldLeft(false.B)(_||_)
+    else false.B
 
-    io.busy_resps(i).prs1_busy := busy_table(io.ren_uops(i).prs1) || prs1_was_bypassed && bypass.B
-    io.busy_resps(i).prs2_busy := busy_table(io.ren_uops(i).prs2) || prs2_was_bypassed && bypass.B
-    io.busy_resps(i).prs3_busy := busy_table(io.ren_uops(i).prs3) || prs3_was_bypassed && bypass.B
+    io.busy_resps(i).prs1_busy := busy_table(io.req_uops(i).prs1) || prs1_was_bypassed
+    io.busy_resps(i).prs2_busy := busy_table(io.req_uops(i).prs2) || prs2_was_bypassed
+    io.busy_resps(i).prs3_busy := busy_table(io.req_uops(i).prs3) || prs3_was_bypassed
     if (!float) io.busy_resps(i).prs3_busy := false.B
   }
 

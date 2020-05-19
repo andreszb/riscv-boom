@@ -262,6 +262,8 @@ class BoomFrontendIO(implicit p: Parameters) extends BoomBundle
 
   // 1 for xcpt/jalr/auipc/flush
   val get_pc            = Flipped(Vec(2, new GetPCFromFtqIO()))
+  val get_pc_slice      = if (boomParams.ibdaParams.map(_.ibdaTagType == IBDA_TAG_FULL_PC).getOrElse(false)) Some(Vec(coreWidth, Flipped(new GetPCSlice()))) else None
+
   val debug_ftq_idx     = Output(Vec(coreWidth, UInt(log2Ceil(ftqSz).W)))
   val debug_fetch_pc    = Input(Vec(coreWidth, UInt(vaddrBitsExtended.W)))
 

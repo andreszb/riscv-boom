@@ -11,14 +11,10 @@
 
 package boom.exu
 
-import chisel3._
-import chisel3.util.{log2Ceil, PopCount}
-
-import freechips.rocketchip.config.Parameters
-import freechips.rocketchip.util.Str
-
-import FUConstants._
 import boom.common._
+import chisel3._
+import chisel3.util.PopCount
+import freechips.rocketchip.config.Parameters
 
 /**
  * Specific type of issue unit
@@ -26,17 +22,20 @@ import boom.common._
  * @param params issue queue params
  * @param numWakeupPorts number of wakeup ports for the issue queue
  */
-class IssueUnitCollapsing(
+class IssueUnitIno(
   params: IssueParams,
   numWakeupPorts: Int)
-  (implicit p: Parameters)
+                  (implicit p: Parameters)
   extends IssueUnit(params.numEntries, params.issueWidth, numWakeupPorts, params.iqType, params.dispatchWidth)
 {
   //-------------------------------------------------------------
   // Figure out how much to shift entries by
 
+  require(params.numEntries == params.dispatchWidth)
+
   val maxShift = dispatchWidth
-  val vacants = issue_slots.map(s => !(s.valid)) ++ io.dis_uops.map(_.valid).map(!_.asBool)
+  // a bit hacky to use will_be_valid - could affect critical path
+  val vacants = issue_slots.map(s => !(s.will_be_valid)) ++ io.dis_uops.map(_.valid).map(!_.asBool)
   val shamts_oh = Array.fill(numIssueSlots+dispatchWidth) {Wire(UInt(width=maxShift.W))}
   // track how many to shift up this entry by by counting previous vacant spots
   def SaturatingCounterOH(count_oh:UInt, inc: Bool, max: Int): UInt = {
@@ -78,6 +77,11 @@ class IssueUnitCollapsing(
         }
       }
     }
+    issue_slots(i).wakeup_ports := io.wakeup_ports
+    issue_slots(i).ldspec_dst   := io.spec_ld_wakeup
+    issue_slots(i).ldspec_miss  := io.ld_miss
+    issue_slots(i).brinfo       := io.brinfo
+    issue_slots(i).kill         := io.flush_pipeline
     issue_slots(i).clear        := shamts_oh(i) =/= 0.U
   }
 
@@ -89,9 +93,7 @@ class IssueUnitCollapsing(
                             (!issue_slots(i).will_be_valid || issue_slots(i).clear) && !(issue_slots(i).in_uop.valid))
   val num_available = PopCount(will_be_available)
   for (w <- 0 until dispatchWidth) {
-//    assert(!dispatch_used(w) || io.dis_uops(w).ready, f"IQ: dispatch $w had ready logic error")
-//    assert(!io.dis_uops(w).fire() || dispatch_used(w), f"IQ: dispatch $w had ready logic error")
-    io.dis_uops(w).ready := RegNext(num_available > w.U)
+    io.dis_uops(w).ready := dispatch_used(w)//RegNext(num_available > w.U)
   }
 
   //-------------------------------------------------------------
@@ -115,21 +117,57 @@ class IssueUnitCollapsing(
     port_issued(w) = false.B
   }
 
+  val grants = issue_slots.map(_.grant)
+  val valids = issue_slots.map(_.valid)
+  val candidate_uops = issue_slots.map(_.uop)
+  var previous_stalled = false.B
+
   for (i <- 0 until numIssueSlots) {
-    issue_slots(i).grant := false.B
-    var uop_issued = false.B
+    grants(i) := false.B
+    val port_reserved = Array.fill(issueWidth) {false.B}
+    val uop_iq_ports_satisfied = Wire(Vec(IQT_SZ, Bool()))
+    for (n <- 0 until IQT_SZ) {
+      val iq_type = 1.U(1.W) << n
+      when((iq_type & candidate_uops(i).iq_type) =/= 0.U) {
+        var uop_issued = false.B
 
-    for (w <- 0 until issueWidth) {
-      val can_allocate = (issue_slots(i).uop.fu_code & io.fu_types(w)) =/= 0.U
-
-      when (requests(i) && !uop_issued && can_allocate && !port_issued(w)) {
-        issue_slots(i).grant := true.B
-        io.iss_valids(w) := true.B
-        io.iss_uops(w) := issue_slots(i).uop
+        for (w <- 0 until issueWidth) {
+          val iq_type_match = (iq_type === io.iq_types.get(w))
+          val fu_type_match = ((candidate_uops(i).fu_code & io.fu_types(w)) =/= 0.U)
+          iq_type_match.suggestName(s"iq_type_match_slot_${i}_exu_$w")
+          fu_type_match.suggestName(s"fu_type_match_slot_${i}_exu_$w")
+          val can_allocate = fu_type_match && iq_type_match
+          val was_port_issued_yet = port_issued(w)
+          port_reserved(w) = (requests(i) && !uop_issued && can_allocate && !was_port_issued_yet) | port_reserved(w)
+          uop_issued = (requests(i) && can_allocate && !was_port_issued_yet) | uop_issued
+        }
+        uop_iq_ports_satisfied(n) := uop_issued
+      }.otherwise {
+        uop_iq_ports_satisfied(n) := true.B
       }
-      val was_port_issued_yet = port_issued(w)
-      port_issued(w) = (requests(i) && !uop_issued && can_allocate) | port_issued(w)
-      uop_issued = (requests(i) && can_allocate && !was_port_issued_yet) | uop_issued
+    }
+    // Now check if this uop got all the iq ports it needed
+    val satisfied = uop_iq_ports_satisfied.reduce(_ && _)
+    val can_issue = satisfied && !previous_stalled
+    if(boomParams.inoParams.exists(_.stallOnUse)){
+      previous_stalled = (!satisfied && valids(i)) || previous_stalled
+    }
+    when (can_issue) {
+      grants(i) := true.B
+      for (w <- 0 until issueWidth) {
+        port_issued(w) = port_issued(w) | port_reserved(w)
+        when(port_reserved(w)) {
+          io.iss_valids(w) := true.B
+          io.iss_uops(w) := candidate_uops(i)
+        }
+      }
+      assert(PopCount(port_reserved) === PopCount(candidate_uops(i).iq_type), "[cas-ino] issues at more ports than it should")
+    }
+    when(candidate_uops(i).iq_type === IQT_MFP) {
+      assert(! (grants(i) && !(PopCount(port_reserved) === 2.U) ), "[cas-ino] fsd didnt reserve 2 ports")
+      assert(!( grants(i) && !(PopCount(io.iss_uops.map(_.debug_events.fetch_seq === candidate_uops(i).debug_events.fetch_seq)) === 2.U )), "[cas-ino] fsd went wrong")
     }
   }
+
+  assert(!(PopCount(grants) > issueWidth.U), "[iss-ino] More grants than issue ports")
 }

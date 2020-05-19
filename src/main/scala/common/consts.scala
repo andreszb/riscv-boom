@@ -29,6 +29,7 @@ trait IQType
   val IQT_FP  = 4.U(IQT_SZ.W)
 
   val IQT_MFP = 6.U(IQT_SZ.W)
+  val IQT_COMB = 7.U(IQT_SZ.W)
 }
 
 
@@ -362,4 +363,26 @@ trait ExcCauseConstants
   val MINI_EXCEPTION_MEM_ORDERING = 16.U
 
   require (!freechips.rocketchip.rocket.Causes.all.contains(16))
+}
+
+
+trait LoadSliceCoreConstants
+{
+  // Constants decidng which Dispatch port is for which Issue Queue
+  val LSC_DIS_INT_PORT_IDX = 0
+  val LSC_DIS_MEM_PORT_IDX = 1
+  val LSC_DIS_FP_PORT_IDX = 2
+  val LSC_DIS_COMB_PORT_IDX = 3
+
+  // Constans for which port belongs to A and wich belongs to B
+  val LSC_DIS_A_PORT_IDX = 0
+  val LSC_DIS_B_PORT_IDX = 1
+
+  val IBDA_TAG_FULL_PC = 0
+  val IBDA_TAG_UOPC_LOB = 1
+  val IBDA_TAG_INST_LOB = 2
+  val IBDA_TAG_HASH = 3
+  val IBDA_TAG_DEBUG_PC = 4
+  val IBDA_TAG_HASH_PC = 5
+  val IBDA_TAG_DEBUG = 6
 }

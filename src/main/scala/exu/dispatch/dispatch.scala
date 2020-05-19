@@ -14,11 +14,11 @@ package boom.exu
 
 import chisel3._
 import chisel3.util._
-
 import freechips.rocketchip.config.Parameters
-
-import boom.common._
+import boom.common.{IQT_MFP, MicroOp, O3PIPEVIEW_PRINTF, uopLD, _}
 import boom.util._
+import chisel3.internal.naming.chiselName
+
 
 class DispatchIO(implicit p: Parameters) extends BoomBundle
 {
@@ -29,7 +29,35 @@ class DispatchIO(implicit p: Parameters) extends BoomBundle
   // N issues each accept up to dispatchWidth uops
   // dispatchWidth may vary between issue queues
   val dis_uops = MixedVec(issueParams.map(ip=>Vec(ip.dispatchWidth, DecoupledIO(new MicroOp))))
+  // io for busy table - used only for LSC
+  val busy_req_uops = if(boomParams.busyLookupMode) Some(Output(Vec(boomParams.busyLookupParams.get.lookupAtDisWidth, new MicroOp))) else None //TODO: change width
+  val busy_resps = if(boomParams.busyLookupMode) Some(Input(Vec(boomParams.busyLookupParams.get.lookupAtDisWidth, new BusyResp))) else None
+  val fp_busy_req_uops = if(boomParams.busyLookupMode && usingFPU) Some(Output(Vec(boomParams.busyLookupParams.get.lookupAtDisWidth, new MicroOp))) else None
+  val fp_busy_resps = if(boomParams.busyLookupMode && usingFPU) Some(Input(Vec(boomParams.busyLookupParams.get.lookupAtDisWidth, new BusyResp))) else None
+  // brinfo & flush for LSC
+  val brinfo = if(boomParams.loadSliceMode || boomParams.dnbMode || boomParams.casMode || boomParams.inoQueueMode) Some(Input(new BrResolutionInfo())) else None
+  val flush = if(boomParams.loadSliceMode || boomParams.dnbMode || boomParams.casMode || boomParams.inoQueueMode) Some(Input(Bool())) else None
+
+  // CAS/LSC ports to UIQ
+  val q1_heads = if(boomParams.casMode) Some(Vec(boomParams.casParams.get.inqDispatches, DecoupledIO(new MicroOp)))
+  else if(boomParams.loadSliceMode && boomParams.unifiedIssueQueue) Some(Vec(boomParams.loadSliceCore.get.bDispatches, DecoupledIO(new MicroOp)))
+  else if(boomParams.inoQueueMode) Some(Vec(boomParams.decodeWidth, DecoupledIO(new MicroOp)))
+  else None
+  val q2_heads = if(boomParams.casMode) Some(Vec(boomParams.casParams.get.windowSize, DecoupledIO(new MicroOp)))
+  else if(boomParams.loadSliceMode && boomParams.unifiedIssueQueue) Some(Vec(boomParams.loadSliceCore.get.bDispatches, DecoupledIO(new MicroOp)))
+  else if(boomParams.inoQueueMode) Some(Vec(0, DecoupledIO(new MicroOp)))
+  else None
+
+  // DnB ports to UIQ
+  val dlq_head = if(boomParams.dnbMode) Some(Vec(boomParams.dnbParams.get.dlqDispatches, DecoupledIO(new MicroOp))) else None
+  val crq_head = if(boomParams.dnbMode) Some(Vec(boomParams.dnbParams.get.crqDispatches, DecoupledIO(new MicroOp))) else None
+
+  val tsc_reg = Input(UInt(width=xLen.W))
+  val spec_ld_wakeup  = if(boomParams.loadSliceMode || boomParams.dnbMode || boomParams.casMode || boomParams.inoQueueMode) Some(Flipped(Valid(UInt(width=maxPregSz.W)))) else None
+  val ld_miss  = if(boomParams.loadSliceMode || boomParams.dnbMode || boomParams.casMode || boomParams.inoQueueMode) Some(Input(Bool())) else None
+
 }
+
 
 abstract class Dispatcher(implicit p: Parameters) extends BoomModule
 {
@@ -59,6 +87,8 @@ class BasicDispatcher(implicit p: Parameters) extends Dispatcher
     dis(w).bits  := io.ren_uops(w).bits
   }
 }
+
+
 
 /**
  *  Tries to dispatch as many uops as it can to issue queues,
@@ -96,3 +126,4 @@ class CompactingDispatcher(implicit p: Parameters) extends Dispatcher
         r && i})) zip io.ren_uops) foreach {case (r,u) =>
           u.ready := r}
 }
+
