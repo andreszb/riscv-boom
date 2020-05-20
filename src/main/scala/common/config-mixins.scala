@@ -178,6 +178,38 @@ class WithSmallBooms extends Config((site, here, up) => {
   case MaxHartIdBits => log2Up(site(BoomTilesKey).size)
 })
 
+class WithSmallInoBooms extends Config((site, here, up) => {
+  case BoomTilesKey => up(BoomTilesKey, site) map { b => b.copy(
+    core = b.core.copy(
+      fetchWidth = 4,
+      decodeWidth = 1,
+      numRobEntries = 16,
+      issueParams = Seq(
+        IssueParams(issueWidth=1, numEntries=0, iqType=IQT_MEM.litValue, dispatchWidth=1),
+        IssueParams(issueWidth=1, numEntries=0, iqType=IQT_INT.litValue, dispatchWidth=1),
+        IssueParams(issueWidth=1, numEntries=0, iqType=IQT_FP.litValue , dispatchWidth=1),
+        IssueParams(issueWidth=3, numEntries=1, iqType=IQT_COMB.litValue, dispatchWidth=1),
+      ),
+      numIntPhysRegisters = 48,
+      numFpPhysRegisters = 40,
+      numLdqEntries = 4,
+      numStqEntries = 4,
+      maxBrCount = 4,
+      numFetchBufferEntries = 8,
+      ftq = FtqParameters(nEntries=16),
+      nPerfCounters = 6,
+      fpu = Some(freechips.rocketchip.tile.FPUParams(sfmaLatency=4, dfmaLatency=4, divSqrt=true)),
+      inoParams = Some(InoParams())
+    ),
+    dcache = Some(DCacheParams(rowBits = site(SystemBusKey).beatBits,
+      nSets=64, nWays=4, nMSHRs=2, nTLBEntries=8)),
+    icache = Some(ICacheParams(rowBits = site(SystemBusKey).beatBits, nSets=64, nWays=4, fetchBytes=2*4))
+  )}
+  case SystemBusKey => up(SystemBusKey, site).copy(beatBytes = 8)
+  case XLen => 64
+  case MaxHartIdBits => log2Up(site(BoomTilesKey).size)
+})
+
 /**
  * 2-wide BOOM. Try to match the Cortex-A9.
  */
