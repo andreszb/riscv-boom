@@ -811,6 +811,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   }
 
 
+
   //-------------------------------------------------------------
   // Register Dependency Table update
   //-------------------------------------------------------------

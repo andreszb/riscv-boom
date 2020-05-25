@@ -58,6 +58,9 @@ class InstructionSliceTableSyncMem(entries: Int=128, ways: Int=2, probabilistic:
     Module(new MultiWriteSram(entries/ways, boomParams.ibdaParams.get.ibda_tag_sz, reads=decodeWidth, writes=ibdaParams.rdtIstMarkWidth))
   )
 
+  val debug_ist = Module(new InstructionSliceTableBasic())
+
+
   val tag_valids = (0 until ways).map(_ => RegInit(VecInit(Seq.fill(entries/ways)(false.B)))) //TODO: Use SyncReadMem
 
   val tag_lru = Module(new MultiWriteSramSimple(entries/2,1, ibdaParams.rdtIstMarkWidth, decodeWidth+ibdaParams.rdtIstMarkWidth, synchronous = false))
@@ -71,6 +74,7 @@ class InstructionSliceTableSyncMem(entries: Int=128, ways: Int=2, probabilistic:
   val ist1_check_tag = Wire(Vec(decodeWidth, UInt(ibdaParams.ibda_tag_sz.W)))
   val ist1_mark_valid  = Wire(Vec(ibdaParams.rdtIstMarkWidth, Bool()))
   val ist1_mark_tag  = Wire(Vec(ibdaParams.rdtIstMarkWidth, UInt(ibdaParams.ibda_tag_sz.W)))
+
   dontTouch(ist1_check_tag)
 
   // Stage 2
@@ -80,6 +84,19 @@ class InstructionSliceTableSyncMem(entries: Int=128, ways: Int=2, probabilistic:
   val ist2_check_sram_valid = Reg(Vec(decodeWidth, Vec(ways, Bool())))
   val ist2_in_ist = Wire(Vec(decodeWidth, Valid(Bool())))
   dontTouch(ist2_check_sram_tag)
+
+  for (i <- 0 until boomParams.ibdaParams.get.rdtIstMarkWidth) {
+    debug_ist.io.mark(i).mark.valid := ist1_mark_valid(i)
+    debug_ist.io.mark(i).mark.bits := ist1_mark_tag(i)
+
+  }
+
+
+  for (i <- 0 until coreWidth) {
+    debug_ist.io.check(i).tag.valid := ist2_check_valid(i)
+    debug_ist.io.check(i).tag.bits := ist2_check_tag(i)
+    assert(ist2_in_ist(i).bits === debug_ist.io.check(i).in_ist.bits, s"Hash IBDA mismatch for $ist2_check_tag ")
+  }
 
   require(entries == 128)
   require(ways == 2)
@@ -213,6 +230,8 @@ class InstructionSliceTableBasic(entries: Int=128, ways: Int=2)(implicit p: Para
       // TODO: Research the entropy in the instruction encoding?
     } else if (ibdaParams.ibdaTagType == IBDA_TAG_UOPC_LOB) {
       index := i(indexBits+2-1,2) ^ Cat(i(1), 0.U((indexBits-1).W))
+    } else {
+      index := i(indexBits+2-1, 2) ^ Cat(i(1), 0.U((indexBits-1).W))
     }
 
     index
@@ -224,7 +243,8 @@ class InstructionSliceTableBasic(entries: Int=128, ways: Int=2)(implicit p: Para
     val pc = io.check(i).tag.bits
     val idx = index(pc)
     val is_match = WireInit(false.B)
-    io.check(i).in_ist := is_match // true if pc in IST
+    io.check(i).in_ist.bits := is_match // true if pc in IST
+    io.check(i).in_ist.valid := io.check(i).tag.valid
     when(io.check(i).tag.valid){
       for(j <- 0 until ways){
         val tidx = (idx << log2Up(ways)).asUInt() + j.U
