@@ -183,15 +183,15 @@ class WithSmallInoBooms extends Config((site, here, up) => {
     core = b.core.copy(
       fetchWidth = 4,
       decodeWidth = 1,
-      numRobEntries = 16,
+      numRobEntries = 8,
       issueParams = Seq(
         IssueParams(issueWidth=1, numEntries=0, iqType=IQT_MEM.litValue, dispatchWidth=1),
         IssueParams(issueWidth=1, numEntries=0, iqType=IQT_INT.litValue, dispatchWidth=1),
         IssueParams(issueWidth=1, numEntries=0, iqType=IQT_FP.litValue , dispatchWidth=1),
         IssueParams(issueWidth=3, numEntries=1, iqType=IQT_COMB.litValue, dispatchWidth=1),
       ),
-      numIntPhysRegisters = 48,
-      numFpPhysRegisters = 40,
+      numIntPhysRegisters = 40,
+      numFpPhysRegisters = 36,
       numLdqEntries = 4,
       numStqEntries = 4,
       maxBrCount = 4,
@@ -202,7 +202,7 @@ class WithSmallInoBooms extends Config((site, here, up) => {
       inoParams = Some(InoParams())
     ),
     dcache = Some(DCacheParams(rowBits = site(SystemBusKey).beatBits,
-      nSets=64, nWays=4, nMSHRs=2, nTLBEntries=8)),
+      nSets=64, nWays=4, nMSHRs=2, nTLBEntries=32)),
     icache = Some(ICacheParams(rowBits = site(SystemBusKey).beatBits, nSets=64, nWays=4, fetchBytes=2*4))
   )}
   case SystemBusKey => up(SystemBusKey, site).copy(beatBytes = 8)

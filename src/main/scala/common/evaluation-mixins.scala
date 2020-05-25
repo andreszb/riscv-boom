@@ -24,6 +24,18 @@ class WithOriginalIbda() extends Config((site, here, up) => {
   })}
 })
 
+class WithOriginalDebugIbda() extends Config((site, here, up) => {
+  case BoomTilesKey => up(BoomTilesKey, site) map { b => b.copy(core = {
+    require(b.core.loadSliceMode || b.core.dnbMode, "IBDA only for LSC and DNB")
+    b.core.copy(
+      ibdaParams = Some(IbdaParams(
+        ibdaTagType = IBDA_TAG_DEBUG_PC,
+        rdtIstMarkWidth = 4,
+      ))
+    )
+  })}
+})
+
 class WithOneBitPcIbda() extends Config((site, here, up) => {
   case BoomTilesKey => up(BoomTilesKey, site) map { b => b.copy(core = {
     require(b.core.loadSliceMode || b.core.dnbMode, "IBDA only for LSC and DNB")
@@ -117,7 +129,7 @@ class WithBloomPcIbda() extends Config((site, here, up) => {
     require(b.core.loadSliceMode || b.core.dnbMode, "IBDA only for LSC and DNB")
     b.core.copy(
       ibdaParams = Some(IbdaParams(
-        ibdaTagType = IBDA_TAG_FULL_PC,
+        ibdaTagType = IBDA_TAG_DEBUG_PC,
         rdtIstMarkWidth = 1,
         bloomIst = true
       ))

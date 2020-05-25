@@ -36,7 +36,7 @@ abstract class InstructionSliceTable(entries: Int=128, ways: Int=2)(implicit p: 
 }
 
 class InstructionSliceTableBloom(entries: Int=128, ways: Int=2)(implicit p: Parameters) extends InstructionSliceTable {
-  val bloom = Module(new BloomFilterModified(m = 4096, k = 6, inBits = boomParams.ibdaParams.get.ibda_tag_sz, reads = 2, collisionRate = 0.00001))
+  val bloom = Module(new BloomFilterModified(m = 2048, k = 6, inBits = boomParams.ibdaParams.get.ibda_tag_sz, reads = 2, collisionRate = 0.001))
   require(ibdaParams.rdtIstMarkWidth == 1)
 
   bloom.io.insert.valid := io.mark(0).mark.valid
