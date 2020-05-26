@@ -66,9 +66,11 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
     val uop_split = uop.uopc === uopSTA
 
     // Initialize performance counters
-    uop.perf_dnb_dlq.get := false.B
-    uop.perf_dnb_crq.get := false.B
-    uop.perf_dnb_iq.get := false.B
+    if (boomParams.queuePerfCounters) {
+      uop.perf_dnb_dlq.get := false.B
+      uop.perf_dnb_crq.get := false.B
+      uop.perf_dnb_iq.get := false.B
+    }
 
 
     // Initialize the ports to false and just add the uop
@@ -93,23 +95,31 @@ class DnbDispatcher(implicit p: Parameters) extends Dispatcher {
         when(!uop_critical && !uop_iq) {
           //dlq
           dlq.io.enq_uops(i).valid := true.B
-          uop.perf_dnb_dlq.get := true.B
+          if (boomParams.queuePerfCounters) {
+            uop.perf_dnb_dlq.get := true.B
+          }
         }.otherwise {
           when(uop_busy || uop_iq) {
             //iq
             io.dis_uops(LSC_DIS_COMB_PORT_IDX)(i).valid := true.B
-            uop.perf_dnb_iq.get := true.B
+            if (boomParams.queuePerfCounters) {
+              uop.perf_dnb_iq.get := true.B
+            }
           }.otherwise {
             //crq
             crq.io.enq_uops(i).valid := true.B
-            uop.perf_dnb_crq.get := true.B
+            if (boomParams.queuePerfCounters) {
+              uop.perf_dnb_crq.get := true.B
+            }
           }
         }
       }.otherwise { // Uop splitting case
         // Currently 2 cases. STORE and FP STORE. We want the uopSTD to go in the DLQ and the uopSTA on the IQ
         //  If we dont have place for both, i.e. in DLQ and IQ we will stall
-        uop.perf_dnb_crq.get := true.B
-        uop.perf_dnb_iq.get := true.B
+        if (boomParams.queuePerfCounters) {
+          uop.perf_dnb_crq.get := true.B
+          uop.perf_dnb_iq.get := true.B
+        }
 
         val uop_sta = WireInit(uop)
         val uop_std = WireInit(uop)

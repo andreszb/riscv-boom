@@ -12,6 +12,21 @@ import boom.ifu._
 import boom.exu.{IssueParams, _}
 import boom.lsu._
 
+
+// Mixin to add Performance Counters to the Micro-Ops and update at commit
+class WithQueuePerfCounters() extends Config((site, here, up) => {
+  case BoomTilesKey => up(BoomTilesKey, site) map { b => b.copy(core = {
+
+    require(b.core.loadSliceMode || b.core.dnbMode || b.core.casMode, "Queue Perf Counters only for CAS/DNB/LSC")
+
+    b.core.copy(
+      queuePerfCounters = true
+    )
+  })}
+})
+
+
+
 class WithOriginalIbda() extends Config((site, here, up) => {
   case BoomTilesKey => up(BoomTilesKey, site) map { b => b.copy(core = {
     require(b.core.loadSliceMode || b.core.dnbMode, "IBDA only for LSC and DNB")

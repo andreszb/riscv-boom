@@ -329,17 +329,17 @@ class BoomCore(implicit p: Parameters) extends BoomModule
       ))) ++ (0 until coreWidth).map { i =>
         // queue events
         new freechips.rocketchip.rocket.EventSet((mask, hits) => (mask & hits).orR,
-          if (boomParams.loadSliceMode) Seq(
+          if (boomParams.loadSliceMode && boomParams.queuePerfCounters) Seq(
             //lsc
             (f"A-Q$i", () => rob.io.commit.valids(i) && !rob.io.commit.uops(i).is_lsc_b),
             (f"B-Q$i", () => rob.io.commit.valids(i) && rob.io.commit.uops(i).is_lsc_b),
             ("nop", () => false.B),
-          ) else if (boomParams.dnbMode) Seq(
+          ) else if (boomParams.dnbMode && boomParams.queuePerfCounters) Seq(
             // DNB events
             (f"DLQ$i", () => rob.io.commit.valids(i) && rob.io.commit.uops(i).perf_dnb_dlq.get),
             (f"CRQ$i", () => rob.io.commit.valids(i) && rob.io.commit.uops(i).perf_dnb_crq.get),
             (f"IQ$i", () => rob.io.commit.valids(i) && rob.io.commit.uops(i).perf_dnb_iq.get),
-          ) else if (boomParams.casMode) Seq(
+          ) else if (boomParams.casMode && boomParams.queuePerfCounters) Seq(
             // CASINO events
             (f"SQ-dispatches: $i", () => rob.io.commit.valids(i) && rob.io.commit.uops(i).perf_cas_sq_dis.get),
             (f"INQ-dispatches: $i", () => rob.io.commit.valids(i) && rob.io.commit.uops(i).perf_cas_inq_dis.get),

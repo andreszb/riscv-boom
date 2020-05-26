@@ -102,7 +102,9 @@ case class BoomCoreParams(
   busyLookupParams: Option[BusyLookupParams] = None,
   dnbParams: Option[DnbParams] = None,
   casParams: Option[CasParams] = None,
-  inoParams: Option[InoParams] = None
+  inoParams: Option[InoParams] = None,
+  queuePerfCounters: Boolean = false // Should we add performance counters at commit counting where instructions go
+
 
 // DOC include end: BOOM Parameters
 ) extends freechips.rocketchip.tile.CoreParams
