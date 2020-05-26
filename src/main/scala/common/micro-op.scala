@@ -155,8 +155,8 @@ class MicroOp(implicit p: Parameters) extends BoomBundle
   val perf_dnb_crq: Option[Bool] = if (boomParams.dnbMode && boomParams.queuePerfCounters) Some(Bool()) else None
   val perf_dnb_iq: Option[Bool] = if (boomParams.dnbMode && boomParams.queuePerfCounters) Some(Bool()) else None
 
-  val perf_cas_sq_dis: Option[Bool] = if (boomParams.casMode) Some(Bool()) else None
-  val perf_cas_inq_dis: Option[Bool] = if (boomParams.casMode) Some(Bool()) else None
+  val perf_cas_sq_dis: Option[Bool] = if (boomParams.casMode && boomParams.queuePerfCounters) Some(Bool()) else None
+  val perf_cas_inq_dis: Option[Bool] = if (boomParams.casMode && boomParams.queuePerfCounters) Some(Bool()) else None
 
 
 
