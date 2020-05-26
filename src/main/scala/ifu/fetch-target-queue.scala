@@ -351,7 +351,8 @@ class FetchTargetQueue(implicit p: Parameters) extends BoomModule
   if (boomParams.ibdaParams.map(_.ibdaTagType == IBDA_TAG_FULL_PC).getOrElse(false)) {
     val get_pc_slice = io.get_pc_slice.get
     for (w <- 0 until coreWidth) {
-//      get_pc_slice(w).fetch_pc := ram(get_pc_slice(w).ftq_idx).fetch_pc
+      val idx = get_pc_slice(w).ftq_idx
+      get_pc_slice(w).fetch_pc := pcs(idx)
     }
   }
 
