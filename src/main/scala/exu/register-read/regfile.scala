@@ -12,14 +12,12 @@
 package boom.exu
 
 import scala.collection.mutable.ArrayBuffer
-
 import chisel3._
 import chisel3.util._
-
 import freechips.rocketchip.config.Parameters
-
 import boom.common._
-import boom.util.{BoomCoreStringPrefix}
+import boom.util.BoomCoreStringPrefix
+import lsc.MultiWriteSram
 
 /**
  * IO bundle for a register read port
@@ -114,7 +112,8 @@ class RegisterFileSynthesizable(
 {
   // --------------------------------------------------------------
 
-  val regfile = Mem(numRegisters, UInt(registerWidth.W))
+//  val regfile = Mem(numRegisters, UInt(registerWidth.W))
+  val regfile = Module(new MultiWriteSram(size=numRegisters, width = registerWidth, reads=numReadPorts, writes = numWritePorts))
 
   // --------------------------------------------------------------
   // Read ports.
@@ -125,7 +124,8 @@ class RegisterFileSynthesizable(
   val read_addrs = io.read_ports.map(p => RegNext(p.addr))
 
   for (i <- 0 until numReadPorts) {
-    read_data(i) := regfile(read_addrs(i))
+    regfile.io.read(i).addr := io.read_ports(i).addr
+    read_data(i) := regfile.io.read(i).data//regfile(read_addrs(i))
   }
 
   // --------------------------------------------------------------
@@ -137,31 +137,40 @@ class RegisterFileSynthesizable(
 
   require (bypassableArray.length == io.write_ports.length)
 
-  if (bypassableArray.reduce(_||_)) {
+//  if (bypassableArray.reduce(_||_)) {
     val bypassable_wports = ArrayBuffer[Valid[RegisterFileWritePort]]()
     io.write_ports zip bypassableArray map { case (wport, b) => if (b) { bypassable_wports += wport} }
+    // as the sequential memmory might not allow reads during writes we need this
+    bypassable_wports ++=  io.write_ports.map(RegNext(_))
 
     for (i <- 0 until numReadPorts) {
       val bypass_ens = bypassable_wports.map(x => x.valid &&
         x.bits.addr === read_addrs(i))
-
-      val bypass_data = Mux1H(VecInit(bypass_ens), VecInit(bypassable_wports.map(_.bits.data)))
+//      assert(PopCount(bypass_ens) <= 1.U, "multiple bypasses at once")
+      // use a priority mus because the asserion above is not true
+      val bypass_data = PriorityMux(VecInit(bypass_ens), VecInit(bypassable_wports.map(_.bits.data)))
 
       io.read_ports(i).data := Mux(bypass_ens.reduce(_|_), bypass_data, read_data(i))
     }
-  } else {
-    for (i <- 0 until numReadPorts) {
-      io.read_ports(i).data := read_data(i)
-    }
-  }
+//  } else {
+//    require(false)
+//    for (i <- 0 until numReadPorts) {
+//      io.read_ports(i).data := read_data(i)
+//    }
+//  }
 
   // --------------------------------------------------------------
   // Write ports.
 
-  for (wport <- io.write_ports) {
-    when (wport.valid) {
-      regfile(wport.bits.addr) := wport.bits.data
-    }
+//  for (wport <- io.write_ports) {
+//    when (wport.valid) {
+//      regfile(wport.bits.addr) := wport.bits.data
+//    }
+//  }
+  for(i <- 0 until numWritePorts){
+    regfile.io.write(i).en := io.write_ports(i).valid
+    regfile.io.write(i).addr := io.write_ports(i).bits.addr
+    regfile.io.write(i).data := io.write_ports(i).bits.data
   }
 
   // ensure there is only 1 writer per register (unless to preg0)
