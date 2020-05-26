@@ -58,7 +58,7 @@ class InstructionSliceTableSyncMem(entries: Int=128, ways: Int=2, probabilistic:
     Module(new MultiWriteSram(entries/ways, boomParams.ibdaParams.get.ibda_tag_sz, reads=decodeWidth, writes=ibdaParams.rdtIstMarkWidth))
   )
 
-  val debug_ist = Module(new InstructionSliceTableBasic())
+//  val debug_ist = Module(new InstructionSliceTableBasic())
 
 
   val tag_valids = (0 until ways).map(_ => RegInit(VecInit(Seq.fill(entries/ways)(false.B)))) //TODO: Use SyncReadMem
@@ -85,18 +85,18 @@ class InstructionSliceTableSyncMem(entries: Int=128, ways: Int=2, probabilistic:
   val ist2_in_ist = Wire(Vec(decodeWidth, Valid(Bool())))
   dontTouch(ist2_check_sram_tag)
 
-  for (i <- 0 until boomParams.ibdaParams.get.rdtIstMarkWidth) {
-    debug_ist.io.mark(i).mark.valid := ist1_mark_valid(i)
-    debug_ist.io.mark(i).mark.bits := ist1_mark_tag(i)
+//  for (i <- 0 until boomParams.ibdaParams.get.rdtIstMarkWidth) {
+//    debug_ist.io.mark(i).mark.valid := ist1_mark_valid(i)
+//    debug_ist.io.mark(i).mark.bits := ist1_mark_tag(i)
+//
+//  }
 
-  }
 
-
-  for (i <- 0 until coreWidth) {
-    debug_ist.io.check(i).tag.valid := ist2_check_valid(i)
-    debug_ist.io.check(i).tag.bits := ist2_check_tag(i)
-    assert(ist2_in_ist(i).bits === debug_ist.io.check(i).in_ist.bits, s"Hash IBDA mismatch for $ist2_check_tag ")
-  }
+//  for (i <- 0 until coreWidth) {
+//    debug_ist.io.check(i).tag.valid := ist2_check_valid(i)
+//    debug_ist.io.check(i).tag.bits := ist2_check_tag(i)
+//    assert(ist2_in_ist(i).bits === debug_ist.io.check(i).in_ist.bits, s"Hash IBDA mismatch for $ist2_check_tag ")
+//  }
 
   require(entries == 128)
   require(ways == 2)
