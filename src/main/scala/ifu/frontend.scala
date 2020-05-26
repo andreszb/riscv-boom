@@ -937,7 +937,7 @@ class BoomFrontendModule(outer: BoomFrontend) extends LazyModuleImp(outer)
 
   io.cpu.fetchpacket <> fb.io.deq
   io.cpu.get_pc <> ftq.io.get_ftq_pc
-  io.cpu.get_pc_slice.get <> ftq.io.get_pc_slice.get
+  io.cpu.get_pc_slice.map(_ <> ftq.io.get_pc_slice.get)
   ftq.io.deq := io.cpu.commit
   ftq.io.brupdate := io.cpu.brupdate
 

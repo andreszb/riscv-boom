@@ -270,7 +270,7 @@ class WithMediumSliceBooms extends Config((site, here, up) => {
         bDispatches = 2
       )),
       ibdaParams = Some(IbdaParams(
-        ibdaTagType = IBDA_TAG_DEBUG_PC,
+        ibdaTagType = IBDA_TAG_FULL_PC,
         rdtIstMarkWidth = 1,
         //        bloomIst = true
       )),
@@ -358,7 +358,7 @@ class WithMediumDnbBooms extends Config((site, here, up) => {
         dlqDispatches = 2,
       )),
       ibdaParams = Some(IbdaParams(
-        ibdaTagType = IBDA_TAG_DEBUG_PC,
+        ibdaTagType = IBDA_TAG_FULL_PC,
         rdtIstMarkWidth = 1
       )),
       busyLookupParams = Some(BusyLookupParams(
