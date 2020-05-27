@@ -364,7 +364,7 @@ class NaiveDispatchQueueCompactingShifting(params: DispatchQueueParams,
 
 class LayeredDispatchQueueCompactingShifting(params: DispatchQueueParams,
                                          )(implicit p: Parameters) extends DispatchQueue(params.numEntries, params.deqWidth, params.enqWidth, params.qName, params.stallOnUse) {
-  val internal_queue = Module(new InternalSingleSramDispatchQueue(params.copy(stallOnUse = true, qName = qName+"_inner")))
+  val internal_queue = Module(new InternalMultiSramDispatchQueue(params.copy(stallOnUse = true, qName = qName+"_inner")))
   internal_queue.io.flush := io.flush
   internal_queue.io.brupdate := io.brupdate
   // no tsc for internal queue

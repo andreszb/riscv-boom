@@ -263,8 +263,8 @@ class WithMediumSliceBooms extends Config((site, here, up) => {
       nPerfCounters = 6,
       fpu = Some(freechips.rocketchip.tile.FPUParams(sfmaLatency=4, dfmaLatency=4, divSqrt=true)),
       loadSliceCore = Some(LoadSliceCoreParams(
-        numAqEntries = 16,
-        numBqEntries = 16,
+        numAqEntries = 8,//18
+        numBqEntries = 8,//16
         unifiedIssueQueue = true,
         aDispatches = 2,
         bDispatches = 2
@@ -310,8 +310,8 @@ class WithMediumCasBooms extends Config((site, here, up) => {
       nPerfCounters = 6,
       fpu = Some(freechips.rocketchip.tile.FPUParams(sfmaLatency=4, dfmaLatency=4, divSqrt=true)),
       casParams= Some(CasParams(
-        numInqEntries = 12,
-        numSqEntries = 4,
+        numInqEntries = 6,//12
+        numSqEntries = 2,//6
         slidingOffset = 1,
         windowSize = 2,
         inqDispatches = 2
@@ -340,7 +340,7 @@ class WithMediumDnbBooms extends Config((site, here, up) => {
         IssueParams(issueWidth=2, numEntries=0, iqType=IQT_INT.litValue, dispatchWidth=0), // INT
         IssueParams(issueWidth=1, numEntries=0, iqType=IQT_MEM.litValue, dispatchWidth=0), // MEM
         IssueParams(issueWidth=1, numEntries=0, iqType=IQT_FP.litValue , dispatchWidth=0), // FP
-        IssueParams(issueWidth=4, numEntries=16, iqType=IQT_COMB.litValue, dispatchWidth=2), // combined
+        IssueParams(issueWidth=4, numEntries=12, iqType=IQT_COMB.litValue, dispatchWidth=2), // combined
       ),
       numIntPhysRegisters = 80,
       numFpPhysRegisters = 64,
@@ -352,8 +352,8 @@ class WithMediumDnbBooms extends Config((site, here, up) => {
       nPerfCounters = 6,
       fpu = Some(freechips.rocketchip.tile.FPUParams(sfmaLatency=4, dfmaLatency=4, divSqrt=true)),
       dnbParams = Some(DnbParams(
-        numCrqEntries = 16,
-        numDlqEntries = 16,
+        numCrqEntries = 8,//18
+        numDlqEntries = 8,//18
         crqDispatches = 2,
         dlqDispatches = 2,
       )),
