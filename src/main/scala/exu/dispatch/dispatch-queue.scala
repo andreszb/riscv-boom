@@ -180,6 +180,26 @@ class UopSram(numEntries: Int, numWrites: Int, numReads: Int, registerBased: Boo
         resp.bits := DontCare
       )
     }
+  } else if(boomParams.queuePerfCounters){
+      // simple but prevents optimizations - needed for performance counters
+      val uop_sram = SyncReadMem(numEntries, new MicroOp())
+      for(wp <- io.writes){
+        when(wp.valid){
+          uop_sram(wp.bits.addr) := wp.bits.data
+        }
+      }
+      val bypasses = RegNext(io.writes)
+      for((req, resp) <- io.read_req zip io.read_resp){
+        resp.bits.data := uop_sram.read(req.bits.addr, req.valid)
+        resp.valid := RegNext(req.valid)
+        val bypass_addr = RegNext(req.bits.addr)
+        for(bp <- bypasses){
+          when(bp.valid && bypass_addr === bp.bits.addr){
+            resp.bits.data := bp.bits.data
+          }
+        }
+      }
+
   } else if(numWrites==1){
     //  print(default_hm.keySet.reduce(_ + ",\n"+_))
     //  println()
@@ -243,29 +263,11 @@ class UopSram(numEntries: Int, numWrites: Int, numReads: Int, registerBased: Boo
     }
   }
 
-//  val uop_sram = SyncReadMem(numEntries, new MicroOp())
-//  for(wp <- io.writes){
-//    when(wp.valid){
-//      uop_sram(wp.bits.addr) := wp.bits.data
-//    }
-//  }
-//  val bypasses = RegNext(io.writes)
-//  for((req, resp) <- io.read_req zip io.read_resp){
-//    resp.bits.data := uop_sram.read(req.bits.addr, req.valid)
-//    resp.valid := RegNext(req.valid)
-//    val bypass_addr = RegNext(req.bits.addr)
-//    for(bp <- bypasses){
-//      when(bp.valid && bypass_addr === bp.bits.addr){
-//        resp.bits.data := bp.bits.data
-//      }
-//    }
-//  }
-
 }
 
 
 class NaiveDispatchQueueCompactingShifting(params: DispatchQueueParams,
-                                         )(implicit p: Parameters) extends DispatchQueue(params.numEntries, params.deqWidth, params.enqWidth, params.qName, params.stallOnUse) {
+                                         )(implicit p: Parameters) extends DispatchQueue(params.numEntries*math.max(params.deqWidth, params.enqWidth), params.deqWidth, params.enqWidth, params.qName, params.stallOnUse) {
   val reg_uops = RegInit(VecInit(Seq.fill(numEntries)(NullMicroOp())))
   val reg_valids = RegInit(VecInit(Seq.fill(numEntries)(false.B)))
   val enq_uops = io.enq_uops.map(_.bits)
@@ -362,9 +364,11 @@ class NaiveDispatchQueueCompactingShifting(params: DispatchQueueParams,
 
 }
 
-class LayeredDispatchQueueCompactingShifting(params: DispatchQueueParams,
+class LayeredDispatchQueueCompactingShifting(params: DispatchQueueParams, multi: Boolean = true
                                          )(implicit p: Parameters) extends DispatchQueue(params.numEntries, params.deqWidth, params.enqWidth, params.qName, params.stallOnUse) {
-  val internal_queue = Module(new InternalMultiSramDispatchQueue(params.copy(stallOnUse = true, qName = qName+"_inner")))
+  val internal_queue = if(multi)
+    Module(new InternalMultiSramDispatchQueue(params.copy(stallOnUse = true, qName = qName+"_inner")))
+  else Module(new InternalSingleSramDispatchQueue(params.copy(stallOnUse = true, qName = qName+"_inner")))
   internal_queue.io.flush := io.flush
   internal_queue.io.brupdate := io.brupdate
   // no tsc for internal queue
@@ -498,7 +502,7 @@ class LayeredDispatchQueueCompactingShifting(params: DispatchQueueParams,
 
 
 class InternalSingleSramDispatchQueue(params: DispatchQueueParams,
-                                         )(implicit p: Parameters) extends DispatchQueue(params.numEntries, params.deqWidth, params.enqWidth, params.qName, params.stallOnUse)
+                                         )(implicit p: Parameters) extends DispatchQueue(params.numEntries*math.max(params.deqWidth, params.enqWidth), params.deqWidth, params.enqWidth, params.qName, params.stallOnUse)
 {
   require(stallOnUse, "InternalSramDispatchQueue relies on stall on use!")
   val sram_fifo = Module(new UopSram(numEntries, enqWidth, deqWidth))
@@ -656,11 +660,17 @@ class InternalMultiSramDispatchQueue(params: DispatchQueueParams,
   val tail_col = RegInit(0.U(qWidthSz.W))
 
   def forward(row: UInt, col: UInt): (UInt, UInt) = {
-    val row_wrap = row === (numEntries-1).U
-    val col_wrap = col === (fifoWidth-1).U
-    val new_col = Mux(col_wrap, 0.U(qWidthSz.W), col + 1.U)
-    val new_row = Mux(col_wrap, Mux(row_wrap, 0.U(qAddrSz.W), row + 1.U), row)
-    (new_row, new_col)
+    if(isPow2(numEntries) && isPow2(fifoWidth)){
+      println("forward pow2")
+      val tmp = WireInit(Cat(row, col) + 1.U)
+      (tmp(qWidthSz+qAddrSz-1, qWidthSz), tmp(qWidthSz-1, 0))
+    } else {
+      val row_wrap = row === (numEntries - 1).U
+      val col_wrap = col === (fifoWidth - 1).U
+      val new_col = Mux(col_wrap, 0.U(qWidthSz.W), col + 1.U)
+      val new_row = Mux(col_wrap, Mux(row_wrap, 0.U(qAddrSz.W), row + 1.U), row)
+      (new_row, new_col)
+    }
   }
 
   val mod_valids = WireInit(valids)

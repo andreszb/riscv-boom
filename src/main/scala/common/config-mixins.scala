@@ -407,6 +407,44 @@ class WithMediumInoBooms extends Config((site, here, up) => {
   case MaxHartIdBits => log2Up(site(BoomTilesKey).size)
 })
 
+class WithMediumInoQueueBooms extends Config((site, here, up) => {
+  case BoomTilesKey => up(BoomTilesKey, site) map { b => b.copy(
+    core = b.core.copy(
+      fetchWidth = 4,
+      decodeWidth = 2,
+      numRobEntries = 64,
+      issueParams = Seq(
+        IssueParams(issueWidth=1, numEntries=0, iqType=IQT_MEM.litValue, dispatchWidth=0),
+        IssueParams(issueWidth=2, numEntries=0, iqType=IQT_INT.litValue, dispatchWidth=0),
+        IssueParams(issueWidth=1, numEntries=0, iqType=IQT_FP.litValue , dispatchWidth=0),
+        IssueParams(issueWidth=4, numEntries=0, iqType=IQT_COMB.litValue, dispatchWidth=0),
+      ),
+      numIntPhysRegisters = 80,
+      numFpPhysRegisters = 64,
+      numLdqEntries = 16,
+      numStqEntries = 16,
+      maxBrCount = 12,
+      numFetchBufferEntries = 16,
+      ftq = FtqParameters(nEntries=32),
+      nPerfCounters = 6,
+      fpu = Some(freechips.rocketchip.tile.FPUParams(sfmaLatency=4, dfmaLatency=4, divSqrt=true)),
+      inoParams = Some(InoParams(
+        queueMode = true,
+      )),
+      busyLookupParams = Some(BusyLookupParams(
+        lookupAtRename = false,
+        lookupAtDisWidth = 2
+      ))
+    ),
+    dcache = Some(DCacheParams(rowBits = site(SystemBusKey).beatBits,
+                                 nSets=64, nWays=4, nMSHRs=2, nTLBEntries=8)),
+    icache = Some(ICacheParams(rowBits = site(SystemBusKey).beatBits, nSets=64, nWays=4, fetchBytes=2*4))
+    )}
+  case SystemBusKey => up(SystemBusKey, site).copy(beatBytes = 8)
+  case XLen => 64
+  case MaxHartIdBits => log2Up(site(BoomTilesKey).size)
+})
+
 // DOC include start: LargeBoomConfig
 /**
  * 3-wide BOOM. Try to match the Cortex-A15.

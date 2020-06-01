@@ -27,9 +27,9 @@ object Hash {
   def printStackTrace = callStack drop 1 /* don't print ourselves! */ foreach println
   def apply(inBits: Int, outBits: Int): UInt => UInt = {
     require(inBits <= 63)
-   // val random_data: Seq[UInt] = (0 until outBits).map(_ => math.abs(r.nextLong()).U)
+    val random_data: Seq[UInt] = (0 until outBits).map(_ => math.abs(r.nextLong()).U)
     // this is the identity hash - usefull for debugging
-    val random_data: Seq[UInt] = (0 until outBits).map(i => (1L << i).U).reverse
+//    val random_data: Seq[UInt] = (0 until outBits).map(i => (1L << i).U).reverse
 //    printStackTrace
     println("Hash Matrix:")
     random_data.foreach(u =>
@@ -186,7 +186,7 @@ class Sram(size: Int, width: Int, reads: Int, synchronous: Boolean = true) exten
 }
 
 object GenerateVerilog extends App {
-  chisel3.Driver.execute(args, () => new BloomFilterModified(m = 2048, k = 2, inBits = 32, reads = 2, collisionRate = 0.01))
+  chisel3.Driver.execute(args, () => new BloomFilterModified(m = 2048, k = 6, inBits = 32, reads = 2, collisionRate = 0.001))
   //  chisel3.Driver.execute(args, () => new HashTest(32, 12))
   //  chisel3.Driver.execute(args, () => new DistRamTest(2048, 1, 2))
 }

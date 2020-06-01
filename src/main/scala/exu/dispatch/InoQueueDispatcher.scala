@@ -20,12 +20,11 @@ import freechips.rocketchip.config.Parameters
 @chiselName
 class InoQueueDispatcher(implicit p: Parameters) extends Dispatcher {
 
-  val inq = Module(new NaiveDispatchQueueCompactingShifting( DispatchQueueParams(
-    numEntries = boomParams.inoParams.get.queueSize,
-    qName="INQ",
-    deqWidth=coreWidth,
-    enqWidth=coreWidth,
-    stallOnUse = boomParams.inoParams.get.stallOnUse)))
+  val inq = Module(boomParams.inoParams.get.queueTypes match {
+    case QUEUE_NAIVE => new NaiveDispatchQueueCompactingShifting(boomParams.inoParams.get.queueParams)
+    case QUEUE_SINGLE => new LayeredDispatchQueueCompactingShifting(boomParams.inoParams.get.queueParams, multi = false)
+    case QUEUE_MULTI => new LayeredDispatchQueueCompactingShifting(boomParams.inoParams.get.queueParams, multi = true)
+  })
 
   // We dont use the dispatch port. Everything goes via the heads ports
   io.dis_uops.map(_ := DontCare)

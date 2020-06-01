@@ -341,7 +341,13 @@ case class CasParams(
 case class InoParams(
   queueMode: Boolean = false,
   stallOnUse: Boolean = true,
-  queueSize: Int = 8
+  queueParams: DispatchQueueParams = DispatchQueueParams(
+    numEntries = 2,
+    qName="INQ",
+    deqWidth=2,
+    enqWidth=2,
+    stallOnUse = true),
+  queueTypes: Int = QUEUE_MULTI
 )
 
 // Class for DnB Parameters

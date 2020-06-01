@@ -151,3 +151,98 @@ class WithBloomPcIbda() extends Config((site, here, up) => {
     )
   })}
 })
+
+class WithNaiveQueue16() extends Config((site, here, up) => {
+  case BoomTilesKey => up(BoomTilesKey, site) map { b => b.copy(core = {
+    require(b.core.inoParams.exists(_.queueMode), "need queue mode!")
+    b.core.copy(
+      inoParams = b.core.inoParams.map(i => i.copy(
+        queueParams = DispatchQueueParams(
+          numEntries = 8,
+          qName="INQ",
+          deqWidth=2,
+          enqWidth=2,
+          stallOnUse = true,
+          headRegisters = false
+        ),
+        queueTypes = QUEUE_NAIVE
+      ))
+    )
+  })}
+})
+
+class WithSingleQueue16() extends Config((site, here, up) => {
+  case BoomTilesKey => up(BoomTilesKey, site) map { b => b.copy(core = {
+    require(b.core.inoParams.exists(_.queueMode), "need queue mode!")
+    b.core.copy(
+      inoParams = b.core.inoParams.map(i => i.copy(
+        queueParams = DispatchQueueParams(
+          numEntries = 8,
+          qName="INQ",
+          deqWidth=2,
+          enqWidth=2,
+          stallOnUse = true,
+          headRegisters = false
+        ),
+        queueTypes = QUEUE_SINGLE
+      ))
+    )
+  })}
+})
+
+class WithSingleQueue16Head() extends Config((site, here, up) => {
+  case BoomTilesKey => up(BoomTilesKey, site) map { b => b.copy(core = {
+    require(b.core.inoParams.exists(_.queueMode), "need queue mode!")
+    b.core.copy(
+      inoParams = b.core.inoParams.map(i => i.copy(
+        queueParams = DispatchQueueParams(
+          numEntries = 8,
+          qName="INQ",
+          deqWidth=2,
+          enqWidth=2,
+          stallOnUse = false,
+          headRegisters = true
+        ),
+        queueTypes = QUEUE_SINGLE
+      ))
+    )
+  })}
+})
+
+class WithMultiQueue16() extends Config((site, here, up) => {
+  case BoomTilesKey => up(BoomTilesKey, site) map { b => b.copy(core = {
+    require(b.core.inoParams.exists(_.queueMode), "need queue mode!")
+    b.core.copy(
+      inoParams = b.core.inoParams.map(i => i.copy(
+        queueParams = DispatchQueueParams(
+          numEntries = 8,
+          qName="INQ",
+          deqWidth=2,
+          enqWidth=2,
+          stallOnUse = true,
+          headRegisters = false
+        ),
+        queueTypes = QUEUE_MULTI
+      ))
+    )
+  })}
+})
+
+class WithMultiQueue16Head() extends Config((site, here, up) => {
+  case BoomTilesKey => up(BoomTilesKey, site) map { b => b.copy(core = {
+    require(b.core.inoParams.exists(_.queueMode), "need queue mode!")
+    b.core.copy(
+      inoParams = b.core.inoParams.map(i => i.copy(
+        queueParams = DispatchQueueParams(
+          numEntries = 8,
+          qName="INQ",
+          deqWidth=2,
+          enqWidth=2,
+          stallOnUse = false,
+          headRegisters = true
+        ),
+        queueTypes = QUEUE_MULTI
+      ))
+    )
+  })}
+})
