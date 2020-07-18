@@ -38,13 +38,12 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
   io.shadow_buffer_head_out := ShadowBufferHead
   io.shadow_buffer_tail_out := ShadowBufferTail
 
-  when(io.shadow_buffer_tail_in > ShadowBufferTail){
+  when(io.new_speculative_in > ShadowBufferTail){
 
   }
 
   val LoadQueue = Module(new LoadQueue())
   val ReleaseQueue = Module(new ReleaseQueue())
-
 
 
 }
@@ -59,8 +58,27 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
 
 class LoadQueue(implicit p: Parameters) extends BoomModule {
 
-  val LoadOpList = Vec(64, RegInit(UInt(8.W), 0.U))
+  val io = new Bundle{
+    val is_new_load = Input(Bool())
+    val new_load_op = Input(new MicroOp())
+    val is_speculative = Input(Bool())
+
+    val load_queue_index_head = Input(UInt())
+  }
+
+  val LoadOpList = Vec(64, RegInit(new MicroOp(), NullMicroOp()))
   val IsSpeculativeList = Vec(64, Bool())
 
-  override def io: Record = ???
+  val LoadHead = RegInit(UInt(8.W), 0.U)
+  val LoadTail = RegInit(UInt(8.W), 0.U)
+
+  when(io.is_new_load) {
+    LoadHead := (LoadHead + 1.U) % 64.U
+    LoadOpList(LoadHead) := io.new_load_op
+    IsSpeculativeList(LoadHead) := io.is_speculative
+  }
+
+  when (io.load_queue_index_head > LoadTail) {
+    LoadTail := (LoadTail + 1.U) % 64.U
+  }
 }
