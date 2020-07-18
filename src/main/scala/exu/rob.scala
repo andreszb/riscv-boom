@@ -676,7 +676,7 @@ class Rob(
   val rob_deq = WireInit(false.B)
   val r_partial_row = RegInit(false.B)
 
-  when (io.enq_valids.reduce(_|_)) {
+  when (io.enq_valids.reduce(_|_)) {pc_lob
     r_partial_row := io.enq_partial_stall
   }
 
