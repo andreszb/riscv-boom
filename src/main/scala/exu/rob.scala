@@ -50,6 +50,9 @@ class RobIo(
   // (Allocate, write instruction to ROB).
   val enq_valids       = Input(Vec(coreWidth, Bool()))
   val enq_uops         = Input(Vec(coreWidth, new MicroOp()))
+  //amundbk
+  val enq_linked_shadow_stamp = Input(Vec(coreWidth, UInt(8.W)))
+  //amundbk
   val enq_partial_stall= Input(Bool()) // we're dispatching only a partial packet,
                                        // and stalling on the rest of it (don't
                                        // advance the tail ptr)
@@ -308,6 +311,9 @@ class Rob(
     val rob_bsy       = Reg(Vec(numRobRows, Bool()))
     val rob_unsafe    = Reg(Vec(numRobRows, Bool()))
     val rob_uop       = Reg(Vec(numRobRows, new MicroOp()))
+    //amundbk
+    val rob_uop_linked_shadow_stamp = Reg(Vec(numRobRows, UInt(8.W)))
+    //end amundbk
     val rob_exception = Reg(Vec(numRobRows, Bool()))
     val rob_predicated = Reg(Vec(numRobRows, Bool())) // Was this instruction predicated out?
     val rob_fflags    = Mem(numRobRows, Bits(freechips.rocketchip.tile.FPConstants.FLAGS_SZ.W))
@@ -326,6 +332,9 @@ class Rob(
                                    io.enq_uops(w).is_fencei)
       rob_unsafe(rob_tail)    := io.enq_uops(w).unsafe
       rob_uop(rob_tail)       := io.enq_uops(w)
+      //amundbk
+      rob_uop_linked_shadow_stamp := io.enq_linked_shadow_stamp(w)
+      //end amundbk
       rob_exception(rob_tail) := io.enq_uops(w).exception
       rob_predicated(rob_tail)   := false.B
       rob_fflags(rob_tail)    := 0.U
