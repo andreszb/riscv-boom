@@ -19,8 +19,8 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
 
   }
 
-  val ShadowStampList = Vec(64, RegInit(UInt(8.W), 0.U))
-  val LoadQueueIndexList = Vec(64, RegInit(UInt(8.W), 0.U))
+  val ShadowStampList = Reg(Vec(64, RegInit(UInt(8.W), 0.U)))
+  val LoadQueueIndexList = Reg(Vec(64, RegInit(UInt(8.W), 0.U)))
 
   val ReleaseQueueTail = RegInit(UInt(8.W), 0.U)
   val ReleaseQueueHead = RegInit(UInt(8.W), 0.U)

@@ -15,8 +15,8 @@ class LoadQueue(implicit p: Parameters) extends BoomModule {
     val load_queue_index_head = Input(UInt())
   }
 
-  val LoadOpList = Vec(64, RegInit(new MicroOp(), NullMicroOp()))
-  val IsSpeculativeList = Vec(64, Bool())
+  val LoadOpList = Reg(Vec(64, RegInit(new MicroOp(), NullMicroOp())))
+  val IsSpeculativeList = Reg(Vec(64, Bool()))
 
   val LoadHead = RegInit(UInt(8.W), 0.U)
   val LoadTail = RegInit(UInt(8.W), 0.U)
