@@ -280,7 +280,7 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
   //-------------------------------------------------------------
 
   // This is a newer store than existing loads, so clear the bit in all the store dependency masks
-  for (i <- 0 until numLdqEntries)
+                        for (i <- 0 until numLdqEntries)
   {
     when (clear_store)
     {

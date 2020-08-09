@@ -13,23 +13,15 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
     val no_longer_speculative_index_in = Input(UInt(8.W))
     val no_longer_speculative_committed = Input(Bool())
 
-    val shadow_buffer_head_in = Input(UInt(8.W))
-    val shadow_buffer_tail_in = Input(UInt(8.W))
-
     val shadow_buffer_head_out = Output(UInt(8.W))
     val shadow_buffer_tail_out = Output(UInt(8.W))
-
-
   }
 
+  //Remember: Head is oldest speculative op, Tail is newest speculative op
   val ShadowBufferHead = RegInit(UInt(8.W), 0.U)
   val ShadowBufferTail = RegInit(UInt(8.W), 0.U)
 
   val ShadowCaster = Reg(Vec(64, Bool()))
-
-  //Remember: Head is oldest speculative op, Tail is newest speculative op
-  ShadowBufferHead := io.shadow_buffer_head_in
-  ShadowBufferTail := io.shadow_buffer_tail_in
 
   io.shadow_buffer_head_out := ShadowBufferHead
   io.shadow_buffer_tail_out := ShadowBufferTail
