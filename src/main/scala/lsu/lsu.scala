@@ -145,6 +145,11 @@ class LSUCoreIO(implicit p: Parameters) extends BoomBundle()(p)
   val rob_head_idx = Input(UInt(robAddrSz.W))
   val exception    = Input(Bool())
 
+  //amundbk
+  val shadow_head  = Input(UInt())
+  val shadow_tail  = Input(UInt())
+  //end amundbk
+
   val fencei_rdy  = Output(Bool())
 
   val lxcpt       = Output(Valid(new Exception))
@@ -186,6 +191,10 @@ class LDQEntry(implicit p: Parameters) extends BoomBundle()(p)
   val forward_stq_idx     = UInt(stqAddrSz.W) // Which store did we get the store-load forward from?
 
   val debug_wb_data       = UInt(xLen.W)
+
+  //amundbk
+  val is_speculative      = Bool()
+  //end amundbk
 }
 
 class STQEntry(implicit p: Parameters) extends BoomBundle()(p)
@@ -271,7 +280,7 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
   //-------------------------------------------------------------
 
   // This is a newer store than existing loads, so clear the bit in all the store dependency masks
-  for (i <- 0 until numLdqEntries)
+                        for (i <- 0 until numLdqEntries)
   {
     when (clear_store)
     {
@@ -313,6 +322,10 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
       ldq(ld_enq_idx).bits.order_fail      := false.B
       ldq(ld_enq_idx).bits.observed        := false.B
       ldq(ld_enq_idx).bits.forward_std_val := false.B
+
+      //amundbk
+      ldq(ld_enq_idx).bits.is_speculative := io.core.shadow_head =/= io.core.shadow_tail
+      //end amundbk
 
       assert (ld_enq_idx === io.core.dis_uops(w).bits.ldq_idx, "[lsu] mismatch enq load tag.")
       assert (!ldq(ld_enq_idx).valid, "[lsu] Enqueuing uop is overwriting ldq entries")

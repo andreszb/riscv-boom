@@ -44,13 +44,12 @@ import testchipip.{ExtendedTracedInstruction}
 import boom.common._
 import boom.ifu.{GlobalHistory, HasBoomFrontendParameters}
 import boom.exu.FUConstants._
-import boom.common.BoomTilesKey
 import boom.util._
 
 /**
  * Top level core object that connects the Frontend to the rest of the pipeline.
  */
-class BoomCore(implicit p: Parameters) extends BoomModule
+class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   with HasBoomFrontendParameters // TODO: Don't add this trait
 {
   val io = new freechips.rocketchip.tile.CoreBundle
@@ -141,12 +140,19 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   val rob              = Module(new Rob(
                            numIrfWritePorts + numFpWakeupPorts, // +memWidth for ll writebacks
                            numFpWakeupPorts))
+  //amundbk
+  val ShadowBuffer     = Module(new ShadowBuffer())
+  val ReleaseQueue     = Module(new ReleaseQueue())
+  //end amundbk
   // Used to wakeup registers in rename and issue. ROB needs to listen to something else.
   val int_iss_wakeups  = Wire(Vec(numIntIssueWakeupPorts, Valid(new ExeUnitResp(xLen))))
   val int_ren_wakeups  = Wire(Vec(numIntRenameWakeupPorts, Valid(new ExeUnitResp(xLen))))
   val pred_wakeup  = Wire(Valid(new ExeUnitResp(1)))
 
   require (exe_units.length == issue_units.map(_.issueWidth).sum)
+
+  //Shadow Buffer
+  val sb = Module(new ShadowBuffer())
 
   //***********************************
   // Pipeline State Registers and Wires
@@ -191,7 +197,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   brupdate.b2 := b2
 
   for ((b, a) <- brinfos zip exe_units.alu_units) {
-    b := a.io.brinfo
+    b := a.io.brinfoModule
     b.valid := a.io.brinfo.valid && !rob.io.flush.valid
   }
   b1.resolve_mask := brinfos.map(x => x.valid << x.uop.br_tag).reduce(_|_)
@@ -1119,6 +1125,17 @@ class BoomCore(implicit p: Parameters) extends BoomModule
     io.lsu.fp_stdata <> fp_pipeline.io.to_sdq
   }
 
+  //------------------amundbk------------------------------------
+  //-------------------------------------------------------------
+  // **** ShadowBuffer Wiring ****
+  //-------------------------------------------------------------
+  //-------------------------------------------------------------
+
+
+  ReleaseQueue.io.shadow_buffer_head_in := ShadowBuffer.io.shadow_buffer_head_out
+  ReleaseQueue.io.shadow_buffer_tail_in := ShadowBuffer.io.shadow_buffer_tail_out
+
+
   //-------------------------------------------------------------
   //-------------------------------------------------------------
   // **** Writeback Stage ****
@@ -1421,7 +1438,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
     }
   }
 
-  if (p(BoomTilesKey)(0).trace) {
+  if (usingTrace) {
     for (w <- 0 until coreWidth) {
       // Delay the trace so we have a cycle to pull PCs out of the FTQ
       io.trace(w).valid      := RegNext(rob.io.commit.arch_valids(w))

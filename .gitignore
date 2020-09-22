@@ -7,4 +7,5 @@ lib
 *~
 project/build.properties
 .nfs*
+.idea/*
 src/test/boom-attacks
