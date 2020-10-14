@@ -51,7 +51,7 @@ class RobIo(
   val enq_valids       = Input(Vec(coreWidth, Bool()))
   val enq_uops         = Input(Vec(coreWidth, new MicroOp()))
   //amundbk
-  val enq_linked_shadow_stamp = Input(Vec(coreWidth, UInt(8.W)))
+  val shadow_buffer_tail_in = Input(Vec(coreWidth, UInt(8.W)))
   //amundbk
   val enq_partial_stall= Input(Bool()) // we're dispatching only a partial packet,
                                        // and stalling on the rest of it (don't
@@ -312,7 +312,8 @@ class Rob(
     val rob_unsafe    = Reg(Vec(numRobRows, Bool()))
     val rob_uop       = Reg(Vec(numRobRows, new MicroOp()))
     //amundbk
-    val rob_uop_linked_shadow_stamp = Reg(Vec(numRobRows, UInt(8.W)))
+    val rob_shadow_casting_idx = Reg(Vec(numRobRows, UInt(8.W)))
+    val rob_is_shadow_caster = Reg(Vec(numRobRows, Bool()))
     //end amundbk
     val rob_exception = Reg(Vec(numRobRows, Bool()))
     val rob_predicated = Reg(Vec(numRobRows, Bool())) // Was this instruction predicated out?
@@ -333,7 +334,8 @@ class Rob(
       rob_unsafe(rob_tail)    := io.enq_uops(w).unsafe
       rob_uop(rob_tail)       := io.enq_uops(w)
       //amundbk
-      rob_uop_linked_shadow_stamp := io.enq_linked_shadow_stamp(w)
+      rob_shadow_casting_idx(rob_tail) := io.shadow_buffer_tail_in(w)
+      rob_is_shadow_caster(rob_tail) := io.enq_uops(w).is_br
       //end amundbk
       rob_exception(rob_tail) := io.enq_uops(w).exception
       rob_predicated(rob_tail)   := false.B

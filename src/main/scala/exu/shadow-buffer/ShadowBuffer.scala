@@ -8,7 +8,7 @@ import chisel3._
 class ShadowBuffer(implicit p: Parameters) extends BoomModule {
 
   val io = new Bundle {
-    val new_speculative_in = Input(Vec(coreWidth, Bool()))
+    val new_branch_op = Input(Vec(coreWidth, Bool()))
 
     val no_longer_speculative_index_in = Input(Vec(coreWidth, UInt(8.W)))
     val no_longer_speculative_committed = Input(Vec(coreWidth, Bool()))
@@ -27,7 +27,7 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
   io.shadow_buffer_tail_out := ShadowBufferTail
 
   for (w <- 0 until coreWidth) {
-    when(io.new_speculative_in(w)) {
+    when(io.new_branch_op(w)) {
       ShadowBufferTail := (ShadowBufferTail + 1.U) % 64.U
       ShadowCaster(ShadowBufferTail) := true.B
     }

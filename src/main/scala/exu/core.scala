@@ -729,6 +729,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   rob.io.debug_tsc := debug_tsc_reg
   rob.io.csr_stall := csr.io.csr_stall
 
+
   // Minor hack: ecall and breaks need to increment the FTQ deq ptr earlier than commit, since
   // they write their PC into the CSR the cycle before they commit.
   // Since these are also unique, increment the FTQ ptr when they are dispatched
@@ -1134,6 +1135,11 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
 
   ReleaseQueue.io.shadow_buffer_head_in := ShadowBuffer.io.shadow_buffer_head_out
   ReleaseQueue.io.shadow_buffer_tail_in := ShadowBuffer.io.shadow_buffer_tail_out
+
+  ShadowBuffer.io.new_branch_op := VecInit((0 until coreWidth).map(idx => dis_uops(idx).is_br))
+
+  rob.io.shadow_buffer_tail_in := ShadowBuffer.io.shadow_buffer_tail_out
+
 
 
   //-------------------------------------------------------------

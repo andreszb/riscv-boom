@@ -519,10 +519,12 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
                                                                   stq_commit_e.bits.data.valid))))
 
   // Can we wakeup a load that was nack'd
+  // Extended so only wakeups when no longer speculative
   val block_load_wakeup = WireInit(false.B)
   val can_fire_load_wakeup = widthMap(w =>
                              ( ldq_wakeup_e.valid                                      &&
                                ldq_wakeup_e.bits.addr.valid                            &&
+                              !ldq_wakeup_e.bits.is_speculative                        &&
                               !ldq_wakeup_e.bits.succeeded                             &&
                               !ldq_wakeup_e.bits.addr_is_virtual                       &&
                               !ldq_wakeup_e.bits.executed                              &&
