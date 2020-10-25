@@ -1,5 +1,6 @@
 package boom.exu
 
+import Chisel.Valid
 import boom.common.BoomModule
 import chipsalliance.rocketchip.config.Parameters
 import chisel3._
@@ -10,8 +11,7 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
   val io = new Bundle {
     val new_branch_op = Input(Vec(coreWidth, Bool()))
 
-    val no_longer_speculative_index_in = Input(Vec(coreWidth, UInt(8.W)))
-    val no_longer_speculative_committed = Input(Vec(coreWidth, Bool()))
+    val br_safe_in = Input(Vec(coreWidth, Valid(UInt(8.W))))
 
     val shadow_buffer_head_out = Output(UInt(8.W))
     val shadow_buffer_tail_out = Output(UInt(8.W))
@@ -32,8 +32,8 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
       ShadowCaster(ShadowBufferTail) := true.B
     }
 
-    when(io.no_longer_speculative_committed(w)) {
-      ShadowCaster(io.no_longer_speculative_index_in(w)) := false.B
+    when(io.br_safe_in(w).valid) {
+      ShadowCaster(io.br_safe_in(w).bits) := false.B
     }
 
     when(ShadowCaster(ShadowBufferHead) === false.B) {

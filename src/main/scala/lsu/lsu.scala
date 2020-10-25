@@ -157,6 +157,10 @@ class LSUCoreIO(implicit p: Parameters) extends BoomBundle()(p)
   //amundbk
   val shadow_head  = Input(UInt())
   val shadow_tail  = Input(UInt())
+
+  val spec_ld_free = Input(Vec(coreWidth, Valid(UInt(8.W))))
+
+  val spec_ld_idx = Output(Vec(coreWidth, Valid(UInt(8.W))))
   //end amundbk
 
   val fencei_rdy  = Output(Bool())
@@ -334,6 +338,11 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
 
       //amundbk
       ldq(ld_enq_idx).bits.is_speculative := io.core.shadow_head =/= io.core.shadow_tail
+      io.core.spec_ld_idx(w).valid := false.B
+      when(io.core.shadow_head =/= io.core.shadow_tail) {
+        io.core.spec_ld_idx(w).valid := true.B
+        io.core.spec_ld_idx(w).bits := ld_enq_idx
+      }
       //end amundbk
 
       assert (ld_enq_idx === io.core.dis_uops(w).bits.ldq_idx, "[lsu] mismatch enq load tag.")
@@ -351,6 +360,12 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
       assert (st_enq_idx === io.core.dis_uops(w).bits.stq_idx, "[lsu] mismatch enq store tag.")
       assert (!stq(st_enq_idx).valid, "[lsu] Enqueuing uop is overwriting stq entries")
     }
+
+    //amundbk
+    when(io.core.spec_ld_free(w).valid) {
+      ldq(io.core.spec_ld_free(w).bits).bits.is_speculative := false.B
+    }
+    //end amundbk
 
     ld_enq_idx = Mux(dis_ld_val, WrapInc(ld_enq_idx, numLdqEntries),
                                  ld_enq_idx)

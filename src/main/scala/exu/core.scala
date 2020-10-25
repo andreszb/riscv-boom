@@ -143,6 +143,10 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   //amundbk
   val ShadowBuffer     = Module(new ShadowBuffer())
   val ReleaseQueue     = Module(new ReleaseQueue())
+
+
+  ShadowBuffer.io.new_branch_op := rob.io.branch_instr_added
+
   //end amundbk
   // Used to wakeup registers in rename and issue. ROB needs to listen to something else.
   val int_iss_wakeups  = Wire(Vec(numIntIssueWakeupPorts, Valid(new ExeUnitResp(xLen))))
@@ -1135,11 +1139,14 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
 
   ReleaseQueue.io.shadow_buffer_head_in := ShadowBuffer.io.shadow_buffer_head_out
   ReleaseQueue.io.shadow_buffer_tail_in := ShadowBuffer.io.shadow_buffer_tail_out
+  ReleaseQueue.io.load_queue_index_in := io.lsu.spec_ld_idx
 
-  ShadowBuffer.io.new_branch_op := VecInit((0 until coreWidth).map(idx => dis_uops(idx).is_br))
+  ShadowBuffer.io.new_branch_op := rob.io.branch_instr_added
+  ShadowBuffer.io.br_safe_in := rob.io.br_safe_out
 
   rob.io.shadow_buffer_tail_in := ShadowBuffer.io.shadow_buffer_tail_out
 
+  io.lsu.spec_ld_free := ReleaseQueue.io.load_queue_index_out
 
 
   //-------------------------------------------------------------

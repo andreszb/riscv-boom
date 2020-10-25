@@ -51,7 +51,9 @@ class RobIo(
   val enq_valids       = Input(Vec(coreWidth, Bool()))
   val enq_uops         = Input(Vec(coreWidth, new MicroOp()))
   //amundbk
-  val shadow_buffer_tail_in = Input(Vec(coreWidth, UInt(8.W)))
+  val shadow_buffer_tail_in = Input(UInt())
+  val branch_instr_added = Output(Vec(coreWidth, Bool()))
+  val br_safe_out = Output(Vec(coreWidth, Valid(UInt(8.W))))
   //amundbk
   val enq_partial_stall= Input(Bool()) // we're dispatching only a partial packet,
                                        // and stalling on the rest of it (don't
@@ -314,6 +316,7 @@ class Rob(
     //amundbk
     val rob_shadow_casting_idx = Reg(Vec(numRobRows, UInt(8.W)))
     val rob_is_shadow_caster = Reg(Vec(numRobRows, Bool()))
+    io.br_safe_out(0) := rob_shadow_casting_idx(rob_pnr - 1.U)
     //end amundbk
     val rob_exception = Reg(Vec(numRobRows, Bool()))
     val rob_predicated = Reg(Vec(numRobRows, Bool())) // Was this instruction predicated out?
@@ -327,6 +330,8 @@ class Rob(
     rob_debug_inst_wmask(w) := io.enq_valids(w)
     rob_debug_inst_wdata(w) := io.enq_uops(w).debug_inst
 
+    io.branch_instr_added(w) := false.B
+
     when (io.enq_valids(w)) {
       rob_val(rob_tail)       := true.B
       rob_bsy(rob_tail)       := !(io.enq_uops(w).is_fence ||
@@ -336,10 +341,14 @@ class Rob(
       //amundbk
       rob_shadow_casting_idx(rob_tail) := io.shadow_buffer_tail_in(w)
       rob_is_shadow_caster(rob_tail) := io.enq_uops(w).is_br
+      when(io.enq_uops(w).is_br) {
+        io.branch_instr_added(w) := true.B
+      }
       //end amundbk
       rob_exception(rob_tail) := io.enq_uops(w).exception
       rob_predicated(rob_tail)   := false.B
       rob_fflags(rob_tail)    := 0.U
+
 
       assert (rob_val(rob_tail) === false.B, "[rob] overwriting a valid entry.")
       assert ((io.enq_uops(w).rob_idx >> log2Ceil(coreWidth)) === rob_tail)
@@ -469,7 +478,13 @@ class Rob(
       } .elsewhen (rob_val(i)) {
         // clear speculation bit even on correct speculation
         rob_uop(i).br_mask := GetNewBrMask(io.brupdate, br_mask)
-      }
+      } //amundbk
+        //TODO: Check if this is correct
+        .elsewhen(rob_is_shadow_caster(i) && rob_uop(i).br_mask === io.brupdate.b1.resolve_mask) {
+          io.br_safe_out(0).valid := true.B
+          io.br_safe_out(0).bits := rob_shadow_casting_idx(i)
+        }
+      //end amundbk
     }
 
 
