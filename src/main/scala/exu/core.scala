@@ -201,7 +201,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   brupdate.b2 := b2
 
   for ((b, a) <- brinfos zip exe_units.alu_units) {
-    b := a.io.brinfoModule
+    b := a.io.brinfo
     b.valid := a.io.brinfo.valid && !rob.io.flush.valid
   }
   b1.resolve_mask := brinfos.map(x => x.valid << x.uop.br_tag).reduce(_|_)
