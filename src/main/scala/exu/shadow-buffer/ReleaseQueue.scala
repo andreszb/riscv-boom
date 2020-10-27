@@ -11,24 +11,24 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
   val io = new Bundle {
     val load_queue_index_in = Input(Vec(coreWidth, Valid(UInt(8.W))))
 
-    val shadow_buffer_head_in = Input(UInt())
-    val shadow_buffer_tail_in = Input(UInt())
+    val shadow_buffer_head_in = Input(UInt(8.W))
+    val shadow_buffer_tail_in = Input(UInt(8.W))
 
     val load_queue_index_out = Output(Vec(coreWidth, Valid(UInt())))
 
   }
 
-  val ShadowStampList = Reg(Vec(64, RegInit(UInt(8.W), 0.U)))
-  val LoadQueueIndexList = Reg(Vec(64, RegInit(UInt(8.W), 0.U)))
+  val ShadowStampList = Reg(Vec(64, UInt(8.W)))
+  val LoadQueueIndexList = Reg(Vec(64, UInt(8.W)))
 
   val ReleaseQueueTail = RegInit(UInt(8.W), 0.U)
   val ReleaseQueueHead = RegInit(UInt(8.W), 0.U)
 
-  io.load_queue_index_out := LoadQueueIndexList(ReleaseQueueTail)
-
   for (w <- 0 until coreWidth) {
     io.load_queue_index_out(w).valid := false.B
+    io.load_queue_index_out(w).bits := LoadQueueIndexList(ReleaseQueueTail + w.U)
     when(io.shadow_buffer_head_in > ShadowStampList(ReleaseQueueHead)) {
+      io.load_queue_index_out(w).valid := true.B
       io.load_queue_index_out(w).bits := LoadQueueIndexList(ReleaseQueueHead)
     }
   }

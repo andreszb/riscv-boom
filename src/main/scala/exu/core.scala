@@ -155,9 +155,6 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
 
   require (exe_units.length == issue_units.map(_.issueWidth).sum)
 
-  //Shadow Buffer
-  val sb = Module(new ShadowBuffer())
-
   //***********************************
   // Pipeline State Registers and Wires
 

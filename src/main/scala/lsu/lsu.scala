@@ -155,8 +155,8 @@ class LSUCoreIO(implicit p: Parameters) extends BoomBundle()(p)
   val exception    = Input(Bool())
 
   //amundbk
-  val shadow_head  = Input(UInt())
-  val shadow_tail  = Input(UInt())
+  val shadow_head  = Input(UInt(8.W))
+  val shadow_tail  = Input(UInt(8.W))
 
   val spec_ld_free = Input(Vec(coreWidth, Valid(UInt(8.W))))
 

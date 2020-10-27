@@ -51,7 +51,7 @@ class RobIo(
   val enq_valids       = Input(Vec(coreWidth, Bool()))
   val enq_uops         = Input(Vec(coreWidth, new MicroOp()))
   //amundbk
-  val shadow_buffer_tail_in = Input(UInt())
+  val shadow_buffer_tail_in = Input(UInt(8.W))
   val branch_instr_added = Output(Vec(coreWidth, Bool()))
   val br_safe_out = Output(Vec(coreWidth, Valid(UInt(8.W))))
   //amundbk
@@ -305,6 +305,13 @@ class Rob(
   rob_debug_inst_mem.write(rob_tail, rob_debug_inst_wdata, rob_debug_inst_wmask)
   val rob_debug_inst_rdata = rob_debug_inst_mem.read(rob_head, will_commit.reduce(_||_))
 
+  //amundbk
+  val rob_shadow_casting_idx = Reg(Vec(numRobRows, UInt(8.W)))
+  val rob_is_shadow_caster = Reg(Vec(numRobRows, Bool()))
+
+  dontTouch(rob_shadow_casting_idx)
+  dontTouch(rob_is_shadow_caster)
+
   for (w <- 0 until coreWidth) {
     def MatchBank(bank_idx: UInt): Bool = (bank_idx === w.U)
 
@@ -313,10 +320,12 @@ class Rob(
     val rob_bsy       = Reg(Vec(numRobRows, Bool()))
     val rob_unsafe    = Reg(Vec(numRobRows, Bool()))
     val rob_uop       = Reg(Vec(numRobRows, new MicroOp()))
+
     //amundbk
-    val rob_shadow_casting_idx = Reg(Vec(numRobRows, UInt(8.W)))
-    val rob_is_shadow_caster = Reg(Vec(numRobRows, Bool()))
-    io.br_safe_out(0) := rob_shadow_casting_idx(rob_pnr - 1.U)
+    //TODO: Make this not ugly. Put it elsewhere
+    io.br_safe_out(w).valid := false.B
+    io.br_safe_out(w).bits := 0.U
+
     //end amundbk
     val rob_exception = Reg(Vec(numRobRows, Bool()))
     val rob_predicated = Reg(Vec(numRobRows, Bool())) // Was this instruction predicated out?
@@ -339,7 +348,7 @@ class Rob(
       rob_unsafe(rob_tail)    := io.enq_uops(w).unsafe
       rob_uop(rob_tail)       := io.enq_uops(w)
       //amundbk
-      rob_shadow_casting_idx(rob_tail) := io.shadow_buffer_tail_in(w)
+      rob_shadow_casting_idx(rob_tail) := io.shadow_buffer_tail_in
       rob_is_shadow_caster(rob_tail) := io.enq_uops(w).is_br
       when(io.enq_uops(w).is_br) {
         io.branch_instr_added(w) := true.B
@@ -453,6 +462,11 @@ class Rob(
     when (rbk_row) {
       rob_val(com_idx)       := false.B
       rob_exception(com_idx) := false.B
+
+      //amundbk
+      rob_shadow_casting_idx(com_idx) := 0.U
+      rob_is_shadow_caster(com_idx) := false.B
+      //end amundbk
     }
 
     if (enableCommitMapTable) {
@@ -464,6 +478,8 @@ class Rob(
         }
       }
     }
+
+
 
     // -----------------------------------------------
     // Kill speculated entries on branch mispredict
