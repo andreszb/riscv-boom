@@ -24,6 +24,11 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
   val ReleaseQueueTail = RegInit(UInt(8.W), 0.U)
   val ReleaseQueueHead = RegInit(UInt(8.W), 0.U)
 
+  dontTouch(ShadowStampList)
+  dontTouch(LoadQueueIndexList)
+  dontTouch(ReleaseQueueTail)
+  dontTouch(ReleaseQueueHead)
+
   for (w <- 0 until coreWidth) {
     io.load_queue_index_out(w).valid := false.B
     io.load_queue_index_out(w).bits := LoadQueueIndexList(ReleaseQueueTail + w.U)

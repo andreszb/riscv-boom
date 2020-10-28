@@ -26,6 +26,10 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
   io.shadow_buffer_head_out := ShadowBufferHead
   io.shadow_buffer_tail_out := ShadowBufferTail
 
+  dontTouch(ShadowBufferHead)
+  dontTouch(ShadowBufferTail)
+  dontTouch(ShadowCaster)
+
   for (w <- 0 until coreWidth) {
     when(io.new_branch_op(w)) {
       ShadowBufferTail := (ShadowBufferTail + 1.U) % 64.U
@@ -36,7 +40,7 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
       ShadowCaster(io.br_safe_in(w).bits) := false.B
     }
 
-    when(ShadowCaster(ShadowBufferHead) === false.B) {
+    when(ShadowCaster(ShadowBufferHead) === false.B && ShadowBufferHead < ShadowBufferTail) {
       ShadowBufferHead := (ShadowBufferHead + 1.U) % 64.U
     }
   }

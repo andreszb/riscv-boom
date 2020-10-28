@@ -491,16 +491,20 @@ class Rob(
       {
         rob_val(i) := false.B
         rob_uop(i.U).debug_inst := BUBBLE
+        rob_is_shadow_caster(i) := false.B
       } .elsewhen (rob_val(i)) {
-        // clear speculation bit even on correct speculation
-        rob_uop(i).br_mask := GetNewBrMask(io.brupdate, br_mask)
-      } //amundbk
+
+        //amundbk
         //TODO: Check if this is correct
-        .elsewhen(rob_is_shadow_caster(i) && rob_uop(i).br_mask === io.brupdate.b1.resolve_mask) {
+        when(rob_is_shadow_caster(i) && rob_uop(i).br_mask === io.brupdate.b1.resolve_mask) {
           io.br_safe_out(0).valid := true.B
           io.br_safe_out(0).bits := rob_shadow_casting_idx(i)
         }
-      //end amundbk
+        //end amundbk
+
+        // clear speculation bit even on correct speculation
+        rob_uop(i).br_mask := GetNewBrMask(io.brupdate, br_mask)
+      }
     }
 
 
@@ -621,6 +625,7 @@ class Rob(
 
   // delay a cycle for critical path considerations
   io.flush.valid          := flush_val
+  io.flush_new_shadow_tail
   io.flush.bits.ftq_idx   := flush_uop.ftq_idx
   io.flush.bits.pc_lob    := flush_uop.pc_lob
   io.flush.bits.edge_inst := flush_uop.edge_inst
