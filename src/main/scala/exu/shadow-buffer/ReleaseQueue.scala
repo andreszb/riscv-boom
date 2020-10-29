@@ -1,6 +1,6 @@
 package boom.exu
 
-import Chisel.Valid
+import Chisel.{Valid, log2Ceil}
 import boom.common.BoomModule
 import chipsalliance.rocketchip.config.Parameters
 import chisel3._
@@ -9,20 +9,25 @@ import chisel3._
 class ReleaseQueue(implicit p: Parameters) extends BoomModule {
 
   val io = new Bundle {
-    val load_queue_index_in = Input(Vec(coreWidth, Valid(UInt(8.W))))
+    val load_queue_index_in = Input(Vec(coreWidth, Valid(UInt(log2Ceil(numLdqEntries).W))))
 
-    val shadow_buffer_head_in = Input(UInt(8.W))
-    val shadow_buffer_tail_in = Input(UInt(8.W))
+    val flush_in = Input(Bool())
+    val br_mispredict_release_queue_idx = Input(Valid(UInt(log2Ceil(maxBrCount).W)))
+
+    val shadow_buffer_head_in = Input(UInt(log2Ceil(maxBrCount).W))
+    val shadow_buffer_tail_in = Input(UInt(log2Ceil(maxBrCount).W))
 
     val load_queue_index_out = Output(Vec(coreWidth, Valid(UInt())))
-
+    val release_queue_tail_out = Output(UInt(log2Ceil(numLdqEntries).W))
   }
 
-  val ShadowStampList = Reg(Vec(64, UInt(8.W)))
-  val LoadQueueIndexList = Reg(Vec(64, UInt(8.W)))
+  val ShadowStampList = Reg(Vec(numLdqEntries, UInt(log2Ceil(maxBrCount).W)))
+  val LoadQueueIndexList = Reg(Vec(numLdqEntries, UInt(log2Ceil(numLdqEntries).W)))
 
-  val ReleaseQueueTail = RegInit(UInt(8.W), 0.U)
-  val ReleaseQueueHead = RegInit(UInt(8.W), 0.U)
+  val ReleaseQueueTail = RegInit(UInt(log2Ceil(numLdqEntries).W), 0.U)
+  val ReleaseQueueHead = RegInit(UInt(log2Ceil(numLdqEntries).W), 0.U)
+
+  io.release_queue_tail_out := ReleaseQueueTail
 
   dontTouch(ShadowStampList)
   dontTouch(LoadQueueIndexList)
@@ -42,8 +47,25 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
     when(io.load_queue_index_in(w).valid) {
       ShadowStampList(ReleaseQueueTail) := io.shadow_buffer_tail_in - 1.U
       LoadQueueIndexList(ReleaseQueueTail) := io.load_queue_index_in(w).bits
-      ReleaseQueueTail := (ReleaseQueueTail + 1.U) % 64.U
+      ReleaseQueueTail := (ReleaseQueueTail + 1.U) % numLdqEntries.U
     }
+  }
+
+  when(io.br_mispredict_release_queue_idx.valid) {
+    ReleaseQueueTail := io.br_mispredict_release_queue_idx.bits
+
+    //TODO: Remove this
+    ShadowStampList(io.br_mispredict_release_queue_idx.bits) := 0.U
+    LoadQueueIndexList(io.br_mispredict_release_queue_idx.bits) := 0.U
+  }
+
+  when(io.flush_in) {
+    ReleaseQueueHead := 0.U
+    ReleaseQueueTail := 0.U
+
+    //TODO: Remove this
+    ShadowStampList(0) := 0.U
+    LoadQueueIndexList(0) := 0.U
   }
 
 }

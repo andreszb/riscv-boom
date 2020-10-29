@@ -116,7 +116,6 @@ class LSUDMemIO(implicit p: Parameters, edge: TLEdgeOut) extends BoomBundle()(p)
   override def cloneType = new LSUDMemIO().asInstanceOf[this.type]
 }
 
-//amundbk: This is the IO going to the core
 class LSUCoreIO(implicit p: Parameters) extends BoomBundle()(p)
 {
   val exe = Vec(memWidth, new LSUExeIO)
@@ -125,7 +124,6 @@ class LSUCoreIO(implicit p: Parameters) extends BoomBundle()(p)
   val dis_ldq_idx = Output(Vec(coreWidth, UInt(ldqAddrSz.W)))
   val dis_stq_idx = Output(Vec(coreWidth, UInt(stqAddrSz.W)))
 
-  //amundbk: ldq = Load Queue, stq = Store Queue
   val ldq_full    = Output(Vec(coreWidth, Bool()))
   val stq_full    = Output(Vec(coreWidth, Bool()))
 
@@ -155,12 +153,11 @@ class LSUCoreIO(implicit p: Parameters) extends BoomBundle()(p)
   val exception    = Input(Bool())
 
   //amundbk
-  val shadow_head  = Input(UInt(8.W))
-  val shadow_tail  = Input(UInt(8.W))
+  val shadow_head  = Input(UInt(log2Ceil(maxBrCount).W))
+  val shadow_tail  = Input(UInt(log2Ceil(maxBrCount).W))
 
-  val spec_ld_free = Input(Vec(coreWidth, Valid(UInt(8.W))))
-
-  val spec_ld_idx = Output(Vec(coreWidth, Valid(UInt(8.W))))
+  val spec_ld_free = Input(Vec(coreWidth, Valid(UInt(log2Ceil(numLdqEntries).W))))
+  val spec_ld_idx = Output(Vec(coreWidth, Valid(UInt(log2Ceil(numLdqEntries).W))))
   //end amundbk
 
   val fencei_rdy  = Output(Bool())
