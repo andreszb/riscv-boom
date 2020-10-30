@@ -310,9 +310,6 @@ class Rob(
   val rob_shadow_casting_idx = Reg(Vec(numRobRows, UInt(log2Ceil(maxBrCount).W)))
   val rob_is_shadow_caster = Reg(Vec(numRobRows, Bool()))
 
-  dontTouch(rob_shadow_casting_idx)
-  dontTouch(rob_is_shadow_caster)
-
   for (w <- 0 until coreWidth) {
     def MatchBank(bank_idx: UInt): Bool = (bank_idx === w.U)
 

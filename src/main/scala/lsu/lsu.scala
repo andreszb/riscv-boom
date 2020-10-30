@@ -279,13 +279,6 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
 
   def widthMap[T <: Data](f: Int => T) = VecInit((0 until memWidth).map(f))
 
-  //amundbk
-  dontTouch(io.core.spec_ld_idx)
-  dontTouch(io.core.spec_ld_free)
-  dontTouch(io.core.shadow_head)
-  dontTouch(io.core.shadow_tail)
-  //end_amundbk
-
   //-------------------------------------------------------------
   //-------------------------------------------------------------
   // Enqueue new entries
@@ -421,11 +414,6 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
   val will_fire_sta_retry      = Wire(Vec(memWidth, Bool()))
   val will_fire_store_commit   = Wire(Vec(memWidth, Bool()))
   val will_fire_load_wakeup    = Wire(Vec(memWidth, Bool()))
-
-  //amundbk
-  //TODO: Remove this debug
-  dontTouch(will_fire_load_incoming)
-  //end_amundbk
 
   val exe_req = WireInit(VecInit(io.core.exe.map(_.req)))
   // Sfence goes through all pipes

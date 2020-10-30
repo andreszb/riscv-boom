@@ -33,10 +33,6 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
   io.shadow_buffer_head_out := ShadowBufferHead
   io.shadow_buffer_tail_out := ShadowBufferTail
 
-  dontTouch(ShadowBufferHead)
-  dontTouch(ShadowBufferTail)
-  dontTouch(ShadowCaster)
-
   for (w <- 0 until coreWidth) {
     when(io.new_branch_op(w)) {
       ShadowBufferTail := (ShadowBufferTail + 1.U) % maxBrCount.U
