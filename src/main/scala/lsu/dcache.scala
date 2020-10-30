@@ -651,7 +651,13 @@ class BoomNonBlockingDCacheModule(outer: BoomNonBlockingDCache) extends LazyModu
 
   val s2_wb_idx_matches = RegNext(s1_wb_idx_matches)
 
+  //amundbk
   val s2_speculative = RegNext(s1_speculative)
+  dontTouch(io.lsu.req.bits(0).bits.is_speculative)
+  dontTouch(s0_speculative)
+  dontTouch(s1_speculative)
+  dontTouch(s2_speculative)
+  //end_amundbk
 
   // lr/sc
   val debug_sc_fail_addr = RegInit(0.U)

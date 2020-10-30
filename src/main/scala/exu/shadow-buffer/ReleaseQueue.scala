@@ -40,6 +40,7 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
     when(io.shadow_buffer_head_in > ShadowStampList(ReleaseQueueHead)) {
       io.load_queue_index_out(w).valid := true.B
       io.load_queue_index_out(w).bits := LoadQueueIndexList(ReleaseQueueHead)
+      ReleaseQueueHead := (ReleaseQueueHead + 1.U) % numLdqEntries.U
     }
   }
 

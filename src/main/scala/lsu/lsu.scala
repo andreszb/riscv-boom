@@ -9,10 +9,9 @@
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
 //
-// Load/Store Unit is made up of the Load-Address Queue, the Store-Address
-// Queue, and the Store-Data queue (LAQ, SAQ, and SDQ).
+// Load/Store Unit is made up of the Load-Address Queue
+// and the Store-Data queue (LAQ and SDQ).
 //
-// amundbk: what the hell is the ldq then?? This place is a mess
 //
 // Stores are sent to memory at (well, after) commit, loads are executed
 // optimstically ASAP.  If a misspeculation was discovered, the pipeline is
@@ -84,11 +83,9 @@ class BoomDCacheResp(implicit p: Parameters) extends BoomBundle()(p)
   val is_hella = Bool()
 }
 
-//amundbk: This is the way interacts with the DMem (L1 cache I think)
 class LSUDMemIO(implicit p: Parameters, edge: TLEdgeOut) extends BoomBundle()(p)
 {
   // In LSU's dmem stage, send the request
-  // amundbk: This is the interaction with the Boom Cache. Very minimal
   val req         = new DecoupledIO(Vec(memWidth, Valid(new BoomDCacheReq)))
   // In LSU's LCAM search stage, kill if order fail (or forwarding possible)
   val s1_kill     = Output(Vec(memWidth, Bool()))
@@ -282,6 +279,12 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
 
   def widthMap[T <: Data](f: Int => T) = VecInit((0 until memWidth).map(f))
 
+  //amundbk
+  dontTouch(io.core.spec_ld_idx)
+  dontTouch(io.core.spec_ld_free)
+  dontTouch(io.core.shadow_head)
+  dontTouch(io.core.shadow_tail)
+  //end_amundbk
 
   //-------------------------------------------------------------
   //-------------------------------------------------------------
@@ -319,6 +322,11 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
 
     val dis_ld_val = io.core.dis_uops(w).valid && io.core.dis_uops(w).bits.uses_ldq && !io.core.dis_uops(w).bits.exception
     val dis_st_val = io.core.dis_uops(w).valid && io.core.dis_uops(w).bits.uses_stq && !io.core.dis_uops(w).bits.exception
+    //amundbk
+    io.core.spec_ld_idx(w).valid := false.B
+    io.core.spec_ld_idx(w).bits := 0.U
+    //end amundbk
+
     when (dis_ld_val)
     {
       ldq(ld_enq_idx).valid                := true.B
@@ -335,7 +343,6 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
 
       //amundbk
       ldq(ld_enq_idx).bits.is_speculative := io.core.shadow_head =/= io.core.shadow_tail
-      io.core.spec_ld_idx(w).valid := false.B
       when(io.core.shadow_head =/= io.core.shadow_tail) {
         io.core.spec_ld_idx(w).valid := true.B
         io.core.spec_ld_idx(w).bits := ld_enq_idx
@@ -414,6 +421,11 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
   val will_fire_sta_retry      = Wire(Vec(memWidth, Bool()))
   val will_fire_store_commit   = Wire(Vec(memWidth, Bool()))
   val will_fire_load_wakeup    = Wire(Vec(memWidth, Bool()))
+
+  //amundbk
+  //TODO: Remove this debug
+  dontTouch(will_fire_load_incoming)
+  //end_amundbk
 
   val exe_req = WireInit(VecInit(io.core.exe.map(_.req)))
   // Sfence goes through all pipes

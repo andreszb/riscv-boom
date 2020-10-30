@@ -1129,7 +1129,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
 
   //------------------amundbk------------------------------------
   //-------------------------------------------------------------
-  // **** ShadowBuffer Wiring ****
+  // **** Shadow Wiring ****
   //-------------------------------------------------------------
   //-------------------------------------------------------------
 
@@ -1149,6 +1149,8 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   rob.io.shadow_buffer_tail_in := ShadowBuffer.io.shadow_buffer_tail_out
 
   io.lsu.spec_ld_free := ReleaseQueue.io.load_queue_index_out
+  io.lsu.shadow_head := ShadowBuffer.io.shadow_buffer_head_out
+  io.lsu.shadow_tail := ShadowBuffer.io.shadow_buffer_tail_out
 
 
   //-------------------------------------------------------------

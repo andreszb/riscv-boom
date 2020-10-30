@@ -791,6 +791,7 @@ class Rob(
 
   //amundbk
   io.br_mispred_shadow_buffer_idx.valid := false.B
+  io.br_mispred_shadow_buffer_idx.bits := 0.U
   //end amundbk
 
   when (rob_state === s_rollback && (rob_tail =/= rob_head || maybe_full)) {
@@ -805,8 +806,9 @@ class Rob(
     rob_tail     := WrapInc(GetRowIdx(io.brupdate.b2.uop.rob_idx), numRobRows)
     rob_tail_lsb := 0.U
     //amundbk
+    io.br_mispred_shadow_buffer_idx.bits := rob_shadow_casting_idx(io.brupdate.b2.uop.rob_idx)
     io.br_mispred_shadow_buffer_idx.valid := true.B
-    io.br_mispred_shadow_buffer_idx.bits := rob_shadow_casting_idx(WrapInc(GetRowIdx(io.brupdate.b2.uop.rob_idx), numRobRows))
+    rob_is_shadow_caster(io.brupdate.b2.uop.rob_idx) := false.B
     //end_amundbk
   } .elsewhen (io.enq_valids.asUInt =/= 0.U && !io.enq_partial_stall) {
     rob_tail     := WrapInc(rob_tail, numRobRows)
