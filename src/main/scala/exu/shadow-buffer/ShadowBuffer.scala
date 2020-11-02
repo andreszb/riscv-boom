@@ -29,6 +29,7 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
   val ReleaseQueueIndex = Reg(Vec(maxBrCount, UInt(log2Ceil(numLdqEntries).W)))
 
   val update_release_queue = RegNext(io.br_mispred_shadow_buffer_idx.valid)
+  val update_release_queue_idx = RegNext(ReleaseQueueIndex(io.br_mispred_shadow_buffer_idx.bits))
 
   io.shadow_buffer_head_out := ShadowBufferHead
   io.shadow_buffer_tail_out := ShadowBufferTail
@@ -44,13 +45,13 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
       ShadowCaster(io.br_safe_in(w).bits) := false.B
     }
 
-    when(ShadowCaster(ShadowBufferHead) === false.B && ShadowBufferHead < ShadowBufferTail) {
+    when(ShadowCaster(ShadowBufferHead) === false.B && ShadowBufferHead =/= ShadowBufferTail) {
       ShadowBufferHead := (ShadowBufferHead + 1.U) % maxBrCount.U
     }
   }
 
   io.br_mispredict_release_queue_idx.valid := false.B
-  io.br_mispredict_release_queue_idx.bits := ReleaseQueueIndex(ShadowBufferTail)
+  io.br_mispredict_release_queue_idx.bits := update_release_queue_idx
   when(update_release_queue) {
     io.br_mispredict_release_queue_idx.valid := true.B
   }

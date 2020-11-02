@@ -22,7 +22,7 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
   }
 
   val ShadowStampList = Reg(Vec(numLdqEntries, Valid(UInt(log2Ceil(maxBrCount).W))))
-  val LoadQueueIndexList = Reg(Vec(numLdqEntries, Valid(UInt(log2Ceil(numLdqEntries).W))))
+  val LoadQueueIndexList = Reg(Vec(numLdqEntries, UInt(log2Ceil(numLdqEntries).W)))
 
   val ReleaseQueueTail = RegInit(UInt(log2Ceil(numLdqEntries).W), 0.U)
   val ReleaseQueueHead = RegInit(UInt(log2Ceil(numLdqEntries).W), 0.U)
@@ -32,9 +32,12 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
   for (w <- 0 until coreWidth) {
     io.load_queue_index_out(w).valid := false.B
     io.load_queue_index_out(w).bits := LoadQueueIndexList(ReleaseQueueTail + w.U)
-    when(io.shadow_buffer_head_in > ShadowStampList(ReleaseQueueHead).bits && ShadowStampList(ReleaseQueueHead).valid) {
+    when(io.shadow_buffer_head_in =/= ShadowStampList(ReleaseQueueHead).bits && ShadowStampList(ReleaseQueueHead).valid) {
       io.load_queue_index_out(w).valid := true.B
       io.load_queue_index_out(w).bits := LoadQueueIndexList(ReleaseQueueHead)
+
+      ShadowStampList(ReleaseQueueHead).valid := false.B
+      ShadowStampList(ReleaseQueueHead).bits := 0.U
       ReleaseQueueHead := (ReleaseQueueHead + 1.U) % numLdqEntries.U
     }
   }
@@ -48,21 +51,37 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
     }
   }
 
-  when(io.br_mispredict_release_queue_idx.valid) {
-    ReleaseQueueTail := io.br_mispredict_release_queue_idx.bits
+  val NewTail = Wire(UInt())
+  NewTail := io.br_mispredict_release_queue_idx.bits
 
-    //TODO: Remove this
-    ShadowStampList(io.br_mispredict_release_queue_idx.bits) := 0.U
-    LoadQueueIndexList(io.br_mispredict_release_queue_idx.bits) := 0.U
+  when(io.br_mispredict_release_queue_idx.valid) {
+    ReleaseQueueTail := NewTail
+
+    ShadowStampList(NewTail).valid := false.B
+
+    def BetweenNewHeadAndTail(i: UInt, newHead: UInt, newTail: UInt): Bool = {
+      (newTail > newHead && (newTail < i <= newHead)) || (newTail > newHead && !(newTail < i <= newHead))
+    }
+
+    for (i <- 0 until numLdqEntries) {
+      when(!BetweenNewHeadAndTail(i.U, ReleaseQueueHead, NewTail) || NewTail === ReleaseQueueHead) {
+        ShadowStampList(i.U).valid := false.B
+        ShadowStampList(i.U).bits := 0.U
+        LoadQueueIndexList(i.U) := 0.U
+      }
+    }
   }
 
   when(io.flush_in) {
     ReleaseQueueHead := 0.U
     ReleaseQueueTail := 0.U
+    ShadowStampList(0).valid := false.B
 
-    //TODO: Remove this
-    ShadowStampList(0) := 0.U
-    LoadQueueIndexList(0) := 0.U
+    for (i <- 0 until numLdqEntries) {
+      ShadowStampList(i.U).valid := false.B
+      ShadowStampList(i.U).bits := 0.U
+      LoadQueueIndexList(i.U) := 0.U
+    }
   }
 
 }
