@@ -285,6 +285,8 @@ class BoomFrontendIO(implicit p: Parameters) extends BoomBundle
   val commit = Valid(UInt(ftqSz.W))
 
   val flush_icache = Output(Bool())
+
+  val perf = Input(new FrontendPerfEvents)
 }
 
 /**
@@ -293,11 +295,13 @@ class BoomFrontendIO(implicit p: Parameters) extends BoomBundle
  * @param icacheParams parameters for the icache
  * @param hartid id for the hardware thread of the core
  */
-class BoomFrontend(val icacheParams: ICacheParams, hartid: Int)(implicit p: Parameters) extends LazyModule
+class BoomFrontend(val icacheParams: ICacheParams, staticIdForMetadataUseOnly: Int)(implicit p: Parameters) extends LazyModule
 {
   lazy val module = new BoomFrontendModule(this)
-  val icache = LazyModule(new boom.ifu.ICache(icacheParams, hartid))
+  val icache = LazyModule(new boom.ifu.ICache(icacheParams, staticIdForMetadataUseOnly))
   val masterNode = icache.masterNode
+  val resetVectorSinkNode = BundleBridgeSink[UInt](Some(() =>
+    UInt(masterNode.edges.out.head.bundle.addressBits.W)))
 }
 
 /**
@@ -306,7 +310,6 @@ class BoomFrontend(val icacheParams: ICacheParams, hartid: Int)(implicit p: Para
  * @param outer top level Frontend class
  */
 class BoomFrontendBundle(val outer: BoomFrontend) extends CoreBundle()(outer.p)
-  with HasExternallyDrivenTileConstants
 {
   val cpu = Flipped(new BoomFrontendIO())
   val ptw = new TLBPTWIO()
@@ -324,6 +327,7 @@ class BoomFrontendModule(outer: BoomFrontend) extends LazyModuleImp(outer)
   with HasBoomFrontendParameters
 {
   val io = IO(new BoomFrontendBundle(outer))
+  val io_reset_vector = outer.resetVectorSinkNode.bundle
   implicit val edge = outer.masterNode.edges.out(0)
   require(fetchWidth*coreInstBytes == outer.icacheParams.fetchBytes)
 
@@ -332,10 +336,11 @@ class BoomFrontendModule(outer: BoomFrontend) extends LazyModuleImp(outer)
   val ras = Module(new BoomRAS)
 
   val icache = outer.icache.module
-  icache.io.hartid     := io.hartid
   icache.io.invalidate := io.cpu.flush_icache
   val tlb = Module(new TLB(true, log2Ceil(fetchBytes), TLBConfig(nTLBEntries)))
   io.ptw <> tlb.io.ptw
+  io.cpu.perf.tlbMiss := io.ptw.req.fire()
+  io.cpu.perf.acquire := icache.io.perf.acquire
 
   // --------------------------------------------------------
   // **** NextPC Select (F0) ****
@@ -358,7 +363,7 @@ class BoomFrontendModule(outer: BoomFrontend) extends LazyModuleImp(outer)
 
   when (RegNext(reset.asBool) && !reset.asBool) {
     s0_valid   := true.B
-    s0_vpc     := io.reset_vector
+    s0_vpc     := io_reset_vector
     s0_ghist   := (0.U).asTypeOf(new GlobalHistory)
     s0_tsrc    := BSRC_C
   }

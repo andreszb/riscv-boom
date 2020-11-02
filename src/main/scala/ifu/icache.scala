@@ -43,13 +43,13 @@ import boom.util.{BoomCoreStringPrefix}
  */
 class ICache(
   val icacheParams: ICacheParams,
-  val hartId: Int)(implicit p: Parameters)
+  val staticIdForMetadataUseOnly: Int)(implicit p: Parameters)
   extends LazyModule
 {
   lazy val module = new ICacheModule(this)
   val masterNode = TLClientNode(Seq(TLClientPortParameters(Seq(TLClientParameters(
     sourceId = IdRange(0, 1 + icacheParams.prefetch.toInt), // 0=refill, 1=hint
-    name = s"Core ${hartId} ICache")))))
+    name = s"Core ${staticIdForMetadataUseOnly} ICache")))))
 
   val size = icacheParams.nSets * icacheParams.nWays * icacheParams.blockBytes
   private val wordBytes = icacheParams.fetchBytes
@@ -94,8 +94,6 @@ class ICacheResp(val outer: ICache) extends Bundle
 class ICacheBundle(val outer: ICache) extends BoomBundle()(outer.p)
   with HasBoomFrontendParameters
 {
-  val hartid = Input(UInt(hartIdLen.W))
-
   val req = Flipped(Decoupled(new ICacheReq))
   val s1_paddr = Input(UInt(paddrBits.W)) // delayed one cycle w.r.t. req
 
@@ -105,6 +103,10 @@ class ICacheBundle(val outer: ICache) extends BoomBundle()(outer.p)
 
   val resp = Valid(new ICacheResp(outer))
   val invalidate = Input(Bool())
+
+  val perf = Output(new Bundle {
+    val acquire = Bool()
+  })
 }
 
 /**
@@ -354,6 +356,8 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
   tl_out.b.ready := true.B
   tl_out.c.valid := false.B
   tl_out.e.valid := false.B
+
+  io.perf.acquire := tl_out.a.fire()
 
   when (!refill_valid) { invalidated := false.B }
   when (refill_fire) { refill_valid := true.B }

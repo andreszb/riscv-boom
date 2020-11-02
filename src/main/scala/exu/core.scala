@@ -45,7 +45,6 @@ import freechips.rocketchip.devices.tilelink.{CLINTConsts, PLICConsts}
 import boom.common._
 import boom.ifu.{GlobalHistory, HasBoomFrontendParameters}
 import boom.exu.FUConstants._
-import boom.common.BoomTilesKey
 import boom.util._
 import boom.util.{AlignPCToBoundary, BoolToChar, BoomCoreStringPrefix, GetNewUopAndBrMask, RobTypeToChars, Sext, WrapInc}
 import lsc.{InstructionSliceTable, InstructionSliceTableBloom, InstructionSliceTableSyncMem, RdtSyncMem}
@@ -54,12 +53,12 @@ import lsc.{InstructionSliceTable, InstructionSliceTableBloom, InstructionSliceT
 /**
  * Top level core object that connects the Frontend to the rest of the pipeline.
  */
-class BoomCore(implicit p: Parameters) extends BoomModule
+class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   with HasBoomFrontendParameters // TODO: Don't add this trait
 {
   val io = new freechips.rocketchip.tile.CoreBundle
-    with freechips.rocketchip.tile.HasExternallyDrivenTileConstants
   {
+    val hartid = Input(UInt(hartIdLen.W))
     val interrupts = Input(new freechips.rocketchip.tile.CoreInterrupts())
     val ifu = new boom.ifu.BoomFrontendIO
     val ptw = Flipped(new freechips.rocketchip.rocket.DatapathPTWIO())
@@ -103,8 +102,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   val decode_units     = for (w <- 0 until decodeWidth) yield { val d = Module(new DecodeUnit); d }
   val dec_brmask_logic = Module(new BranchMaskGenerationLogic(coreWidth))
   val rename_stage     = Module(new RenameStage(coreWidth, numIntPhysRegs, numIntRenameWakeupPorts, false))
-  val fp_rename_stage  = if (usingFPU) Module(new RenameStage(coreWidth, numFpPhysRegs, numFpWakeupPorts, true))
-                         else null
+  val fp_rename_stage  = if (usingFPU) Module(new RenameStage(coreWidth, numFpPhysRegs, numFpWakeupPorts, true)) else null
   val pred_rename_stage = Module(new PredRenameStage(coreWidth, ftqSz, 1))
   val rename_stages    = if (usingFPU) Seq(rename_stage, fp_rename_stage, pred_rename_stage) else Seq(rename_stage, pred_rename_stage)
   var mem_iss_unit:IssueUnit = null
@@ -293,6 +291,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
 
   //-------------------------------------------------------------
   // Uarch Hardware Performance Events (HPEs)
+
   val perfEvents = new freechips.rocketchip.rocket.EventSets(Seq(
       new freechips.rocketchip.rocket.EventSet((mask, hits) => (mask & hits).orR, Seq(
         ("exception", () => rob.io.com_xcpt.valid),
@@ -310,7 +309,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
         ("nop", () => false.B),
         ("nop", () => false.B),
         ("nop", () => false.B),
-        ("I$ blocked", () => icache_blocked),
+        ("nop - I$ blocked", () => false.B),
         ("nop", () => false.B),
         ("branch misprediction", () => brinfos.map(b => b.mispredict && b.valid).reduce(_ || _)),
 //        ("control-flow target misprediction", () => br_unit.brinfo.mispredict &&
@@ -320,11 +319,11 @@ class BoomCore(implicit p: Parameters) extends BoomModule
       )),
 
       new freechips.rocketchip.rocket.EventSet((mask, hits) => (mask & hits).orR, Seq(
-        ("nop - I$ miss", () => false.B),
-        ("nop - D$ miss",     () => false.B),
-        ("nop -'D$ release",  () => false.B),
-        ("nop - ITLB miss", () => false.B),
-        ("nop - DTLB miss",   () => false.B),
+        ("I$ miss",     () => io.ifu.perf.acquire),
+        ("D$ miss",     () => io.lsu.perf.acquire),
+        ("D$ release",  () => io.lsu.perf.release),
+        ("ITLB miss",   () => io.ifu.perf.tlbMiss),
+        ("DTLB miss",   () => io.lsu.perf.tlbMiss),
         ("L2 TLB miss", () => io.ptw.perf.l2miss),
       ))) ++ (0 until coreWidth).map { i =>
         // queue events
@@ -465,7 +464,9 @@ class BoomCore(implicit p: Parameters) extends BoomModule
   io.ifu.bp      := csr.io.bp
 
   io.ifu.flush_icache := (0 until coreWidth).map { i =>
-    rob.io.commit.arch_valids(i) && rob.io.commit.uops(i).is_fencei }.reduce(_||_)
+    (rob.io.commit.arch_valids(i) && rob.io.commit.uops(i).is_fencei) ||
+    (RegNext(dec_valids(i) && dec_uops(i).is_jalr && csr.io.status.debug))
+  }.reduce(_||_)
 
   // TODO FIX THIS HACK
   // The below code works because of two quirks with the flush mechanism
@@ -1125,8 +1126,6 @@ class BoomCore(implicit p: Parameters) extends BoomModule
     for ((renport, fpport) <- fp_rename_stage.io.wakeups zip fp_pipeline.io.wakeups) {
        renport <> fpport
     }
-  } else {
-    fp_rename_stage.io.wakeups := DontCare
   }
   if (enableSFBOpt) {
     pred_rename_stage.io.wakeups(0) := pred_wakeup
@@ -1695,7 +1694,7 @@ class BoomCore(implicit p: Parameters) extends BoomModule
     }
   }
 
-  if (p(BoomTilesKey)(0).trace) {
+  if (usingTrace) {
     for (w <- 0 until coreWidth) {
       // Delay the trace so we have a cycle to pull PCs out of the FTQ
       io.trace(w).valid      := RegNext(rob.io.commit.arch_valids(w))
