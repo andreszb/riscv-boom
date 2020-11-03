@@ -340,8 +340,8 @@ class Rob(
       rob_uop(rob_tail)       := io.enq_uops(w)
       //amundbk
       rob_shadow_casting_idx(rob_tail) := io.shadow_buffer_tail_in
-      rob_is_shadow_caster(rob_tail) := io.enq_uops(w).is_br
-      when(io.enq_uops(w).is_br) {
+      rob_is_shadow_caster(rob_tail) := io.enq_uops(w).is_br || io.enq_uops(w).is_jalr
+      when(io.enq_uops(w).is_br || io.enq_uops(w).is_jalr) {
         io.branch_instr_added(w) := true.B
       }
       //end amundbk

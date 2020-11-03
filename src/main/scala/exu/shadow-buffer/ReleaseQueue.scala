@@ -5,21 +5,31 @@ import boom.common.BoomModule
 import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 
-//This one is done
 class ReleaseQueue(implicit p: Parameters) extends BoomModule {
 
   val io = new Bundle {
-    val load_queue_index_in = Input(Vec(coreWidth, Valid(UInt(log2Ceil(numLdqEntries).W))))
+    val new_ldq_idx = Input(Vec(coreWidth, Valid(UInt(log2Ceil(numLdqEntries).W))))
 
     val flush_in = Input(Bool())
-    val br_mispredict_release_queue_idx = Input(Valid(UInt(log2Ceil(maxBrCount).W)))
+    val mispredict_new_tail = Input(Valid(UInt(log2Ceil(maxBrCount).W)))
 
-    val shadow_buffer_head_in = Input(UInt(log2Ceil(maxBrCount).W))
-    val shadow_buffer_tail_in = Input(UInt(log2Ceil(maxBrCount).W))
+    val sb_head = Input(UInt(log2Ceil(maxBrCount).W))
+    val sb_tail = Input(UInt(log2Ceil(maxBrCount).W))
 
     val load_queue_index_out = Output(Vec(coreWidth, Valid(UInt())))
     val release_queue_tail_out = Output(UInt(log2Ceil(numLdqEntries).W))
   }
+
+  def IsIndexBetweenHeadAndTail(Index: UInt, Head: UInt, Tail: UInt): Bool = {
+    ((Head < Tail) && Index >= Head && Index < Tail) || ((Head > Tail) && (Index < Tail || Index >= Head))
+  }
+
+  def ValidAndSame(ValidIn: chisel3.util.Valid[UInt], Value: UInt): Bool = {
+    ValidIn.valid && ValidIn.bits === Value
+  }
+
+  val index_check = Wire(Bool())
+  val same_check = Wire(Bool())
 
   val ShadowStampList = Reg(Vec(numLdqEntries, Valid(UInt(log2Ceil(maxBrCount).W))))
   val LoadQueueIndexList = Reg(Vec(numLdqEntries, UInt(log2Ceil(numLdqEntries).W)))
@@ -29,10 +39,16 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
 
   io.release_queue_tail_out := ReleaseQueueTail
 
+  index_check := IsIndexBetweenHeadAndTail(ShadowStampList(ReleaseQueueHead).bits, io.sb_head, io.sb_tail)
+  same_check := ValidAndSame(io.mispredict_new_tail, ReleaseQueueHead)
+
+  dontTouch(index_check)
+  dontTouch(same_check)
+
   for (w <- 0 until coreWidth) {
     io.load_queue_index_out(w).valid := false.B
     io.load_queue_index_out(w).bits := LoadQueueIndexList(ReleaseQueueTail + w.U)
-    when(io.shadow_buffer_head_in =/= ShadowStampList(ReleaseQueueHead).bits && ShadowStampList(ReleaseQueueHead).valid) {
+    when(!index_check && !same_check  && ShadowStampList(ReleaseQueueHead).valid) {
       io.load_queue_index_out(w).valid := true.B
       io.load_queue_index_out(w).bits := LoadQueueIndexList(ReleaseQueueHead)
 
@@ -43,28 +59,23 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
   }
 
   for (w <- 0 until coreWidth) {
-    when(io.load_queue_index_in(w).valid) {
+    when(io.new_ldq_idx(w).valid) {
       ShadowStampList(ReleaseQueueTail).valid := true.B
-      ShadowStampList(ReleaseQueueTail).bits := io.shadow_buffer_tail_in - 1.U
-      LoadQueueIndexList(ReleaseQueueTail) := io.load_queue_index_in(w).bits
+      ShadowStampList(ReleaseQueueTail).bits := io.sb_tail - 1.U
+      LoadQueueIndexList(ReleaseQueueTail) := io.new_ldq_idx(w).bits
       ReleaseQueueTail := (ReleaseQueueTail + 1.U) % numLdqEntries.U
     }
   }
 
   val NewTail = Wire(UInt())
-  NewTail := io.br_mispredict_release_queue_idx.bits
+  NewTail := io.mispredict_new_tail.bits
 
-  when(io.br_mispredict_release_queue_idx.valid) {
+  when(io.mispredict_new_tail.valid) {
     ReleaseQueueTail := NewTail
-
     ShadowStampList(NewTail).valid := false.B
 
-    def BetweenNewHeadAndTail(i: UInt, newHead: UInt, newTail: UInt): Bool = {
-      (newTail > newHead && (newTail < i <= newHead)) || (newTail > newHead && !(newTail < i <= newHead))
-    }
-
     for (i <- 0 until numLdqEntries) {
-      when(!BetweenNewHeadAndTail(i.U, ReleaseQueueHead, NewTail) || NewTail === ReleaseQueueHead) {
+      when(!IsIndexBetweenHeadAndTail(i.U, ReleaseQueueHead, NewTail) || NewTail === ReleaseQueueHead) {
         ShadowStampList(i.U).valid := false.B
         ShadowStampList(i.U).bits := 0.U
         LoadQueueIndexList(i.U) := 0.U
