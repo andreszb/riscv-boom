@@ -55,6 +55,7 @@ class RobIo(
   val branch_instr_added = Output(Vec(coreWidth, Bool()))
   val br_safe_out = Output(Vec(coreWidth, Valid(UInt(log2Ceil(maxBrCount).W))))
   val br_mispred_shadow_buffer_idx = Output(Valid(UInt(log2Ceil(maxBrCount).W)))
+  val spec_ld_idx = Output(Vec(coreWidth, Valid(UInt(log2Ceil(numLdqEntries).W))))
   //amundbk
   val enq_partial_stall= Input(Bool()) // we're dispatching only a partial packet,
                                        // and stalling on the rest of it (don't
@@ -331,6 +332,7 @@ class Rob(
     rob_debug_inst_wdata(w) := io.enq_uops(w).debug_inst
 
     io.branch_instr_added(w) := false.B
+    io.spec_ld_idx(w).valid := false.B
 
     when (io.enq_valids(w)) {
       rob_val(rob_tail)       := true.B
@@ -339,10 +341,17 @@ class Rob(
       rob_unsafe(rob_tail)    := io.enq_uops(w).unsafe
       rob_uop(rob_tail)       := io.enq_uops(w)
       //amundbk
+
       rob_shadow_casting_idx(rob_tail) := io.shadow_buffer_tail_in
       rob_is_shadow_caster(rob_tail) := io.enq_uops(w).is_br || io.enq_uops(w).is_jalr
+
       when(io.enq_uops(w).is_br || io.enq_uops(w).is_jalr) {
         io.branch_instr_added(w) := true.B
+      }
+
+      when(io.enq_uops(w).uses_ldq) {
+        io.spec_ld_idx(w).valid := true.B
+        io.spec_ld_idx(w).bits := io.enq_uops(w).ldq_idx
       }
       //end amundbk
       rob_exception(rob_tail) := io.enq_uops(w).exception
