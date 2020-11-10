@@ -2,6 +2,7 @@ package boom.exu
 
 import Chisel.{Valid, log2Ceil}
 import boom.common.BoomModule
+import boom.util.WrapDec
 import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 
@@ -34,24 +35,31 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
   io.shadow_buffer_head_out := ShadowBufferHead
   io.shadow_buffer_tail_out := ShadowBufferTail
 
+  var allClear = true.B
+  var numBranch = 0.U
+
   for (w <- 0 until coreWidth) {
+    numBranch = numBranch + io.new_branch_op(w)
     when(io.new_branch_op(w)) {
-      ShadowBufferTail := (ShadowBufferTail + 1.U) % maxBrCount.U
-      ShadowCaster(ShadowBufferTail) := true.B
-      ReleaseQueueIndex(ShadowBufferTail) := io.release_queue_tail_checkpoint
+      ShadowBufferTail := (ShadowBufferTail + numBranch) % maxBrCount.U
+      ShadowCaster(WrapDec(ShadowBufferTail + numBranch, maxBrCount)) := true.B
+      ReleaseQueueIndex(WrapDec(ShadowBufferTail + numBranch, maxBrCount)) := io.release_queue_tail_checkpoint
     }
 
     when(io.br_safe_in(w).valid) {
       ShadowCaster(io.br_safe_in(w).bits) := false.B
     }
 
-    when(ShadowCaster(ShadowBufferHead) === false.B && ShadowBufferHead =/= ShadowBufferTail) {
+    when(ShadowCaster(ShadowBufferHead + w.U) === false.B && (ShadowBufferHead + w.U) =/= ShadowBufferTail && allClear) {
       ShadowBufferHead := (ShadowBufferHead + 1.U) % maxBrCount.U
+    }.otherwise {
+      allClear := false.B
     }
   }
 
   io.br_mispredict_release_queue_idx.valid := false.B
   io.br_mispredict_release_queue_idx.bits := update_release_queue_idx
+
   when(update_release_queue) {
     io.br_mispredict_release_queue_idx.valid := true.B
   }
