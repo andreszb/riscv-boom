@@ -371,24 +371,25 @@ class BoomBankedDataArray(implicit p: Parameters) extends AbstractBoomDataArray 
  *
  * @param hartid hardware thread for the cache
  */
-class BoomNonBlockingDCache(hartid: Int)(implicit p: Parameters) extends LazyModule
+class BoomNonBlockingDCache(staticIdForMetadataUseOnly: Int)(implicit p: Parameters) extends LazyModule
 {
   private val tileParams = p(TileKey)
   protected val cfg = tileParams.dcache.get
 
   protected def cacheClientParameters = cfg.scratch.map(x => Seq()).getOrElse(Seq(TLClientParameters(
-    name          = s"Core ${hartid} DCache",
+    name          = s"Core ${staticIdForMetadataUseOnly} DCache",
     sourceId      = IdRange(0, 1 max (cfg.nMSHRs + 1)),
     supportsProbe = TransferSizes(cfg.blockBytes, cfg.blockBytes))))
 
   protected def mmioClientParameters = Seq(TLClientParameters(
-    name          = s"Core ${hartid} DCache MMIO",
+    name          = s"Core ${staticIdForMetadataUseOnly} DCache MMIO",
     sourceId      = IdRange(cfg.nMSHRs + 1, cfg.nMSHRs + 1 + cfg.nMMIOs),
     requestFifo   = true))
 
   val node = TLClientNode(Seq(TLClientPortParameters(
     cacheClientParameters ++ mmioClientParameters,
     minLatency = 1)))
+
 
   lazy val module = new BoomNonBlockingDCacheModule(this)
 
@@ -399,7 +400,6 @@ class BoomNonBlockingDCache(hartid: Int)(implicit p: Parameters) extends LazyMod
 
 
 class BoomDCacheBundle(implicit p: Parameters, edge: TLEdgeOut) extends BoomBundle()(p) {
-  val hartid = Input(UInt(hartIdLen.W))
   val errors = new DCacheErrors
   val lsu   = Flipped(new LSUDMemIO)
 }
@@ -586,6 +586,8 @@ class BoomNonBlockingDCacheModule(outer: BoomNonBlockingDCache) extends LazyModu
                  Mux(mshrs.io.meta_read.fire(), t_mshr_meta_read
                                               , t_replay)))))
 
+  val s0_speculative = VecInit(io.lsu.req.bits.map(_.bits.is_speculative))
+
   // Does this request need to send a response or nack
   val s0_send_resp_or_nack = Mux(io.lsu.req.fire(), s0_valid,
     VecInit(Mux(mshrs.io.replay.fire() && isRead(mshrs.io.replay.bits.uop.mem_cmd), 1.U(memWidth.W), 0.U(memWidth.W)).asBools))
@@ -623,6 +625,8 @@ class BoomNonBlockingDCacheModule(outer: BoomNonBlockingDCache) extends LazyModu
 
   val s1_wb_idx_matches = widthMap(i => (s1_addr(i)(untagBits-1,blockOffBits) === wb.io.idx.bits) && wb.io.idx.valid)
 
+  val s1_speculative = RegNext(s0_speculative)
+
   val s2_req   = RegNext(s1_req)
   val s2_type  = RegNext(s1_type)
   val s2_valid = widthMap(w =>
@@ -646,6 +650,14 @@ class BoomNonBlockingDCacheModule(outer: BoomNonBlockingDCache) extends LazyModu
   assert(!(s2_type === t_wb && !s2_hit(0)), "Writeback should always see data hit")
 
   val s2_wb_idx_matches = RegNext(s1_wb_idx_matches)
+
+  //amundbk
+  val s2_speculative = RegNext(s1_speculative)
+  dontTouch(io.lsu.req.bits(0).bits.is_speculative)
+  dontTouch(s0_speculative)
+  dontTouch(s1_speculative)
+  dontTouch(s2_speculative)
+  //end_amundbk
 
   // lr/sc
   val debug_sc_fail_addr = RegInit(0.U)
@@ -722,8 +734,10 @@ class BoomNonBlockingDCacheModule(outer: BoomNonBlockingDCache) extends LazyModu
   val s2_nack_data   = widthMap(w => data.io.nacks(w))
   // Can't allocate MSHR for same set currently being written back
   val s2_nack_wb     = widthMap(w => s2_valid(w) && !s2_hit(w) && s2_wb_idx_matches(w))
+  // Missed, but can't fetch due to speculative
+  val s2_nack_speculative = widthMap(w => s2_valid(w) && !s2_hit(w) && s2_speculative(w))
 
-  s2_nack           := widthMap(w => (s2_nack_miss(w) || s2_nack_hit(w) || s2_nack_victim(w) || s2_nack_data(w) || s2_nack_wb(w)) && s2_type =/= t_replay)
+  s2_nack           := widthMap(w => (s2_nack_speculative(w) || s2_nack_miss(w) || s2_nack_hit(w) || s2_nack_victim(w) || s2_nack_data(w) || s2_nack_wb(w)) && s2_type =/= t_replay)
   val s2_send_resp = widthMap(w => (RegNext(s1_send_resp_or_nack(w)) && !s2_nack(w) &&
                       (s2_hit(w) || (mshrs.io.req(w).fire() && isWrite(s2_req(w).uop.mem_cmd) && !isRead(s2_req(w).uop.mem_cmd)))))
   val s2_send_nack = widthMap(w => (RegNext(s1_send_resp_or_nack(w)) && s2_nack(w)))
@@ -736,6 +750,7 @@ class BoomNonBlockingDCacheModule(outer: BoomNonBlockingDCache) extends LazyModu
   s2_store_failed := s2_valid(0) && s2_nack(0) && s2_send_nack(0) && s2_req(0).uop.uses_stq
 
   // Miss handling
+  // amundbk: I think this is where we add the is speculative tag
   for (w <- 0 until memWidth) {
     mshrs.io.req(w).valid := s2_valid(w)          &&
                             !s2_hit(w)            &&
@@ -743,6 +758,7 @@ class BoomNonBlockingDCacheModule(outer: BoomNonBlockingDCache) extends LazyModu
                             !s2_nack_victim(w)    &&
                             !s2_nack_data(w)      &&
                             !s2_nack_wb(w)        &&
+                            !s2_nack_speculative(w) &&
                              s2_type.isOneOf(t_lsu, t_prefetch)             &&
                             !IsKilledByBranch(io.lsu.brupdate, s2_req(w).uop) &&
                             !(io.lsu.exception && s2_req(w).uop.uses_ldq)   &&

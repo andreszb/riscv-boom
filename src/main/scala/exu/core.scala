@@ -53,8 +53,8 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   with HasBoomFrontendParameters // TODO: Don't add this trait
 {
   val io = new freechips.rocketchip.tile.CoreBundle
-    with freechips.rocketchip.tile.HasExternallyDrivenTileConstants
   {
+    val hartid = Input(UInt(hartIdLen.W))
     val interrupts = Input(new freechips.rocketchip.tile.CoreInterrupts())
     val ifu = new boom.ifu.BoomFrontendIO
     val ptw = Flipped(new freechips.rocketchip.rocket.DatapathPTWIO())
@@ -143,6 +143,10 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   //amundbk
   val ShadowBuffer     = Module(new ShadowBuffer())
   val ReleaseQueue     = Module(new ReleaseQueue())
+
+
+  ShadowBuffer.io.new_branch_op := rob.io.branch_instr_added
+
   //end amundbk
   // Used to wakeup registers in rename and issue. ROB needs to listen to something else.
   val int_iss_wakeups  = Wire(Vec(numIntIssueWakeupPorts, Valid(new ExeUnitResp(xLen))))
@@ -150,9 +154,6 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   val pred_wakeup  = Wire(Valid(new ExeUnitResp(1)))
 
   require (exe_units.length == issue_units.map(_.issueWidth).sum)
-
-  //Shadow Buffer
-  val sb = Module(new ShadowBuffer())
 
   //***********************************
   // Pipeline State Registers and Wires
@@ -197,7 +198,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   brupdate.b2 := b2
 
   for ((b, a) <- brinfos zip exe_units.alu_units) {
-    b := a.io.brinfoModule
+    b := a.io.brinfo
     b.valid := a.io.brinfo.valid && !rob.io.flush.valid
   }
   b1.resolve_mask := brinfos.map(x => x.valid << x.uop.br_tag).reduce(_|_)
@@ -729,6 +730,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   rob.io.debug_tsc := debug_tsc_reg
   rob.io.csr_stall := csr.io.csr_stall
 
+
   // Minor hack: ecall and breaks need to increment the FTQ deq ptr earlier than commit, since
   // they write their PC into the CSR the cycle before they commit.
   // Since these are also unique, increment the FTQ ptr when they are dispatched
@@ -1127,13 +1129,28 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
 
   //------------------amundbk------------------------------------
   //-------------------------------------------------------------
-  // **** ShadowBuffer Wiring ****
+  // **** Shadow Wiring ****
   //-------------------------------------------------------------
   //-------------------------------------------------------------
 
 
-  ReleaseQueue.io.shadow_buffer_head_in := ShadowBuffer.io.shadow_buffer_head_out
-  ReleaseQueue.io.shadow_buffer_tail_in := ShadowBuffer.io.shadow_buffer_tail_out
+  ReleaseQueue.io.sb_head := ShadowBuffer.io.shadow_buffer_head_out
+  ReleaseQueue.io.sb_tail := ShadowBuffer.io.shadow_buffer_tail_out
+  ReleaseQueue.io.new_ldq_idx := rob.io.spec_ld_idx
+  ReleaseQueue.io.mispredict_new_tail := ShadowBuffer.io.br_mispredict_release_queue_idx
+  ReleaseQueue.io.flush_in := rob.io.flush.valid
+
+  ShadowBuffer.io.new_branch_op := rob.io.branch_instr_added
+  ShadowBuffer.io.br_safe_in := rob.io.br_safe_out
+  ShadowBuffer.io.br_mispred_shadow_buffer_idx := rob.io.br_mispred_shadow_buffer_idx
+  ShadowBuffer.io.release_queue_tail_checkpoint := ReleaseQueue.io.release_queue_tail_out
+  ShadowBuffer.io.flush_in := rob.io.flush.valid
+
+  rob.io.shadow_buffer_tail_in := ShadowBuffer.io.shadow_buffer_tail_out
+
+  io.lsu.spec_ld_free := ReleaseQueue.io.load_queue_index_out
+  io.lsu.shadow_head := ShadowBuffer.io.shadow_buffer_head_out
+  io.lsu.shadow_tail := ShadowBuffer.io.shadow_buffer_tail_out
 
 
   //-------------------------------------------------------------

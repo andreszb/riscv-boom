@@ -51,7 +51,11 @@ class RobIo(
   val enq_valids       = Input(Vec(coreWidth, Bool()))
   val enq_uops         = Input(Vec(coreWidth, new MicroOp()))
   //amundbk
-  val enq_linked_shadow_stamp = Input(Vec(coreWidth, UInt(8.W)))
+  val shadow_buffer_tail_in = Input(UInt(log2Ceil(maxBrCount).W))
+  val branch_instr_added = Output(Vec(coreWidth, Bool()))
+  val br_safe_out = Output(Vec(coreWidth, Valid(UInt(log2Ceil(maxBrCount).W))))
+  val br_mispred_shadow_buffer_idx = Output(Valid(UInt(log2Ceil(maxBrCount).W)))
+  val spec_ld_idx = Output(Vec(coreWidth, Valid(UInt(log2Ceil(numLdqEntries).W))))
   //amundbk
   val enq_partial_stall= Input(Bool()) // we're dispatching only a partial packet,
                                        // and stalling on the rest of it (don't
@@ -303,6 +307,10 @@ class Rob(
   rob_debug_inst_mem.write(rob_tail, rob_debug_inst_wdata, rob_debug_inst_wmask)
   val rob_debug_inst_rdata = rob_debug_inst_mem.read(rob_head, will_commit.reduce(_||_))
 
+  //amundbk
+  val rob_shadow_casting_idx = Reg(Vec(numRobRows, UInt(log2Ceil(maxBrCount).W)))
+  val rob_is_shadow_caster = Reg(Vec(numRobRows, Bool()))
+
   for (w <- 0 until coreWidth) {
     def MatchBank(bank_idx: UInt): Bool = (bank_idx === w.U)
 
@@ -311,9 +319,6 @@ class Rob(
     val rob_bsy       = Reg(Vec(numRobRows, Bool()))
     val rob_unsafe    = Reg(Vec(numRobRows, Bool()))
     val rob_uop       = Reg(Vec(numRobRows, new MicroOp()))
-    //amundbk
-    val rob_uop_linked_shadow_stamp = Reg(Vec(numRobRows, UInt(8.W)))
-    //end amundbk
     val rob_exception = Reg(Vec(numRobRows, Bool()))
     val rob_predicated = Reg(Vec(numRobRows, Bool())) // Was this instruction predicated out?
     val rob_fflags    = Mem(numRobRows, Bits(freechips.rocketchip.tile.FPConstants.FLAGS_SZ.W))
@@ -326,6 +331,9 @@ class Rob(
     rob_debug_inst_wmask(w) := io.enq_valids(w)
     rob_debug_inst_wdata(w) := io.enq_uops(w).debug_inst
 
+    io.branch_instr_added(w) := false.B
+    io.spec_ld_idx(w).valid := false.B
+
     when (io.enq_valids(w)) {
       rob_val(rob_tail)       := true.B
       rob_bsy(rob_tail)       := !(io.enq_uops(w).is_fence ||
@@ -333,11 +341,23 @@ class Rob(
       rob_unsafe(rob_tail)    := io.enq_uops(w).unsafe
       rob_uop(rob_tail)       := io.enq_uops(w)
       //amundbk
-      rob_uop_linked_shadow_stamp := io.enq_linked_shadow_stamp(w)
+
+      rob_shadow_casting_idx(rob_tail) := io.shadow_buffer_tail_in
+      rob_is_shadow_caster(rob_tail) := io.enq_uops(w).is_br || io.enq_uops(w).is_jalr
+
+      when(io.enq_uops(w).is_br || io.enq_uops(w).is_jalr) {
+        io.branch_instr_added(w) := true.B
+      }
+
+      when(io.enq_uops(w).uses_ldq) {
+        io.spec_ld_idx(w).valid := true.B
+        io.spec_ld_idx(w).bits := io.enq_uops(w).ldq_idx
+      }
       //end amundbk
       rob_exception(rob_tail) := io.enq_uops(w).exception
       rob_predicated(rob_tail)   := false.B
       rob_fflags(rob_tail)    := 0.U
+
 
       assert (rob_val(rob_tail) === false.B, "[rob] overwriting a valid entry.")
       assert ((io.enq_uops(w).rob_idx >> log2Ceil(coreWidth)) === rob_tail)
@@ -442,6 +462,11 @@ class Rob(
     when (rbk_row) {
       rob_val(com_idx)       := false.B
       rob_exception(com_idx) := false.B
+
+      //amundbk
+      rob_shadow_casting_idx(com_idx) := 0.U
+      rob_is_shadow_caster(com_idx) := false.B
+      //end amundbk
     }
 
     if (enableCommitMapTable) {
@@ -454,6 +479,19 @@ class Rob(
       }
     }
 
+
+    //amundbk
+    io.br_safe_out(w).valid := false.B
+    io.br_safe_out(w).bits := 0.U
+    val ResolvedLastCycle = RegNext(io.brupdate.b1.resolve_mask =/= 0.U && io.brupdate.b1.mispredict_mask === 0.U)
+
+    when(ResolvedLastCycle) {
+      io.br_safe_out(0).valid := true.B
+      io.br_safe_out(0).bits := rob_shadow_casting_idx(io.brupdate.b2.uop.rob_idx)
+    }
+
+    //end amundbk
+
     // -----------------------------------------------
     // Kill speculated entries on branch mispredict
     for (i <- 0 until numRobRows) {
@@ -464,6 +502,7 @@ class Rob(
       {
         rob_val(i) := false.B
         rob_uop(i.U).debug_inst := BUBBLE
+        rob_is_shadow_caster(i) := false.B
       } .elsewhen (rob_val(i)) {
         // clear speculation bit even on correct speculation
         rob_uop(i).br_mask := GetNewBrMask(io.brupdate, br_mask)
@@ -685,7 +724,7 @@ class Rob(
   val rob_deq = WireInit(false.B)
   val r_partial_row = RegInit(false.B)
 
-  when (io.enq_valids.reduce(_|_)) {pc_lob
+  when (io.enq_valids.reduce(_|_)) {
     r_partial_row := io.enq_partial_stall
   }
 
@@ -756,6 +795,11 @@ class Rob(
 
   val rob_enq = WireInit(false.B)
 
+  //amundbk
+  io.br_mispred_shadow_buffer_idx.valid := false.B
+  io.br_mispred_shadow_buffer_idx.bits := 0.U
+  //end amundbk
+
   when (rob_state === s_rollback && (rob_tail =/= rob_head || maybe_full)) {
     // Rollback a row
     rob_tail     := WrapDec(rob_tail, numRobRows)
@@ -767,6 +811,11 @@ class Rob(
   } .elsewhen (io.brupdate.b2.mispredict) {
     rob_tail     := WrapInc(GetRowIdx(io.brupdate.b2.uop.rob_idx), numRobRows)
     rob_tail_lsb := 0.U
+    //amundbk
+    io.br_mispred_shadow_buffer_idx.bits := rob_shadow_casting_idx(io.brupdate.b2.uop.rob_idx)
+    io.br_mispred_shadow_buffer_idx.valid := true.B
+    rob_is_shadow_caster(io.brupdate.b2.uop.rob_idx) := false.B
+    //end_amundbk
   } .elsewhen (io.enq_valids.asUInt =/= 0.U && !io.enq_partial_stall) {
     rob_tail     := WrapInc(rob_tail, numRobRows)
     rob_tail_lsb := 0.U
