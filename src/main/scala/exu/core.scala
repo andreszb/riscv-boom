@@ -28,19 +28,17 @@
 
 package boom.exu
 
-import java.nio.file.{Paths}
+import java.nio.file.Paths
 
+import Chisel.{Valid, log2Ceil}
 import chisel3._
 import chisel3.util._
-
 import freechips.rocketchip.config.Parameters
 import freechips.rocketchip.rocket.Instructions._
 import freechips.rocketchip.rocket.{Causes, PRV}
-import freechips.rocketchip.util.{Str, UIntIsOneOf, CoreMonitorBundle}
-import freechips.rocketchip.devices.tilelink.{PLICConsts, CLINTConsts}
-
-import testchipip.{ExtendedTracedInstruction}
-
+import freechips.rocketchip.util.{CoreMonitorBundle, Str, UIntIsOneOf}
+import freechips.rocketchip.devices.tilelink.{CLINTConsts, PLICConsts}
+import testchipip.ExtendedTracedInstruction
 import boom.common._
 import boom.ifu.{GlobalHistory, HasBoomFrontendParameters}
 import boom.exu.FUConstants._
@@ -203,6 +201,18 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   }
   b1.resolve_mask := brinfos.map(x => x.valid << x.uop.br_tag).reduce(_|_)
   b1.mispredict_mask := brinfos.map(x => (x.valid && x.mispredict) << x.uop.br_tag).reduce(_|_)
+
+  //amundbk
+  val br_resolve_idx = Wire(Vec(coreWidth, Valid(UInt(log2Ceil(numRobRows).W))))
+
+  for (w <- 0 until coreWidth) {
+    br_resolve_idx(w).valid := false.B
+    when(brinfos(w).valid) {
+      br_resolve_idx(w).valid := true.B
+      br_resolve_idx(w).bits := brinfos(w).uop.rob_idx
+    }
+  }
+  //end amundbk
 
   // Find the oldest mispredict and use it to update indices
   var mispredict_val = false.B
