@@ -2,11 +2,10 @@ package boom.exu
 
 import Chisel.{Valid, log2Ceil}
 import boom.common.BoomModule
-import boom.util.WrapDec
+import boom.util.{WrapAdd, WrapDec}
 import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 
-//This one is done
 class ShadowBuffer(implicit p: Parameters) extends BoomModule {
 
   val io = new Bundle {
@@ -37,11 +36,11 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
 
   var allClear = true.B
   var numBranch = 0.U
+  ShadowBufferTail := (ShadowBufferTail + numBranch) % maxBrCount.U
 
   for (w <- 0 until coreWidth) {
     numBranch = numBranch + io.new_branch_op(w)
     when(io.new_branch_op(w)) {
-      ShadowBufferTail := (ShadowBufferTail + numBranch) % maxBrCount.U
       ShadowCaster(WrapDec(ShadowBufferTail + numBranch, maxBrCount)) := true.B
       ReleaseQueueIndex(WrapDec(ShadowBufferTail + numBranch, maxBrCount)) := io.release_queue_tail_checkpoint
     }
@@ -50,8 +49,8 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
       ShadowCaster(io.br_safe_in(w).bits) := false.B
     }
 
-    when(ShadowCaster(ShadowBufferHead + w.U) === false.B && (ShadowBufferHead + w.U) =/= ShadowBufferTail && allClear) {
-      ShadowBufferHead := (ShadowBufferHead + 1.U) % maxBrCount.U
+    when(ShadowCaster(ShadowBufferHead + w.U) === false.B && WrapAdd(ShadowBufferHead, w.U, maxBrCount) =/= ShadowBufferTail && allClear) {
+      ShadowBufferHead := WrapAdd(ShadowBufferHead, w.U + 1.U, maxBrCount)
     }.otherwise {
       allClear := false.B
     }
