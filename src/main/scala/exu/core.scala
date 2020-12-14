@@ -203,13 +203,13 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   b1.mispredict_mask := brinfos.map(x => (x.valid && x.mispredict) << x.uop.br_tag).reduce(_|_)
 
   //amundbk
-  val br_resolve_idx = Wire(Vec(coreWidth, Valid(UInt(log2Ceil(numRobRows).W))))
+  val br_resolve_rob_idx = Wire(Vec(coreWidth, Valid(UInt(log2Ceil(numRobRows).W))))
 
   for (w <- 0 until coreWidth) {
-    br_resolve_idx(w).valid := false.B
+    br_resolve_rob_idx(w).valid := false.B
     when(brinfos(w).valid) {
-      br_resolve_idx(w).valid := true.B
-      br_resolve_idx(w).bits := brinfos(w).uop.rob_idx
+      br_resolve_rob_idx(w).valid := true.B
+      br_resolve_rob_idx(w).bits := brinfos(w).uop.rob_idx
     }
   }
   //end amundbk
@@ -1157,6 +1157,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   ShadowBuffer.io.flush_in := rob.io.flush.valid
 
   rob.io.shadow_buffer_tail_in := ShadowBuffer.io.shadow_buffer_tail_out
+  rob.io.br_resolve_rob_idx := br_resolve_rob_idx
 
   io.lsu.spec_ld_free := ReleaseQueue.io.load_queue_index_out
   io.lsu.shadow_head := ShadowBuffer.io.shadow_buffer_head_out

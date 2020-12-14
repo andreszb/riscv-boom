@@ -51,6 +51,7 @@ class RobIo(
   val enq_valids       = Input(Vec(coreWidth, Bool()))
   val enq_uops         = Input(Vec(coreWidth, new MicroOp()))
   //amundbk
+  val br_resolve_rob_idx = Input(Vec(coreWidth, Valid(UInt(numRobRows.W))))
   val shadow_buffer_tail_in = Input(UInt(log2Ceil(maxBrCount).W))
   val branch_instr_added = Output(Vec(coreWidth, Bool()))
   val br_safe_out = Output(Vec(coreWidth, Valid(UInt(log2Ceil(maxBrCount).W))))
@@ -485,9 +486,9 @@ class Rob(
     io.br_safe_out(w).bits := 0.U
     val ResolvedLastCycle = RegNext(io.brupdate.b1.resolve_mask =/= 0.U && io.brupdate.b1.mispredict_mask === 0.U)
 
-    when(ResolvedLastCycle) {
-      io.br_safe_out(0).valid := true.B
-      io.br_safe_out(0).bits := rob_shadow_casting_idx(io.brupdate.b2.uop.rob_idx)
+    when(io.br_resolve_rob_idx(w).valid) {
+      io.br_safe_out(w).valid := true.B
+      io.br_safe_out(w).bits := rob_shadow_casting_idx(io.br_resolve_rob_idx(w).bits)
     }
 
     //end amundbk
