@@ -207,6 +207,8 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
 
   for (w <- 0 until coreWidth) {
     br_resolve_rob_idx(w).valid := false.B
+    br_resolve_rob_idx(w).bits := 0.U
+
     when(brinfos(w).valid) {
       br_resolve_rob_idx(w).valid := true.B
       br_resolve_rob_idx(w).bits := brinfos(w).uop.rob_idx
@@ -1149,6 +1151,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   ReleaseQueue.io.new_ldq_idx := rob.io.spec_ld_idx
   ReleaseQueue.io.mispredict_new_tail := ShadowBuffer.io.br_mispredict_release_queue_idx
   ReleaseQueue.io.flush_in := rob.io.flush.valid
+  ReleaseQueue.io.new_branch_op := rob.io.branch_instr_added
 
   ShadowBuffer.io.new_branch_op := rob.io.branch_instr_added
   ShadowBuffer.io.br_safe_in := rob.io.br_safe_out

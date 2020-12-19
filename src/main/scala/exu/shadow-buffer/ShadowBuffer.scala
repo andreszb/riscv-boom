@@ -52,7 +52,7 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
     when(ShadowCaster(ShadowBufferHead + w.U) === false.B && WrapAdd(ShadowBufferHead, w.U, maxBrCount) =/= ShadowBufferTail && allClear) {
       ShadowBufferHead := WrapAdd(ShadowBufferHead, w.U + 1.U, maxBrCount)
     }.otherwise {
-      allClear := false.B
+      allClear = false.B
     }
   }
 

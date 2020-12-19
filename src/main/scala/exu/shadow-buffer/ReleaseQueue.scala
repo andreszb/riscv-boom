@@ -62,7 +62,7 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
 
       ReleaseQueueHead := WrapAdd(ReleaseQueueHead, w.U + 1.U, numLdqEntries)
     }.otherwise {
-      allClear := false.B
+      allClear = false.B
     }
   }
 
@@ -76,7 +76,7 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
       ShadowStampList(WrapAdd(ReleaseQueueTail, numNewLds, numLdqEntries)).bits := WrapAdd(io.sb_tail, sb_offset - 1.U, maxBrCount)
       LoadQueueIndexList(WrapAdd(ReleaseQueueTail, numNewLds, numLdqEntries)) := io.new_ldq_idx(w).bits
 
-      numNewLds := numNewLds + 1.U
+      numNewLds = numNewLds + 1.U
     }
     //These two should be mutually exclusive
     when(io.new_branch_op(w)) {
