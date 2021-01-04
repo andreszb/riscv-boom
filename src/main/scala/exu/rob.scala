@@ -309,8 +309,11 @@ class Rob(
   val rob_debug_inst_rdata = rob_debug_inst_mem.read(rob_head, will_commit.reduce(_||_))
 
   //amundbk
-  val rob_shadow_casting_idx = Reg(Vec(numRobRows, UInt(log2Ceil(maxBrCount).W)))
-  val rob_is_shadow_caster = Reg(Vec(numRobRows, Bool()))
+  for (i <- 0 until coreWidth) {
+    io.br_safe_out(i).valid := false.B
+    io.br_safe_out(i).bits := 0.U
+  }
+  //end amundbk
 
   for (w <- 0 until coreWidth) {
     def MatchBank(bank_idx: UInt): Bool = (bank_idx === w.U)
@@ -325,6 +328,11 @@ class Rob(
     val rob_fflags    = Mem(numRobRows, Bits(freechips.rocketchip.tile.FPConstants.FLAGS_SZ.W))
 
     val rob_debug_wdata = Mem(numRobRows, UInt(xLen.W))
+
+    //amundbk
+    val rob_shadow_casting_idx = Reg(Vec(numRobRows, UInt(log2Ceil(maxBrCount).W)))
+    val rob_is_shadow_caster = Reg(Vec(numRobRows, Bool()))
+    //end amundbk
 
     //-----------------------------------------------
     // Dispatch: Add Entry to ROB
@@ -341,8 +349,8 @@ class Rob(
                                    io.enq_uops(w).is_fencei)
       rob_unsafe(rob_tail)    := io.enq_uops(w).unsafe
       rob_uop(rob_tail)       := io.enq_uops(w)
-      //amundbk
 
+      //amundbk
       rob_shadow_casting_idx(rob_tail) := io.shadow_buffer_tail_in
       rob_is_shadow_caster(rob_tail) := io.enq_uops(w).is_br || io.enq_uops(w).is_jalr
 
@@ -355,6 +363,7 @@ class Rob(
         io.spec_ld_idx(w).bits := io.enq_uops(w).ldq_idx
       }
       //end amundbk
+
       rob_exception(rob_tail) := io.enq_uops(w).exception
       rob_predicated(rob_tail)   := false.B
       rob_fflags(rob_tail)    := 0.U
@@ -484,13 +493,19 @@ class Rob(
     //amundbk
     io.br_safe_out(w).valid := false.B
     io.br_safe_out(w).bits := 0.U
-    val ResolvedLastCycle = RegNext(io.brupdate.b1.resolve_mask =/= 0.U && io.brupdate.b1.mispredict_mask === 0.U)
 
-    when(io.br_resolve_rob_idx(w).valid) {
-      io.br_safe_out(w).valid := true.B
-      io.br_safe_out(w).bits := rob_shadow_casting_idx(io.br_resolve_rob_idx(w).bits)
+    for (i <- 0 until coreWidth) {
+      when(io.br_resolve_rob_idx(i).valid && GetBankIdx(io.br_resolve_rob_idx(i).bits) === w.U) {
+        io.br_safe_out(i).valid := true.B
+        io.br_safe_out(i).bits := rob_shadow_casting_idx(GetRowIdx(io.br_resolve_rob_idx(i).bits))
+      }
     }
 
+    when(io.brupdate.b2.mispredict && GetBankIdx(io.brupdate.b2.uop.rob_idx) === w.U) {
+      io.br_mispred_shadow_buffer_idx.valid := true.B
+      io.br_mispred_shadow_buffer_idx.bits := rob_shadow_casting_idx(GetRowIdx(io.brupdate.b2.uop.rob_idx))
+      rob_is_shadow_caster(GetRowIdx(io.brupdate.b2.uop.rob_idx)) := false.B
+    }
     //end amundbk
 
     // -----------------------------------------------
@@ -812,11 +827,6 @@ class Rob(
   } .elsewhen (io.brupdate.b2.mispredict) {
     rob_tail     := WrapInc(GetRowIdx(io.brupdate.b2.uop.rob_idx), numRobRows)
     rob_tail_lsb := 0.U
-    //amundbk
-    io.br_mispred_shadow_buffer_idx.bits := rob_shadow_casting_idx(io.brupdate.b2.uop.rob_idx)
-    io.br_mispred_shadow_buffer_idx.valid := true.B
-    rob_is_shadow_caster(io.brupdate.b2.uop.rob_idx) := false.B
-    //end_amundbk
   } .elsewhen (io.enq_valids.asUInt =/= 0.U && !io.enq_partial_stall) {
     rob_tail     := WrapInc(rob_tail, numRobRows)
     rob_tail_lsb := 0.U
