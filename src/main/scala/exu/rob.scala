@@ -491,8 +491,6 @@ class Rob(
 
 
     //amundbk
-    io.br_safe_out(w).valid := false.B
-    io.br_safe_out(w).bits := 0.U
 
     for (i <- 0 until coreWidth) {
       when(io.br_resolve_rob_idx(i).valid && GetBankIdx(io.br_resolve_rob_idx(i).bits) === w.U) {
@@ -500,6 +498,8 @@ class Rob(
         io.br_safe_out(i).bits := rob_shadow_casting_idx(GetRowIdx(io.br_resolve_rob_idx(i).bits))
       }
     }
+    dontTouch(io.br_resolve_rob_idx)
+    dontTouch(io.br_safe_out)
 
     when(io.brupdate.b2.mispredict && GetBankIdx(io.brupdate.b2.uop.rob_idx) === w.U) {
       io.br_mispred_shadow_buffer_idx.valid := true.B

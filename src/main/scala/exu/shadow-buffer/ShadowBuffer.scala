@@ -1,6 +1,6 @@
 package boom.exu
 
-import Chisel.{Valid, log2Ceil}
+import Chisel.{PopCount, Valid, log2Ceil}
 import boom.common.BoomModule
 import boom.util.{WrapAdd, WrapDec}
 import chipsalliance.rocketchip.config.Parameters
@@ -36,10 +36,11 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
 
   var allClear = true.B
   var numBranch = 0.U
-  ShadowBufferTail := (ShadowBufferTail + numBranch) % maxBrCount.U
+  ShadowBufferTail := WrapAdd(ShadowBufferTail, PopCount(io.new_branch_op), maxBrCount)
 
   for (w <- 0 until coreWidth) {
-    numBranch = numBranch + io.new_branch_op(w)
+    numBranch = numBranch + io.new_branch_op(w).asUInt()
+    
     when(io.new_branch_op(w)) {
       ShadowCaster(WrapDec(ShadowBufferTail + numBranch, maxBrCount)) := true.B
       ReleaseQueueIndex(WrapDec(ShadowBufferTail + numBranch, maxBrCount)) := io.release_queue_tail_checkpoint
