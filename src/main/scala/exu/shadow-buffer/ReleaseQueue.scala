@@ -1,8 +1,8 @@
 package boom.exu
 
-import Chisel.{Valid, log2Ceil}
+import Chisel.{PopCount, Valid, log2Ceil}
 import boom.common.BoomModule
-import boom.util.WrapAdd
+import boom.util.{WrapAdd, WrapDec}
 import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 
@@ -70,10 +70,11 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
   var numNewLds = 0.U
   //can have br, ld, br, ld. Track how many sb_inc we have had
   var sb_offset = 0.U
+  ReleaseQueueTail := WrapAdd(ReleaseQueueTail, PopCount(io.new_ldq_idx.map(e => e.valid)), numLdqEntries)
   for (w <- 0 until coreWidth) {
     when(io.new_ldq_idx(w).valid) {
       ShadowStampList(WrapAdd(ReleaseQueueTail, numNewLds, numLdqEntries)).valid := true.B
-      ShadowStampList(WrapAdd(ReleaseQueueTail, numNewLds, numLdqEntries)).bits := WrapAdd(io.sb_tail, sb_offset - 1.U, maxBrCount)
+      ShadowStampList(WrapAdd(ReleaseQueueTail, numNewLds, numLdqEntries)).bits := WrapDec(WrapAdd(io.sb_tail, sb_offset, maxBrCount), maxBrCount)
       LoadQueueIndexList(WrapAdd(ReleaseQueueTail, numNewLds, numLdqEntries)) := io.new_ldq_idx(w).bits
 
       numNewLds = numNewLds + 1.U
@@ -82,8 +83,6 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
     when(io.new_branch_op(w)) {
       sb_offset = sb_offset + 1.U
     }
-    //Increment by number of new entries
-    ReleaseQueueTail := WrapAdd(ReleaseQueueTail, numNewLds, numLdqEntries)
 
     assert(!(io.new_ldq_idx(w).valid && io.new_branch_op(w)))
   }

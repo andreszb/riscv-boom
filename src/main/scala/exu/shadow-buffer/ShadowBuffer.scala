@@ -40,7 +40,7 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
 
   for (w <- 0 until coreWidth) {
     numBranch = numBranch + io.new_branch_op(w).asUInt()
-    
+
     when(io.new_branch_op(w)) {
       ShadowCaster(WrapDec(ShadowBufferTail + numBranch, maxBrCount)) := true.B
       ReleaseQueueIndex(WrapDec(ShadowBufferTail + numBranch, maxBrCount)) := io.release_queue_tail_checkpoint
