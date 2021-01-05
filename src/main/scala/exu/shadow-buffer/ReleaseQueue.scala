@@ -67,21 +67,16 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
   }
 
   //This comes from ROB. Can have coreWidth number of new lds.
-  var numNewLds = 0.U
   //can have br, ld, br, ld. Track how many sb_inc we have had
-  var sb_offset = 0.U
   ReleaseQueueTail := WrapAdd(ReleaseQueueTail, PopCount(io.new_ldq_idx.map(e => e.valid)), numLdqEntries)
+
   for (w <- 0 until coreWidth) {
     when(io.new_ldq_idx(w).valid) {
-      ShadowStampList(WrapAdd(ReleaseQueueTail, numNewLds, numLdqEntries)).valid := true.B
-      ShadowStampList(WrapAdd(ReleaseQueueTail, numNewLds, numLdqEntries)).bits := WrapDec(WrapAdd(io.sb_tail, sb_offset, maxBrCount), maxBrCount)
-      LoadQueueIndexList(WrapAdd(ReleaseQueueTail, numNewLds, numLdqEntries)) := io.new_ldq_idx(w).bits
-
-      numNewLds = numNewLds + 1.U
-    }
-    //These two should be mutually exclusive
-    when(io.new_branch_op(w)) {
-      sb_offset = sb_offset + 1.U
+      val Offset = Wire(UInt())
+      Offset := PopCount(io.new_ldq_idx.slice(0, w).map(e => e.valid))
+      ShadowStampList(WrapAdd(ReleaseQueueTail, Offset, numLdqEntries)).valid := true.B
+      ShadowStampList(WrapAdd(ReleaseQueueTail, Offset, numLdqEntries)).bits := WrapDec(WrapAdd(io.sb_tail, PopCount(io.new_branch_op.slice(0, w)), maxBrCount), maxBrCount)
+      LoadQueueIndexList(WrapAdd(ReleaseQueueTail, Offset, numLdqEntries)) := io.new_ldq_idx(w).bits
     }
 
     assert(!(io.new_ldq_idx(w).valid && io.new_branch_op(w)))

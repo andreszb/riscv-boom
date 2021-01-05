@@ -69,8 +69,9 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
     ShadowBufferTail := 0.U
 
     //TODO: Remove this
-    ShadowCaster(0.U) := false.B
-    ReleaseQueueIndex(0.U) := 0.U
+    for (w <- 0 until maxBrCount) {
+      ShadowCaster(w) := false.B
+    }
   }.elsewhen(io.br_mispred_shadow_buffer_idx.valid) {
     ShadowBufferTail := io.br_mispred_shadow_buffer_idx.bits
 

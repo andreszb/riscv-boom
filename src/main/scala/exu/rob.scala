@@ -51,7 +51,7 @@ class RobIo(
   val enq_valids       = Input(Vec(coreWidth, Bool()))
   val enq_uops         = Input(Vec(coreWidth, new MicroOp()))
   //amundbk
-  val br_resolve_rob_idx = Input(Vec(coreWidth, Valid(UInt(numRobRows.W))))
+  val br_resolve_rob_idx = Input(Vec(coreWidth, Valid(UInt(log2Ceil(numRobEntries).W))))
   val shadow_buffer_tail_in = Input(UInt(log2Ceil(maxBrCount).W))
   val branch_instr_added = Output(Vec(coreWidth, Bool()))
   val br_safe_out = Output(Vec(coreWidth, Valid(UInt(log2Ceil(maxBrCount).W))))

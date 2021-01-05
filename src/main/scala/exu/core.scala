@@ -203,7 +203,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   b1.mispredict_mask := brinfos.map(x => (x.valid && x.mispredict) << x.uop.br_tag).reduce(_|_)
 
   //amundbk
-  val br_resolve_rob_idx = Wire(Vec(coreWidth, Valid(UInt(log2Ceil(numRobRows).W))))
+  val br_resolve_rob_idx = Wire(Vec(coreWidth, Valid(UInt(log2Ceil(numRobEntries).W))))
 
   for (w <- 0 until coreWidth) {
     br_resolve_rob_idx(w).valid := false.B
