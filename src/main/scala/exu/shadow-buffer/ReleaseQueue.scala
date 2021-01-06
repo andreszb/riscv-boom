@@ -71,7 +71,7 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
   ReleaseQueueTail := WrapAdd(ReleaseQueueTail, PopCount(io.new_ldq_idx.map(e => e.valid)), numLdqEntries)
 
   for (w <- 0 until coreWidth) {
-    when(io.new_ldq_idx(w).valid) {
+    when(io.new_ldq_idx(w).valid && io.sb_head =/= io.sb_tail) {
       val Offset = Wire(UInt())
       Offset := PopCount(io.new_ldq_idx.slice(0, w).map(e => e.valid))
       ShadowStampList(WrapAdd(ReleaseQueueTail, Offset, numLdqEntries)).valid := true.B

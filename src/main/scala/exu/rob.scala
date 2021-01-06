@@ -313,6 +313,9 @@ class Rob(
     io.br_safe_out(i).valid := false.B
     io.br_safe_out(i).bits := 0.U
   }
+
+  io.br_mispred_shadow_buffer_idx.valid := false.B
+  io.br_mispred_shadow_buffer_idx.bits := 0.U
   //end amundbk
 
   for (w <- 0 until coreWidth) {
@@ -501,11 +504,15 @@ class Rob(
     dontTouch(io.br_resolve_rob_idx)
     dontTouch(io.br_safe_out)
 
+
     when(io.brupdate.b2.mispredict && GetBankIdx(io.brupdate.b2.uop.rob_idx) === w.U) {
       io.br_mispred_shadow_buffer_idx.valid := true.B
       io.br_mispred_shadow_buffer_idx.bits := rob_shadow_casting_idx(GetRowIdx(io.brupdate.b2.uop.rob_idx))
       rob_is_shadow_caster(GetRowIdx(io.brupdate.b2.uop.rob_idx)) := false.B
     }
+
+    dontTouch(io.br_mispred_shadow_buffer_idx)
+
     //end amundbk
 
     // -----------------------------------------------
@@ -810,11 +817,6 @@ class Rob(
   // ROB Tail Logic
 
   val rob_enq = WireInit(false.B)
-
-  //amundbk
-  io.br_mispred_shadow_buffer_idx.valid := false.B
-  io.br_mispred_shadow_buffer_idx.bits := 0.U
-  //end amundbk
 
   when (rob_state === s_rollback && (rob_tail =/= rob_head || maybe_full)) {
     // Rollback a row

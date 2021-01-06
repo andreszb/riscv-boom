@@ -209,7 +209,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     br_resolve_rob_idx(w).valid := false.B
     br_resolve_rob_idx(w).bits := 0.U
 
-    when(brinfos(w).valid) {
+    when(brinfos(w).valid && !brinfos(w).mispredict) {
       br_resolve_rob_idx(w).valid := true.B
       br_resolve_rob_idx(w).bits := brinfos(w).uop.rob_idx
     }
