@@ -30,8 +30,8 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
     ValidIn.valid && ValidIn.bits === Value
   }
 
-  val index_check = Wire(Bool())
-  val same_check = Wire(Bool())
+  val index_check = Wire(Vec(coreWidth, Bool()))
+  val same_check = Wire(Vec(coreWidth, Bool()))
 
   val ShadowStampList = Reg(Vec(numLdqEntries, Valid(UInt(log2Ceil(maxBrCount).W))))
   val LoadQueueIndexList = Reg(Vec(numLdqEntries, UInt(log2Ceil(numLdqEntries).W)))
@@ -43,40 +43,46 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
 
   dontTouch(index_check)
   dontTouch(same_check)
+  dontTouch(io.load_queue_index_out)
 
-  var allClear = true.B
-
-  //Use memWidth here, don't need to release more loads than can fire
-  for (w <- 0 until memWidth) {
+  //Release as fast as new ones can enter
+  for (w <- 0 until coreWidth) {
     io.load_queue_index_out(w).valid := false.B
     io.load_queue_index_out(w).bits := LoadQueueIndexList(WrapAdd(ReleaseQueueHead, w.U, numLdqEntries))
 
-    index_check := IsIndexBetweenHeadAndTail(ShadowStampList(WrapAdd(ReleaseQueueHead, w.U, numLdqEntries)).bits, io.sb_head, io.sb_tail)
-    same_check := ValidAndSame(io.mispredict_new_tail, WrapAdd(ReleaseQueueHead, w.U, numLdqEntries))
+    index_check(w) := IsIndexBetweenHeadAndTail(ShadowStampList(WrapAdd(ReleaseQueueHead, w.U, numLdqEntries)).bits, io.sb_head, io.sb_tail)
+    same_check(w) := ValidAndSame(io.mispredict_new_tail, WrapAdd(ReleaseQueueHead, w.U, numLdqEntries))
 
-    when(allClear && !index_check && !same_check  && ShadowStampList(WrapAdd(ReleaseQueueHead, w.U, numLdqEntries)).valid) {
+    //All current entries for the checks needs to be 0
+    when(PopCount(index_check.slice(0, w+1)) === 0.U
+      && PopCount(same_check.slice(0, w+1)) === 0.U
+      && ShadowStampList(WrapAdd(ReleaseQueueHead, w.U, numLdqEntries)).valid) {
       io.load_queue_index_out(w).valid := true.B
 
       ShadowStampList(WrapAdd(ReleaseQueueHead, w.U, numLdqEntries)).valid := false.B
       ShadowStampList(WrapAdd(ReleaseQueueHead, w.U, numLdqEntries)).bits := 0.U
 
       ReleaseQueueHead := WrapAdd(ReleaseQueueHead, w.U + 1.U, numLdqEntries)
-    }.otherwise {
-      allClear = false.B
     }
   }
 
   //This comes from ROB. Can have coreWidth number of new lds.
   //can have br, ld, br, ld. Track how many sb_inc we have had
-  ReleaseQueueTail := WrapAdd(ReleaseQueueTail, PopCount(io.new_ldq_idx.map(e => e.valid)), numLdqEntries)
 
   for (w <- 0 until coreWidth) {
-    when(io.new_ldq_idx(w).valid && io.sb_head =/= io.sb_tail) {
-      val Offset = Wire(UInt())
-      Offset := PopCount(io.new_ldq_idx.slice(0, w).map(e => e.valid))
-      ShadowStampList(WrapAdd(ReleaseQueueTail, Offset, numLdqEntries)).valid := true.B
-      ShadowStampList(WrapAdd(ReleaseQueueTail, Offset, numLdqEntries)).bits := WrapDec(WrapAdd(io.sb_tail, PopCount(io.new_branch_op.slice(0, w)), maxBrCount), maxBrCount)
-      LoadQueueIndexList(WrapAdd(ReleaseQueueTail, Offset, numLdqEntries)) := io.new_ldq_idx(w).bits
+    when(io.new_ldq_idx(w).valid && (io.sb_head =/= io.sb_tail || PopCount(io.new_branch_op.slice(0,w)) > 0.U)) {
+      val LoadOffset = Wire(UInt())
+      val TailOffset = Wire(UInt())
+      LoadOffset := PopCount(io.new_ldq_idx.slice(0, w).map(e => e.valid))
+      TailOffset := PopCount(io.new_branch_op.slice(0, w))
+      ShadowStampList(WrapAdd(ReleaseQueueTail, LoadOffset, numLdqEntries)).valid := true.B
+      ShadowStampList(WrapAdd(ReleaseQueueTail, LoadOffset, numLdqEntries)).bits := WrapDec(WrapAdd(io.sb_tail, TailOffset, maxBrCount), maxBrCount)
+      LoadQueueIndexList(WrapAdd(ReleaseQueueTail, LoadOffset, numLdqEntries)) := io.new_ldq_idx(w).bits
+    }
+
+    when(io.sb_head =/= io.sb_tail ||
+      (io.new_ldq_idx.slice(0, w+1).map(e => e.valid).contains(true.B).B && io.new_branch_op.slice(0, w).contains(true.B).B)) {
+      ReleaseQueueTail := WrapAdd(ReleaseQueueTail, PopCount(io.new_ldq_idx.slice(0, w+1).map(e => e.valid)), numLdqEntries)
     }
 
     assert(!(io.new_ldq_idx(w).valid && io.new_branch_op(w)))
