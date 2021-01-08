@@ -45,6 +45,7 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
   dontTouch(same_check)
   dontTouch(io.load_queue_index_out)
 
+
   //Release as fast as new ones can enter
   for (w <- 0 until coreWidth) {
     io.load_queue_index_out(w).valid := false.B
@@ -61,10 +62,11 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
 
       ShadowStampList(WrapAdd(ReleaseQueueHead, w.U, numLdqEntries)).valid := false.B
       ShadowStampList(WrapAdd(ReleaseQueueHead, w.U, numLdqEntries)).bits := 0.U
-
-      ReleaseQueueHead := WrapAdd(ReleaseQueueHead, w.U + 1.U, numLdqEntries)
     }
   }
+
+  //ReleaseQueueHead should be incremented by the amount of freed loads
+  ReleaseQueueHead := WrapAdd(ReleaseQueueHead, PopCount(io.load_queue_index_out.map(e => e.valid)), numLdqEntries)
 
   //This comes from ROB. Can have coreWidth number of new lds.
   //can have br, ld, br, ld. Track how many sb_inc we have had
