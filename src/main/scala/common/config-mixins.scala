@@ -225,6 +225,68 @@ class WithNMediumInoQueueBooms(n: Int = 1, overrideIdOffset: Option[Int] = None)
     case XLen => 64
   })
 )
+
+class WithNMediumLSCBooms(n: Int = 1, overrideIdOffset: Option[Int] = None) extends Config(
+  new WithTAGELBPD ++ // Default to TAGE-L BPD
+  new Config((site, here, up) => {
+    case TilesLocated(InSubsystem) => {
+      val prev = up(TilesLocated(InSubsystem), site)
+      val idOffset = overrideIdOffset.getOrElse(prev.size)
+      (0 until n).map { i =>
+        BoomTileAttachParams(
+          tileParams = BoomTileParams(
+            core = BoomCoreParams(
+              fetchWidth = 4,
+              decodeWidth = 2,
+              numRobEntries = 64,
+              issueParams = Seq(
+                IssueParams(issueWidth=1, numEntries=0, iqType=IQT_MEM.litValue, dispatchWidth=0),
+                IssueParams(issueWidth=2, numEntries=0, iqType=IQT_INT.litValue, dispatchWidth=0),
+                IssueParams(issueWidth=1, numEntries=0, iqType=IQT_FP.litValue , dispatchWidth=0),
+                IssueParams(issueWidth=4, numEntries=0, iqType=IQT_COMB.litValue, dispatchWidth=0),
+              ),
+              numIntPhysRegisters = 80,
+              numFpPhysRegisters = 64,
+              numLdqEntries = 16,
+              numStqEntries = 16,
+              maxBrCount = 12,
+              numFetchBufferEntries = 16,
+              ftq = FtqParameters(nEntries=32),
+              nPerfCounters = 6,
+              fpu = Some(freechips.rocketchip.tile.FPUParams(sfmaLatency=4, dfmaLatency=4, divSqrt=true)),
+              loadSliceCore = Some(LoadSliceCoreParams(
+                numAqEntries = 8,//18
+                numBqEntries = 8,//16
+                unifiedIssueQueue = true,
+                aDispatches = 2,
+                bDispatches = 2
+              )),
+              ibdaParams = Some(IbdaParams(
+                ibdaTagType = IBDA_TAG_FULL_PC,
+                rdtIstMarkWidth = 1,
+                //        bloomIst = true
+              )),
+              busyLookupParams = Some(BusyLookupParams(
+                lookupAtRename = false,
+                lookupAtDisWidth = 4
+              ))
+            ),
+            dcache = Some(
+              DCacheParams(rowBits = site(SystemBusKey).beatBits, nSets=64, nWays=4, nMSHRs=2, nTLBEntries=8)
+            ),
+            icache = Some(
+              ICacheParams(rowBits = site(SystemBusKey).beatBits, nSets=64, nWays=4, fetchBytes=2*4)
+            ),
+            hartId = i + idOffset
+          ),
+          crossingParams = RocketCrossingParams()
+        )
+      } ++ prev
+    }
+    case SystemBusKey => up(SystemBusKey, site).copy(beatBytes = 8)
+    case XLen => 64
+  })
+)
 // DOC include start: LargeBoomConfig
 /**
  * 3-wide BOOM. Try to match the Cortex-A15.

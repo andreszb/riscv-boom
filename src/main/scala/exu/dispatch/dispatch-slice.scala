@@ -18,6 +18,7 @@ import freechips.rocketchip.config.Parameters
 import boom.common.{IQT_MFP, MicroOp, uopLD, _}
 import boom.util._
 import chisel3.internal.naming.chiselName
+import exu.dispatch.{QueueParams, UopShiftQueue}
 
 
 /**
@@ -29,28 +30,27 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher {
   require(!boomParams.ibdaParams.get.branchIbda)
 
   // slice queues
-  val a_queue = Module(new LayeredDispatchQueueCompactingShifting( DispatchQueueParams(
+  val a_queue = Module(new UopShiftQueue( QueueParams(
     numEntries = boomParams.loadSliceCore.get.numAqEntries,
     qName = "a_queue",
     deqWidth = boomParams.loadSliceCore.get.aDispatches,
-    enqWidth = coreWidth))
+    enqWidth = coreWidth
+  ))
   )
-  val b_queue = Module(new LayeredDispatchQueueCompactingShifting( DispatchQueueParams(
+  val b_queue = Module(new UopShiftQueue( QueueParams(
     numEntries = boomParams.loadSliceCore.get.numBqEntries,
     qName = "b_queue",
     deqWidth = boomParams.loadSliceCore.get.bDispatches,
     enqWidth = coreWidth,
     stallOnUse = true,
-    headRegisters = false
+    headRegisters = false,
+    bufferRegisters = false,
   ))
   )
   a_queue.io.flush := io.flush.get
   b_queue.io.flush := io.flush.get
-  a_queue.io.brupdate := io.brupdate.get
-  b_queue.io.brupdate := io.brupdate.get
-
-  a_queue.io.tsc_reg := io.tsc_reg
-  b_queue.io.tsc_reg := io.tsc_reg
+  a_queue.io.update := io.brupdate.get
+  b_queue.io.update := io.brupdate.get
 
   val a_heads = WireInit(VecInit(a_queue.io.heads.map(_.bits)))
   val b_heads = WireInit(VecInit(b_queue.io.heads.map(_.bits)))
@@ -66,18 +66,18 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher {
 
     // only accept uops from rename if both queues are ready and prev insn was also ready to preserve in order
     io.ren_uops(w).ready := previous_ready &&
-      (b_queue.io.enq_uops(w).ready) &&
-      (a_queue.io.enq_uops(w).ready)
+      (b_queue.io.enq(w).ready) &&
+      (a_queue.io.enq(w).ready)
     previous_ready = io.ren_uops(w).ready
 
     // enqueue logic
-    a_queue.io.enq_uops(w).valid := io.ren_uops(w).fire() && use_a_queue
-    b_queue.io.enq_uops(w).valid := io.ren_uops(w).fire() && use_b_queue
+    a_queue.io.enq(w).valid := io.ren_uops(w).fire() && use_a_queue
+    b_queue.io.enq(w).valid := io.ren_uops(w).fire() && use_b_queue
 
     val uop_a = WireInit(uop)
     val uop_b = WireInit(uop)
 
-    assert(!io.ren_uops(w).fire() || (a_queue.io.enq_uops(w).fire() || b_queue.io.enq_uops(w).fire()), "op from rename was swallowed")
+    assert(!io.ren_uops(w).fire() || (a_queue.io.enq(w).fire() || b_queue.io.enq(w).fire()), "op from rename was swallowed")
 
     when(uop.uopc === uopSTA) {
       // In case of splitting stores. We need to put data generation in A (uopSTD) and
@@ -96,8 +96,8 @@ class SliceDispatcher(implicit p: Parameters) extends Dispatcher {
         uop_a.lrs1_rtype := RT_X
       }
     }
-    a_queue.io.enq_uops(w).bits := uop_a
-    b_queue.io.enq_uops(w).bits := uop_b
+    a_queue.io.enq(w).bits := uop_a
+    b_queue.io.enq(w).bits := uop_b
 
     assert(!(io.ren_uops(w).fire() && use_b_queue && uop_b.is_br_or_jmp), "[Dispatcher] We are puttig a branch/jump on B-Q")
 

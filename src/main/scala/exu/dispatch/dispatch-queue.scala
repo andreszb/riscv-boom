@@ -6,7 +6,7 @@ import freechips.rocketchip.config.Parameters
 import boom.common.{IQT_MFP, MicroOp, uopLD, _}
 import boom.util._
 import chisel3.internal.naming.chiselName
-import freechips.rocketchip.util.DescribedSRAM
+import freechips.rocketchip.util.{DescribedSRAM, PopCountAtLeast}
 import lsc.{MultiWriteSram, MultiWriteSramBase, MultiWriteSramTester}
 
 import scala.collection.mutable
@@ -19,6 +19,7 @@ case class DispatchQueueParams(
                                 val qName: String,
                                 val stallOnUse: Boolean = false,
                                 val headRegisters: Boolean = true,
+                                val bufferRegisters: Boolean = true
                               )
 
 class DispatchQueueIO(
@@ -375,10 +376,14 @@ class LayeredDispatchQueueCompactingShifting(params: DispatchQueueParams, multi:
   internal_queue.io.tsc_reg := 0.U
 
   val numHeads = if(params.headRegisters) deqWidth else 0
+  val numBuffer = if(params.bufferRegisters) deqWidth else 0
   require(params.headRegisters || params.stallOnUse, "not using stall on use requires head registers")
+  require(params.headRegisters || !params.bufferRegisters, "buffer registers require head registers")
 
   val reg_head_uops = if(params.headRegisters) RegInit(VecInit(Seq.fill(numHeads)(NullMicroOp()))) else Seq()
+  val reg_buffer_uops = if(params.bufferRegisters) RegInit(VecInit(Seq.fill(numBuffer)(NullMicroOp()))) else Seq()
   val reg_head_valids = if(params.headRegisters) RegInit(VecInit(Seq.fill(numHeads)(false.B))) else Seq()
+  val reg_buffer_valids = if(params.bufferRegisters) RegInit(VecInit(Seq.fill(numBuffer)(false.B))) else Seq()
   val enq_uops = io.enq_uops.map(_.bits)
   // use same logic as issue unit
   val enq_valids = io.enq_uops.map(b =>
@@ -393,8 +398,8 @@ class LayeredDispatchQueueCompactingShifting(params: DispatchQueueParams, multi:
   //TODO: prevent double-processing of internal uops
 
   // current uops
-  val uops = reg_head_uops ++ internal_uops ++ enq_uops
-  val valids = reg_head_valids ++ internal_valids ++ enq_valids
+  val uops = reg_head_uops ++ reg_buffer_uops ++ internal_uops ++ enq_uops
+  val valids = reg_head_valids ++ reg_buffer_valids ++ internal_valids ++ enq_valids
 
   // modified uops
   val mod_uops = WireInit(VecInit(uops))
@@ -441,19 +446,39 @@ class LayeredDispatchQueueCompactingShifting(params: DispatchQueueParams, multi:
     assert(!(valids(i) && !valids(i-1)), "valids may not have holes!")
   }
 
-  // update uop reg
+  // update head reg
   for(i <- 0 until numHeads){
     // not valid if nothing is filled in
     reg_head_valids(i) := false.B
     // has this slot been filled?
     var entry_filled = false.B
     // all starting from current are potential candidates for head
-    val potential_indices = i until numHeads + deqWidth + enqWidth
+    val potential_indices = i until numHeads + numBuffer + deqWidth + enqWidth
     for(j <- potential_indices){
       val fill = !consumed(j) && next_valids(j) && !entry_filled
       when(fill){
         reg_head_uops(i) := mod_uops(j)
         reg_head_valids(i) := true.B
+      }
+      consumed(j) = consumed(j) || fill
+      entry_filled = fill || entry_filled
+    }
+  }
+
+  // update buffer reg
+  for(i <- 0 until numBuffer){
+    // not valid if nothing is filled in
+    reg_buffer_valids(i) := false.B
+    // has this slot been filled?
+    var entry_filled = false.B
+    // buffer can only be filled from deq - otherwise enq might bypass the queue content
+    val potential_indices = i + numHeads until numHeads + numBuffer + deqWidth
+    for(j <- potential_indices){
+      // only fill if currently empty
+      val fill = !consumed(j) && next_valids(j) && !entry_filled && !reg_buffer_valids(i)
+      when(fill){
+        reg_buffer_uops(i) := mod_uops(j)
+        reg_buffer_valids(i) := true.B
       }
       consumed(j) = consumed(j) || fill
       entry_filled = fill || entry_filled
@@ -466,7 +491,7 @@ class LayeredDispatchQueueCompactingShifting(params: DispatchQueueParams, multi:
     internal_queue.io.enq_uops(i).bits := DontCare
     // has this slot been filled?
     var entry_filled = !internal_queue.io.enq_uops(i).ready
-    val enq_indices = numHeads+deqWidth until numHeads+deqWidth + enqWidth
+    val enq_indices = numHeads+numBuffer+deqWidth until numHeads+numBuffer+deqWidth + enqWidth
     for(j <- enq_indices){
       val fill = !consumed(j) && next_valids(j) && !entry_filled
       when(fill){
@@ -483,7 +508,13 @@ class LayeredDispatchQueueCompactingShifting(params: DispatchQueueParams, multi:
 
   // deq from internal
   for(i <- 0 until deqWidth) {
-    internal_queue.io.heads(i).ready := consumed_debug(numHeads+i)
+    if(params.bufferRegisters){
+      // dequeue if some of buffer is currently empty
+      internal_queue.io.heads(i).ready := PopCountAtLeast(VecInit(reg_buffer_valids.map(!_)).asUInt(), i+1)
+    } else{
+      internal_queue.io.heads(i).ready := consumed_debug(numHeads+numBuffer+i)
+    }
+    assert(!(consumed(i+numHeads+numBuffer)^internal_queue.io.heads(i).fire()), "internal queue dequeue <=> consumed")
   }
 
   for(i <- 1 until numHeads){
@@ -495,7 +526,7 @@ class LayeredDispatchQueueCompactingShifting(params: DispatchQueueParams, multi:
     // set later enqs high if earlier ones are not used
     io.enq_uops(i).ready := internal_queue.io.enq_uops(i).ready
     // don't use fire because we use the other valid
-    assert(!((io.enq_uops(i).ready && enq_valids(i))^consumed_debug(numHeads+deqWidth+i)), f"enq($i).fire() <=> consumed! ")
+    assert(!((io.enq_uops(i).ready && enq_valids(i))^consumed_debug(numHeads+numBuffer+deqWidth+i)), f"enq($i).fire() <=> consumed! ")
   }
 
 }

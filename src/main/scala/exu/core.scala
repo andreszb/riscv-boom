@@ -578,12 +578,19 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   // Pull out instructions and send to the Decoders
 
   io.ifu.fetchpacket.ready := dec_ready
-  val dec_fbundle = io.ifu.fetchpacket.bits
+  val dec_fbundle = WireInit(io.ifu.fetchpacket.bits)
 
+  // debug id
+  val counter_reg = RegInit(0.U(32.W))
+  var counter = counter_reg
+  rob.io.commit.uops.map(u => dontTouch(u.debug_id))
+  exe_units.map(e => dontTouch(e.io.req.bits.uop.debug_id))
   //-------------------------------------------------------------
   // Decoders
-
   for (w <- 0 until coreWidth) {
+    dec_fbundle.uops(w).bits.debug_id := counter
+    // valid and a fetch packet fires or the finished mask has transitioned
+    counter = counter + ((dec_valids(w) && io.ifu.fetchpacket.fire())||(dec_finished_mask(w) && !RegNext(dec_finished_mask(w))))
     dec_valids(w)                      := io.ifu.fetchpacket.valid && dec_fbundle.uops(w).valid &&
                                           !dec_finished_mask(w)
     decode_units(w).io.enq.uop         := dec_fbundle.uops(w).bits
@@ -594,6 +601,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
 
     dec_uops(w) := decode_units(w).io.deq.uop
   }
+  counter_reg := counter
 
   //-------------------------------------------------------------
   // FTQ GetPC Port Arbitration
