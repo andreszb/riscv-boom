@@ -354,7 +354,8 @@ class Rob(
       rob_uop(rob_tail)       := io.enq_uops(w)
 
       //amundbk
-      rob_shadow_casting_idx(rob_tail) := io.shadow_buffer_tail_in
+      rob_shadow_casting_idx(rob_tail) := io.shadow_buffer_tail_in +
+        PopCount((0 until w).map(i => (io.enq_uops(i).is_br || io.enq_uops(i).is_jalr) && io.enq_valids(i)))
       rob_is_shadow_caster(rob_tail) := io.enq_uops(w).is_br || io.enq_uops(w).is_jalr
 
       when(io.enq_uops(w).is_br || io.enq_uops(w).is_jalr) {
