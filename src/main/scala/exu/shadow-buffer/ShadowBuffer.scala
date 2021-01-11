@@ -1,6 +1,6 @@
 package boom.exu
 
-import Chisel.{PopCount, Valid, log2Ceil}
+import Chisel.{MuxCase, MuxLookup, PopCount, PriorityMux, Valid, log2Ceil}
 import boom.common.BoomModule
 import boom.util.{WrapAdd, WrapDec}
 import chipsalliance.rocketchip.config.Parameters
@@ -15,6 +15,7 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
     val br_mispredict_release_queue_idx = Output(Valid(UInt(log2Ceil(numLdqEntries).W)))
 
     val new_branch_op = Input(Vec(coreWidth, Bool()))
+    val new_ldq_op = Input(Vec(coreWidth, Bool()))
     val br_safe_in = Input(Vec(coreWidth, Valid(UInt(log2Ceil(maxBrCount).W))))
 
     val shadow_buffer_head_out = Output(UInt(log2Ceil(maxBrCount).W))
@@ -34,28 +35,36 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
   io.shadow_buffer_head_out := ShadowBufferHead
   io.shadow_buffer_tail_out := ShadowBufferTail
 
-  var allClear = true.B
-  var numBranch = 0.U
   ShadowBufferTail := WrapAdd(ShadowBufferTail, PopCount(io.new_branch_op), maxBrCount)
 
+  val ShadowCasterIsFalse = Wire(Vec(coreWidth, Bool()))
+  val HeadIsNotTail = Wire(Vec(coreWidth, Bool()))
+  val ShadowCasterNotIncrement = Wire(Vec(coreWidth, Bool()))
+
   for (w <- 0 until coreWidth) {
-    numBranch = numBranch + io.new_branch_op(w).asUInt()
+    ShadowCasterIsFalse(w) := ! ShadowCaster(WrapAdd(ShadowBufferHead, w.U, maxBrCount))
+    HeadIsNotTail(w) := WrapAdd(ShadowBufferHead, w.U, maxBrCount) =/= ShadowBufferTail
+    ShadowCasterNotIncrement(w) := !(ShadowCasterIsFalse(w) && HeadIsNotTail(w))
+  }
+
+
+
+  val incrementLevel = MuxCase(coreWidth.U, (0 until coreWidth).map(e => (ShadowCasterNotIncrement(e) -> e.U)))
+  ShadowBufferHead := WrapAdd(ShadowBufferHead, incrementLevel, maxBrCount)
+
+  for (w <- 0 until coreWidth) {
 
     when(io.new_branch_op(w)) {
-      ShadowCaster(WrapDec(ShadowBufferTail + numBranch, maxBrCount)) := true.B
-      ReleaseQueueIndex(WrapDec(ShadowBufferTail + numBranch, maxBrCount)) := io.release_queue_tail_checkpoint
+      ShadowCaster(WrapAdd(ShadowBufferTail, PopCount(io.new_branch_op.slice(0, w)), maxBrCount)) := true.B
+      ReleaseQueueIndex(WrapAdd(ShadowBufferTail, PopCount(io.new_branch_op.slice(0, w)), maxBrCount)) := io.release_queue_tail_checkpoint + PopCount(io.new_ldq_op.slice(0, w))
     }
 
     when(io.br_safe_in(w).valid) {
       ShadowCaster(io.br_safe_in(w).bits) := false.B
     }
-
-    when(ShadowCaster(ShadowBufferHead + w.U) === false.B && WrapAdd(ShadowBufferHead, w.U, maxBrCount) =/= ShadowBufferTail && allClear) {
-      ShadowBufferHead := WrapAdd(ShadowBufferHead, w.U + 1.U, maxBrCount)
-    }.otherwise {
-      allClear = false.B
-    }
   }
+
+  ShadowBufferHead := WrapAdd(ShadowBufferHead, ((0 until coreWidth).map(i => ShadowCasterIsFalse(i) && HeadIsNotTail(i)).takeWhile(b => b == true.B).size.U), maxBrCount)
 
   io.br_mispredict_release_queue_idx.valid := false.B
   io.br_mispredict_release_queue_idx.bits := update_release_queue_idx

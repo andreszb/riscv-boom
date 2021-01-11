@@ -1154,6 +1154,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   ReleaseQueue.io.new_branch_op := rob.io.branch_instr_added
 
   ShadowBuffer.io.new_branch_op := rob.io.branch_instr_added
+  ShadowBuffer.io.new_ldq_op := rob.io.spec_ld_idx.map(e => e.valid)
   ShadowBuffer.io.br_safe_in := rob.io.br_safe_out
   ShadowBuffer.io.br_mispred_shadow_buffer_idx := rob.io.br_mispred_shadow_buffer_idx
   ShadowBuffer.io.release_queue_tail_checkpoint := ReleaseQueue.io.release_queue_tail_out
