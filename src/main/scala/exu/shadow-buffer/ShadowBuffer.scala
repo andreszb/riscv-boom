@@ -46,11 +46,13 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
     HeadIsNotTail(w) := WrapAdd(ShadowBufferHead, w.U, maxBrCount) =/= ShadowBufferTail
     ShadowCasterNotIncrement(w) := !(ShadowCasterIsFalse(w) && HeadIsNotTail(w))
   }
-
-
-
+  
   val incrementLevel = MuxCase(coreWidth.U, (0 until coreWidth).map(e => (ShadowCasterNotIncrement(e) -> e.U)))
   ShadowBufferHead := WrapAdd(ShadowBufferHead, incrementLevel, maxBrCount)
+
+  dontTouch(ShadowCasterNotIncrement)
+  dontTouch(ShadowCaster)
+  dontTouch(incrementLevel)
 
   for (w <- 0 until coreWidth) {
 
@@ -63,8 +65,6 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
       ShadowCaster(io.br_safe_in(w).bits) := false.B
     }
   }
-
-  ShadowBufferHead := WrapAdd(ShadowBufferHead, ((0 until coreWidth).map(i => ShadowCasterIsFalse(i) && HeadIsNotTail(i)).takeWhile(b => b == true.B).size.U), maxBrCount)
 
   io.br_mispredict_release_queue_idx.valid := false.B
   io.br_mispredict_release_queue_idx.bits := update_release_queue_idx
