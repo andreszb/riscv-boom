@@ -33,6 +33,7 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
 
   val index_check = Wire(Vec(coreWidth, Bool()))
   val same_check = Wire(Vec(coreWidth, Bool()))
+  val all_valid = Wire(Vec(coreWidth, Bool()))
 
   val ShadowStampList = Reg(Vec(numLdqEntries, Valid(UInt(log2Ceil(maxBrCount).W))))
   val LoadQueueIndexList = Reg(Vec(numLdqEntries, UInt(log2Ceil(numLdqEntries).W)))
@@ -48,19 +49,25 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
   dontTouch(same_check)
   dontTouch(io.load_queue_index_out)
 
+  for (w <- 0 until coreWidth) {
+    index_check(w) := IsIndexBetweenHeadAndTail(ShadowStampList(WrapAdd(ReleaseQueueHead, w.U, numLdqEntries)).bits, io.sb_head, io.sb_tail)
+    same_check(w) := ValidAndSame(io.mispredict_new_tail, WrapAdd(ReleaseQueueHead, w.U, numLdqEntries))
+  }
+  all_valid(0) := ShadowStampList(ReleaseQueueHead).valid
+  for (w <- 1 until coreWidth) {
+    all_valid(w) := all_valid(w-1) && ShadowStampList(WrapAdd(ReleaseQueueHead, w.U, numLdqEntries)).valid
+  }
+
 
   //Release as fast as new ones can enter
   for (w <- 0 until coreWidth) {
     io.load_queue_index_out(w).valid := false.B
     io.load_queue_index_out(w).bits := LoadQueueIndexList(WrapAdd(ReleaseQueueHead, w.U, numLdqEntries))
 
-    index_check(w) := IsIndexBetweenHeadAndTail(ShadowStampList(WrapAdd(ReleaseQueueHead, w.U, numLdqEntries)).bits, io.sb_head, io.sb_tail)
-    same_check(w) := ValidAndSame(io.mispredict_new_tail, WrapAdd(ReleaseQueueHead, w.U, numLdqEntries))
-
     //All current entries for the checks needs to be 0
     when(PopCount(index_check.slice(0, w+1)) === 0.U
       && PopCount(same_check.slice(0, w+1)) === 0.U
-      && ShadowStampList(WrapAdd(ReleaseQueueHead, w.U, numLdqEntries)).valid) {
+      && all_valid(w)) {
       io.load_queue_index_out(w).valid := true.B
 
       ShadowStampList(WrapAdd(ReleaseQueueHead, w.U, numLdqEntries)).valid := false.B
@@ -86,8 +93,8 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
     masked_ldq(w) := masked_ldq(w-1) + (io.new_ldq_idx(w).valid && branch_before(w)).asUInt()
   }
 
-  val sb_branch_offset = Wire(Vec(coreWidth, Bool()))
-  val rq_load_offset = Wire(Vec(coreWidth, Bool()))
+  val sb_branch_offset = Wire(Vec(coreWidth, UInt()))
+  val rq_load_offset = Wire(Vec(coreWidth, UInt()))
 
   for (w <- 0 until coreWidth) {
     sb_branch_offset(w) := WrapDec(WrapAdd(io.sb_tail, PopCount(io.new_branch_op.slice(0, w)), maxBrCount), maxBrCount)
