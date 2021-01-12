@@ -82,19 +82,19 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
   //can have br, ld, br, ld. Track how many sb_inc we have had
 
   val branch_before = WireInit(VecInit(Seq.fill(coreWidth + 1)(false.B)))
-  val masked_ldq = WireInit(VecInit(Seq.fill(coreWidth)(0.U)))
+  val masked_ldq = WireInit(VecInit(Seq.fill(coreWidth+1)(0.U(log2Ceil(numLdqEntries).W))))
 
   for (w <- 0 until coreWidth) {
     when(io.new_branch_op(w) || branch_before(w)) {
       branch_before(w+1) := true.B
     }
   }
-  for (w <- 1 until coreWidth) {
-    masked_ldq(w) := masked_ldq(w-1) + (io.new_ldq_idx(w).valid && branch_before(w)).asUInt()
+  for (w <- 0 until coreWidth) {
+    masked_ldq(w+1) := masked_ldq(w) + (io.new_ldq_idx(w).valid && branch_before(w)).asUInt()
   }
 
-  val sb_branch_offset = Wire(Vec(coreWidth, UInt()))
-  val rq_load_offset = Wire(Vec(coreWidth, UInt()))
+  val sb_branch_offset = Wire(Vec(coreWidth, UInt(log2Ceil(numLdqEntries).W)))
+  val rq_load_offset = Wire(Vec(coreWidth, UInt(log2Ceil(numLdqEntries).W)))
 
   for (w <- 0 until coreWidth) {
     sb_branch_offset(w) := WrapDec(WrapAdd(io.sb_tail, PopCount(io.new_branch_op.slice(0, w)), maxBrCount), maxBrCount)
@@ -105,8 +105,10 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
     when(io.sb_tail =/= io.sb_head && io.new_ldq_idx(w).valid) {
       ShadowStampList(rq_load_offset(w)).bits := sb_branch_offset(w)
       ShadowStampList(rq_load_offset(w)).valid := true.B
+      LoadQueueIndexList(rq_load_offset(w)) := io.new_ldq_idx(w).bits
     }.elsewhen(io.new_ldq_idx(w).valid && branch_before(w)) {
       ShadowStampList(WrapAdd(ReleaseQueueTail, masked_ldq(w), numLdqEntries)).bits := sb_branch_offset(w)
+      LoadQueueIndexList(rq_load_offset(w)) := io.new_ldq_idx(w).bits
     }
     assert(!(io.new_ldq_idx(w).valid && io.new_branch_op(w)))
   }
