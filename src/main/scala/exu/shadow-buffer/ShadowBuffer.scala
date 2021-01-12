@@ -47,7 +47,7 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
     ShadowCasterNotIncrement(w) := !(ShadowCasterIsFalse(w) && HeadIsNotTail(w))
   }
 
-  val incrementLevel = MuxCase(coreWidth.U, (0 until coreWidth).map(e => (ShadowCasterNotIncrement(e) -> e.U)))
+  val incrementLevel = MuxCase(coreWidth.U, (0 until coreWidth).map(e => ShadowCasterNotIncrement(e) -> e.U))
   ShadowBufferHead := WrapAdd(ShadowBufferHead, incrementLevel, maxBrCount)
 
   dontTouch(ShadowCasterNotIncrement)

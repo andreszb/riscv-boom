@@ -5,6 +5,7 @@ import boom.common.BoomModule
 import boom.util.{WrapAdd, WrapDec}
 import chipsalliance.rocketchip.config.Parameters
 import chisel3._
+import chisel3.util.MuxCase
 
 class ReleaseQueue(implicit p: Parameters) extends BoomModule {
 
@@ -41,6 +42,8 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
 
   io.release_queue_tail_out := ReleaseQueueTail
 
+
+
   dontTouch(index_check)
   dontTouch(same_check)
   dontTouch(io.load_queue_index_out)
@@ -71,24 +74,48 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
   //This comes from ROB. Can have coreWidth number of new lds.
   //can have br, ld, br, ld. Track how many sb_inc we have had
 
+  val branch_before = WireInit(VecInit(Seq.fill(coreWidth + 1)(false.B)))
+  val masked_ldq = WireInit(VecInit(Seq.fill(coreWidth)(0.U)))
+
   for (w <- 0 until coreWidth) {
-    when(io.new_ldq_idx(w).valid && (io.sb_head =/= io.sb_tail || PopCount(io.new_branch_op.slice(0,w)) > 0.U)) {
-      val LoadOffset = Wire(UInt())
-      val TailOffset = Wire(UInt())
-      LoadOffset := PopCount(io.new_ldq_idx.slice(0, w).map(e => e.valid))
-      TailOffset := PopCount(io.new_branch_op.slice(0, w))
-      ShadowStampList(WrapAdd(ReleaseQueueTail, LoadOffset, numLdqEntries)).valid := true.B
-      ShadowStampList(WrapAdd(ReleaseQueueTail, LoadOffset, numLdqEntries)).bits := WrapDec(WrapAdd(io.sb_tail, TailOffset, maxBrCount), maxBrCount)
-      LoadQueueIndexList(WrapAdd(ReleaseQueueTail, LoadOffset, numLdqEntries)) := io.new_ldq_idx(w).bits
+    when(io.new_branch_op(w) || branch_before(w)) {
+      branch_before(w+1) := true.B
     }
+  }
+  for (w <- 1 until coreWidth) {
+    masked_ldq(w) := masked_ldq(w-1) + (io.new_ldq_idx(w).valid && branch_before(w)).asUInt()
+  }
 
-    when(io.sb_head =/= io.sb_tail ||
-      (io.new_ldq_idx.slice(0, w+1).map(e => e.valid).contains(true.B).B && io.new_branch_op.slice(0, w).contains(true.B).B)) {
-      ReleaseQueueTail := WrapAdd(ReleaseQueueTail, PopCount(io.new_ldq_idx.slice(0, w+1).map(e => e.valid)), numLdqEntries)
+  val sb_branch_offset = Wire(Vec(coreWidth, Bool()))
+  val rq_load_offset = Wire(Vec(coreWidth, Bool()))
+
+  for (w <- 0 until coreWidth) {
+    sb_branch_offset(w) := WrapDec(WrapAdd(io.sb_tail, PopCount(io.new_branch_op.slice(0, w)), maxBrCount), maxBrCount)
+    rq_load_offset(w) := WrapAdd(ReleaseQueueTail, PopCount(io.new_ldq_idx.slice(0, w).map(_.valid)), numLdqEntries)
+  }
+
+  for (w <- 0 until coreWidth) {
+    when(io.sb_tail =/= io.sb_head && io.new_ldq_idx(w).valid) {
+      ShadowStampList(rq_load_offset(w)).bits := sb_branch_offset(w)
+      ShadowStampList(rq_load_offset(w)).valid := true.B
+    }.elsewhen(io.new_ldq_idx(w).valid && branch_before(w)) {
+      ShadowStampList(WrapAdd(ReleaseQueueTail, masked_ldq(w), numLdqEntries)).bits := sb_branch_offset(w)
     }
-
     assert(!(io.new_ldq_idx(w).valid && io.new_branch_op(w)))
   }
+
+  //ReleaseQueueTail incremented by number of loads when in shadow mode, or loads after branch if not
+  when(io.sb_tail =/= io.sb_head) {
+    ReleaseQueueTail := WrapAdd(ReleaseQueueTail, PopCount(io.new_ldq_idx.map(_.valid)), numLdqEntries)
+  }.otherwise{
+    ReleaseQueueTail := WrapAdd(ReleaseQueueTail, masked_ldq(coreWidth-1), numLdqEntries)
+  }
+
+  dontTouch(branch_before)
+  dontTouch(masked_ldq)
+  dontTouch(sb_branch_offset)
+  dontTouch(rq_load_offset)
+
 
   val NewTail = Wire(UInt())
   NewTail := io.mispredict_new_tail.bits
