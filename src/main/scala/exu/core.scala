@@ -96,9 +96,9 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   val decode_units     = for (w <- 0 until decodeWidth) yield { val d = Module(new DecodeUnit); d }
   val dec_brmask_logic = Module(new BranchMaskGenerationLogic(coreWidth))
   val rename_stage     = Module(new RenameStage(coreWidth, numIntPhysRegs, numIntRenameWakeupPorts, false))
-  val fp_rename_stage  = Module(new RenameStage(coreWidth, numFpPhysRegs, numFpWakeupPorts, true))
+  val fp_rename_stage  = if (usingFPU) Module(new RenameStage(coreWidth, numFpPhysRegs, numFpWakeupPorts, true)) else null
   val pred_rename_stage = Module(new PredRenameStage(coreWidth, ftqSz, 1))
-  val rename_stages    = Seq(rename_stage, fp_rename_stage, pred_rename_stage)
+  val rename_stages    = if (usingFPU) Seq(rename_stage, fp_rename_stage, pred_rename_stage) else Seq(rename_stage, pred_rename_stage)
 
   val mem_iss_unit     = Module(new IssueUnitCollapsing(memIssueParam, numIntIssueWakeupPorts))
   mem_iss_unit.suggestName("mem_issue_unit")
@@ -375,8 +375,8 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
         "DCache nMSHRs         : " + dcacheParams.nMSHRs,
         "ICache Ways           : " + icacheParams.nWays,
         "ICache Sets           : " + icacheParams.nSets,
-        "D-TLB Entries         : " + dcacheParams.nTLBEntries,
-        "I-TLB Entries         : " + icacheParams.nTLBEntries,
+        "D-TLB Ways            : " + dcacheParams.nTLBWays,
+        "I-TLB Ways            : " + icacheParams.nTLBWays,
         "Paddr Bits            : " + paddrBits,
         "Vaddr Bits            : " + vaddrBits) + "\n"
     + BoomCoreStringPrefix(
@@ -395,9 +395,13 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   // Breakpoint info
   io.ifu.status  := csr.io.status
   io.ifu.bp      := csr.io.bp
+  io.ifu.mcontext := csr.io.mcontext
+  io.ifu.scontext := csr.io.scontext
 
   io.ifu.flush_icache := (0 until coreWidth).map { i =>
-    rob.io.commit.arch_valids(i) && rob.io.commit.uops(i).is_fencei }.reduce(_||_)
+    (rob.io.commit.arch_valids(i) && rob.io.commit.uops(i).is_fencei) ||
+    (RegNext(dec_valids(i) && dec_uops(i).is_jalr && csr.io.status.debug))
+  }.reduce(_||_)
 
   // TODO FIX THIS HACK
   // The below code works because of two quirks with the flush mechanism
@@ -906,8 +910,6 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     for ((renport, fpport) <- fp_rename_stage.io.wakeups zip fp_pipeline.io.wakeups) {
        renport <> fpport
     }
-  } else {
-    fp_rename_stage.io.wakeups := DontCare
   }
   if (enableSFBOpt) {
     pred_rename_stage.io.wakeups(0) := pred_wakeup
@@ -1316,8 +1318,10 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
 
   // Connect breakpoint info to memaddrcalcunit
   for (i <- 0 until memWidth) {
-    mem_units(i).io.status := csr.io.status
-    mem_units(i).io.bp     := csr.io.bp
+    mem_units(i).io.status   := csr.io.status
+    mem_units(i).io.bp       := csr.io.bp
+    mem_units(i).io.mcontext := csr.io.mcontext
+    mem_units(i).io.scontext := csr.io.scontext
   }
 
   // LSU <> ROB
@@ -1433,7 +1437,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   }
 
   // TODO: Does anyone want this debugging functionality?
-  val coreMonitorBundle = Wire(new CoreMonitorBundle(xLen))
+  val coreMonitorBundle = Wire(new CoreMonitorBundle(xLen, fLen))
   coreMonitorBundle := DontCare
   coreMonitorBundle.clock  := clock
   coreMonitorBundle.reset  := reset
