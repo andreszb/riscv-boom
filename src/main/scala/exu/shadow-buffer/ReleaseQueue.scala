@@ -13,7 +13,7 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
     val new_ldq_idx = Input(Vec(coreWidth, Valid(UInt(log2Ceil(numLdqEntries).W))))
 
     val flush_in = Input(Bool())
-    val mispredict_new_tail = Input(Valid(UInt(log2Ceil(maxBrCount).W)))
+    val mispredict_new_tail = Input(Valid(UInt(log2Ceil(numLdqEntries).W)))
     val new_branch_op = Input(Vec(coreWidth, Bool()))
 
     val sb_head = Input(UInt(log2Ceil(maxBrCount).W))
