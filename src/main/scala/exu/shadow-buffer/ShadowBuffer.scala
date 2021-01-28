@@ -54,11 +54,23 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
   dontTouch(ShadowCaster)
   dontTouch(incrementLevel)
 
+  val branch_before = WireInit(VecInit(Seq.fill(coreWidth + 1)(false.B)))
+  val masked_ldq = WireInit(VecInit(Seq.fill(coreWidth+1)(0.U(log2Ceil(numLdqEntries).W))))
+
+  for (w <- 0 until coreWidth) {
+    when(io.new_branch_op(w) || branch_before(w)) {
+      branch_before(w+1) := true.B
+    }
+  }
+  for (w <- 0 until coreWidth) {
+    masked_ldq(w+1) := masked_ldq(w) + (io.new_ldq_op(w) && branch_before(w)).asUInt()
+  }
+
   for (w <- 0 until coreWidth) {
 
     when(io.new_branch_op(w)) {
       ShadowCaster(WrapAdd(ShadowBufferTail, PopCount(io.new_branch_op.slice(0, w)), maxBrCount)) := true.B
-      ReleaseQueueIndex(WrapAdd(ShadowBufferTail, PopCount(io.new_branch_op.slice(0, w)), maxBrCount)) := io.release_queue_tail_checkpoint + PopCount(io.new_ldq_op.slice(0, w))
+      ReleaseQueueIndex(WrapAdd(ShadowBufferTail, PopCount(io.new_branch_op.slice(0, w)), maxBrCount)) := WrapAdd(io.release_queue_tail_checkpoint, masked_ldq(w) , numLdqEntries)
     }
 
     when(io.br_safe_in(w).valid) {
