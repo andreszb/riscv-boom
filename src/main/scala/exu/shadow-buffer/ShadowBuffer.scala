@@ -20,6 +20,7 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
 
     val shadow_buffer_head_out = Output(UInt(log2Ceil(maxBrCount).W))
     val shadow_buffer_tail_out = Output(UInt(log2Ceil(maxBrCount).W))
+    val shadow_buffer_full_out = Output(Bool())
   }
 
   //Remember: Head is oldest speculative op, Tail is newest speculative op
@@ -34,6 +35,7 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
 
   io.shadow_buffer_head_out := ShadowBufferHead
   io.shadow_buffer_tail_out := ShadowBufferTail
+  io.shadow_buffer_full_out := (ShadowBufferHead === ShadowBufferTail) && ShadowCaster(ShadowBufferHead)
 
   ShadowBufferTail := WrapAdd(ShadowBufferTail, PopCount(io.new_branch_op), maxBrCount)
 
