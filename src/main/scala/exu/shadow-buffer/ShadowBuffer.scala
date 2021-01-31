@@ -101,6 +101,11 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
     //TODO: Remove this
     ShadowCaster(io.br_mispred_shadow_buffer_idx.bits) := false.B
     ReleaseQueueIndex(io.br_mispred_shadow_buffer_idx.bits) := 0.U
+
+    //TODO: Remove this
+    for (w <- 0 until maxBrCount) {
+      ShadowCaster(w) := false.B
+    }
   }
 
 }
