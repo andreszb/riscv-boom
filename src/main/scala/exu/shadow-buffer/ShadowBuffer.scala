@@ -23,6 +23,10 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
     val shadow_buffer_full_out = Output(Bool())
   }
 
+  def IsIndexBetweenHeadAndTail(Index: UInt, Head: UInt, Tail: UInt): Bool = {
+    ((Head < Tail) && Index >= Head && Index < Tail) || ((Head > Tail) && (Index < Tail || Index >= Head))
+  }
+
   //Remember: Head is oldest speculative op, Tail is newest speculative op
   val ShadowBufferHead = RegInit(UInt(log2Ceil(maxBrCount).W), 0.U)
   val ShadowBufferTail = RegInit(UInt(log2Ceil(maxBrCount).W), 0.U)
@@ -104,7 +108,9 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
 
     //TODO: Remove this
     for (w <- 0 until maxBrCount) {
-      ShadowCaster(w) := false.B
+      when(IsIndexBetweenHeadAndTail(w.U, ShadowBufferHead, io.br_mispred_shadow_buffer_idx.bits)) {
+        ShadowCaster(w) := false.B
+      }
     }
   }
 
