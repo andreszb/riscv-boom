@@ -63,8 +63,11 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
   val branch_before = WireInit(VecInit(Seq.fill(coreWidth + 1)(false.B)))
   val masked_ldq = WireInit(VecInit(Seq.fill(coreWidth+1)(0.U(log2Ceil(numLdqEntries).W))))
 
+  dontTouch(branch_before)
+  dontTouch(masked_ldq)
+
   for (w <- 0 until coreWidth) {
-    when(io.new_branch_op(w) || branch_before(w) || ShadowBufferHead =/= ShadowBufferTail) {
+    when(io.new_branch_op(w) || branch_before(w)) {
       branch_before(w+1) := true.B
     }
   }
@@ -73,10 +76,13 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
   }
 
   for (w <- 0 until coreWidth) {
-
     when(io.new_branch_op(w)) {
       ShadowCaster(WrapAdd(ShadowBufferTail, PopCount(io.new_branch_op.slice(0, w)), maxBrCount)) := true.B
-      ReleaseQueueIndex(WrapAdd(ShadowBufferTail, PopCount(io.new_branch_op.slice(0, w)), maxBrCount)) := WrapAdd(io.release_queue_tail_checkpoint, masked_ldq(w) , numLdqEntries)
+      when(ShadowBufferHead =/= ShadowBufferTail) {
+        ReleaseQueueIndex(WrapAdd(ShadowBufferTail, PopCount(io.new_branch_op.slice(0, w)), maxBrCount)) := WrapAdd(io.release_queue_tail_checkpoint, PopCount(io.new_ldq_op.slice(0, w)), numLdqEntries)
+      }.otherwise {
+        ReleaseQueueIndex(WrapAdd(ShadowBufferTail, PopCount(io.new_branch_op.slice(0, w)), maxBrCount)) := WrapAdd(io.release_queue_tail_checkpoint, masked_ldq(w) , numLdqEntries)
+      }
     }
 
     when(io.br_safe_in(w).valid) {
