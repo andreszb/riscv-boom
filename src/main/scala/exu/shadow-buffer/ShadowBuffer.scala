@@ -64,7 +64,7 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
   val masked_ldq = WireInit(VecInit(Seq.fill(coreWidth+1)(0.U(log2Ceil(numLdqEntries).W))))
 
   for (w <- 0 until coreWidth) {
-    when(io.new_branch_op(w) || branch_before(w)) {
+    when(io.new_branch_op(w) || branch_before(w) || ShadowBufferHead =/= ShadowBufferTail) {
       branch_before(w+1) := true.B
     }
   }
