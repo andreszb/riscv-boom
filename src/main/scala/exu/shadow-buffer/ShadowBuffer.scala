@@ -114,7 +114,7 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
 
     //TODO: Remove this
     for (w <- 0 until maxBrCount) {
-      when(IsIndexBetweenHeadAndTail(w.U, ShadowBufferHead, io.br_mispred_shadow_buffer_idx.bits)) {
+      when(!IsIndexBetweenHeadAndTail(w.U, ShadowBufferHead, io.br_mispred_shadow_buffer_idx.bits)) {
         ShadowCaster(w) := false.B
       }
     }
