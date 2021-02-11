@@ -45,18 +45,23 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
 
   val ShadowCasterIsFalse = Wire(Vec(coreWidth, Bool()))
   val HeadIsNotTail = Wire(Vec(coreWidth, Bool()))
-  val ShadowCasterNotIncrement = Wire(Vec(coreWidth, Bool()))
+  val ShadowCasterValidIncrement = WireInit(VecInit(Seq.fill(coreWidth)(false.B)))
 
   for (w <- 0 until coreWidth) {
     ShadowCasterIsFalse(w) := ! ShadowCaster(WrapAdd(ShadowBufferHead, w.U, maxBrCount))
     HeadIsNotTail(w) := WrapAdd(ShadowBufferHead, w.U, maxBrCount) =/= ShadowBufferTail
-    ShadowCasterNotIncrement(w) := !(ShadowCasterIsFalse(w) && HeadIsNotTail(w))
   }
 
-  val incrementLevel = MuxCase(coreWidth.U, (0 until coreWidth).map(e => ShadowCasterNotIncrement(e) -> (e + 1).U))
-  ShadowBufferHead := WrapAdd(ShadowBufferHead, incrementLevel, maxBrCount)
+  ShadowCasterValidIncrement(0) := (ShadowCasterIsFalse(0) && HeadIsNotTail(0))
+  for (w <- 1 until coreWidth) {
+    ShadowCasterValidIncrement(w) := !(ShadowCasterIsFalse(w) && HeadIsNotTail(w)) && ShadowCasterValidIncrement(w-1)
+  }
 
-  dontTouch(ShadowCasterNotIncrement)
+
+  val incrementLevel = MuxCase(coreWidth.U, (0 until coreWidth).map(e => ShadowCasterValidIncrement(e) -> e.U))
+  ShadowBufferHead := WrapAdd(ShadowBufferHead, PopCount(ShadowCasterValidIncrement), maxBrCount)
+
+  dontTouch(ShadowCasterValidIncrement)
   dontTouch(ShadowCaster)
   dontTouch(incrementLevel)
 
