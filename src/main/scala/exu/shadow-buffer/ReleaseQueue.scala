@@ -40,7 +40,7 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
 
   val ShadowStampList = Reg(Vec(numLdqEntries, Valid(UInt(log2Ceil(maxBrCount).W))))
   val LoadQueueIndexList = Reg(Vec(numLdqEntries, UInt(log2Ceil(numLdqEntries).W)))
-  val ClearedInLsu = Reg(VecInit(Seq.fill(numLdqEntries)(false.B)))
+  val ClearedInLsu = WireInit(VecInit(Seq.fill(numLdqEntries)(false.B)))
 
   val ReleaseQueueTail = RegInit(UInt(log2Ceil(numLdqEntries).W), 0.U)
   val ReleaseQueueHead = RegInit(UInt(log2Ceil(numLdqEntries).W), 0.U)
