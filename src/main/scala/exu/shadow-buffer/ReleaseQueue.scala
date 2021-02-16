@@ -20,8 +20,6 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
     val sb_tail = Input(UInt(log2Ceil(maxBrCount).W))
     val sb_full = Input(Bool())
 
-    val ldq_cleared_idx = Input(Vec(coreWidth, Valid(UInt(log2Ceil(numLdqEntries).W))))
-
     val load_queue_index_out = Output(Vec(coreWidth, Valid(UInt())))
     val release_queue_tail_out = Output(UInt(log2Ceil(numLdqEntries).W))
   }
@@ -40,7 +38,6 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
 
   val ShadowStampList = Reg(Vec(numLdqEntries, Valid(UInt(log2Ceil(maxBrCount).W))))
   val LoadQueueIndexList = Reg(Vec(numLdqEntries, UInt(log2Ceil(numLdqEntries).W)))
-  val ClearedInLsu = Reg(VecInit(Seq.fill(numLdqEntries)(false.B)))
 
   val ReleaseQueueTail = RegInit(UInt(log2Ceil(numLdqEntries).W), 0.U)
   val ReleaseQueueHead = RegInit(UInt(log2Ceil(numLdqEntries).W), 0.U)
@@ -54,7 +51,7 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
   dontTouch(io.load_queue_index_out)
 
   for (w <- 0 until coreWidth) {
-    index_check(w) := IsIndexBetweenHeadAndTail(ShadowStampList(WrapAdd(ReleaseQueueHead, w.U, numLdqEntries)).bits, io.sb_head, io.sb_tail) || ClearedInLsu(WrapAdd(ReleaseQueueHead, w.U, numLdqEntries))
+    index_check(w) := IsIndexBetweenHeadAndTail(ShadowStampList(WrapAdd(ReleaseQueueHead, w.U, numLdqEntries)).bits, io.sb_head, io.sb_tail)
     same_check(w) := ValidAndSame(io.mispredict_new_tail, WrapAdd(ReleaseQueueHead, w.U, numLdqEntries))
   }
   all_valid(0) := ShadowStampList(ReleaseQueueHead).valid
@@ -78,7 +75,6 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
       ShadowStampList(WrapAdd(ReleaseQueueHead, w.U, numLdqEntries)).bits := 0.U
     }
   }
-
 
   //ReleaseQueueHead should be incremented by the amount of freed loads
   ReleaseQueueHead := WrapAdd(ReleaseQueueHead, PopCount(io.load_queue_index_out.map(e => e.valid)), numLdqEntries)
@@ -111,25 +107,12 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
       ShadowStampList(rq_load_offset(w)).bits := sb_branch_offset(w)
       ShadowStampList(rq_load_offset(w)).valid := true.B
       LoadQueueIndexList(rq_load_offset(w)) := io.new_ldq_idx(w).bits
-      ClearedInLsu(rq_load_offset(w)) := false.B
     }.elsewhen(io.new_ldq_idx(w).valid && branch_before(w)) {
       ShadowStampList(WrapAdd(ReleaseQueueTail, masked_ldq(w), numLdqEntries)).bits := sb_branch_offset(w)
       ShadowStampList(WrapAdd(ReleaseQueueTail, masked_ldq(w), numLdqEntries)).valid := true.B
       LoadQueueIndexList(rq_load_offset(w)) := io.new_ldq_idx(w).bits
-      ClearedInLsu(rq_load_offset(w)) := false.B
     }
     assert(!(io.new_ldq_idx(w).valid && io.new_branch_op(w)))
-  }
-
-  //TODO: Optimize this. Use an updating bit mask to filter quickly
-  for (w <- 0 until coreWidth) {
-    when(io.ldq_cleared_idx(w).valid) {
-      for (i <- 0 until numLdqEntries) {
-        when(LoadQueueIndexList(i) === io.ldq_cleared_idx(w).bits && ShadowStampList(i).valid) {
-          ClearedInLsu(i) := true.B
-        }
-      }
-    }
   }
 
   //ReleaseQueueTail incremented by number of loads when in shadow mode, or loads after branch if not

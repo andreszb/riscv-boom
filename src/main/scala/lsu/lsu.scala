@@ -154,8 +154,6 @@ class LSUCoreIO(implicit p: Parameters) extends BoomBundle()(p)
   val shadow_tail  = Input(UInt(log2Ceil(maxBrCount).W))
 
   val spec_ld_free = Input(Vec(coreWidth, Valid(UInt(log2Ceil(numLdqEntries).W))))
-
-  val ldq_cleared_idx = Output(Vec(coreWidth, Valid(UInt(log2Ceil(numLdqEntries).W))))
   //end amundbk
 
   val fencei_rdy  = Output(Bool())
@@ -1484,7 +1482,6 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
   var temp_ldq_head        = ldq_head
   for (w <- 0 until coreWidth)
   {
-    io.core.ldq_cleared_idx(w).valid := false.B
     val commit_store = io.core.commit.valids(w) && io.core.commit.uops(w).uses_stq
     val commit_load  = io.core.commit.valids(w) && io.core.commit.uops(w).uses_ldq
     val idx = Mux(commit_store, temp_stq_commit_head, temp_ldq_head)
@@ -1502,9 +1499,6 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
       ldq(idx).bits.succeeded        := false.B
       ldq(idx).bits.order_fail       := false.B
       ldq(idx).bits.forward_std_val  := false.B
-
-      io.core.ldq_cleared_idx(w).valid := true.B
-      io.core.ldq_cleared_idx(w).bits := idx
 
     }
 
