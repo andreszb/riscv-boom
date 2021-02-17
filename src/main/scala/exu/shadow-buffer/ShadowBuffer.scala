@@ -54,7 +54,7 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
 
   ShadowCasterValidIncrement(0) := (ShadowCasterIsFalse(0) && HeadIsNotTail(0))
   for (w <- 1 until coreWidth) {
-    ShadowCasterValidIncrement(w) := !(ShadowCasterIsFalse(w) && HeadIsNotTail(w)) && ShadowCasterValidIncrement(w-1)
+    ShadowCasterValidIncrement(w) := (ShadowCasterIsFalse(w) && HeadIsNotTail(w)) && ShadowCasterValidIncrement(w-1)
   }
 
 
