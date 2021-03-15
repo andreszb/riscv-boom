@@ -24,14 +24,11 @@
 package boom.exu
 
 import scala.math.ceil
-
 import chisel3._
 import chisel3.util._
 import chisel3.experimental.chiselName
-
 import freechips.rocketchip.config.Parameters
-import freechips.rocketchip.util.Str
-
+import freechips.rocketchip.util.{Str, WideCounter}
 import boom.common._
 import boom.util._
 
@@ -260,6 +257,8 @@ class Rob(
   val rob_head_fflags     = Wire(Vec(coreWidth, UInt(freechips.rocketchip.tile.FPConstants.FLAGS_SZ.W)))
 
   val exception_thrown = Wire(Bool())
+
+  val debug_cycle = WideCounter(xLen, !io.csr_stall)
 
   // exception info
   // TODO compress xcpt cause size. Most bits in the middle are zero.
@@ -494,6 +493,7 @@ class Rob(
     }
 
 
+
     //amundbk
 
     for (i <- 0 until coreWidth) {
@@ -594,6 +594,26 @@ class Rob(
                "[rob] writeback (" + i + ") occurred to the wrong pdst.")
     }
     io.commit.debug_wdata(w) := rob_debug_wdata(rob_head)
+
+    // ------------------------------------------------
+    // Debugs
+    def instrFromUOp(uop: MicroOp) = if (uop.is_rvc == true.B) uop.debug_inst(15, 0) else uop.debug_inst
+    def pcFromUOp(uop: MicroOp): UInt = Sext(uop.debug_pc(vaddrBits-1,0), xLen)
+    // Print out ROB bank
+    printf("%d | ROB B%d", debug_cycle, w.U)
+    for (i <- 0 until numRobRows) {
+      val nn = (rob_head + i.U) % numRobRows.U
+      when(rob_val(nn)) {
+        val commits = (i == 0).asBool() && will_commit(w)
+        val flushes = rob_uop(nn).flush_on_commit
+        printf(" | [%b %b] (0x%x) DASM(0x%x)", commits, flushes,
+          pcFromUOp(rob_uop(nn)),
+          instrFromUOp(rob_uop(nn)))
+      } .otherwise {
+        printf(" | -")
+      }
+    }
+    printf("\n")
 
   } //for (w <- 0 until coreWidth)
 
@@ -936,6 +956,8 @@ class Rob(
 
   io.com_load_is_at_rob_head := RegNext(rob_head_uses_ldq(PriorityEncoder(rob_head_vals.asUInt)) &&
                                         !will_commit.reduce(_||_))
+
+
 
 
 
