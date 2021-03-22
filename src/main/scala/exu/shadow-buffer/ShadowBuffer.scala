@@ -46,14 +46,16 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
   val ShadowCasterIsFalse = Wire(Vec(coreWidth, Bool()))
   val HeadIsNotTail = Wire(Vec(coreWidth, Bool()))
   val ShadowCasterValidIncrement = WireInit(VecInit(Seq.fill(coreWidth)(false.B)))
+  val ShadowBufferFullLastCycle = RegNext(ShadowBufferHead === ShadowBufferTail && ShadowCaster(ShadowBufferHead))
 
   for (w <- 0 until coreWidth) {
     ShadowCasterIsFalse(w) := ! ShadowCaster(WrapAdd(ShadowBufferHead, w.U, maxBrCount))
-    HeadIsNotTail(w) := WrapAdd(ShadowBufferHead, w.U, maxBrCount) =/= ShadowBufferTail
   }
 
+  HeadIsNotTail(0) := ShadowBufferHead =/= ShadowBufferTail || ShadowBufferFullLastCycle
   ShadowCasterValidIncrement(0) := (ShadowCasterIsFalse(0) && HeadIsNotTail(0))
   for (w <- 1 until coreWidth) {
+    HeadIsNotTail(w) := WrapAdd(ShadowBufferHead, w.U, maxBrCount) =/= ShadowBufferTail
     ShadowCasterValidIncrement(w) := (ShadowCasterIsFalse(w) && HeadIsNotTail(w)) && ShadowCasterValidIncrement(w-1)
   }
 
