@@ -599,22 +599,23 @@ class Rob(
     // Debugs
     def instrFromUOp(uop: MicroOp) = if (uop.is_rvc == true.B) uop.debug_inst(15, 0) else uop.debug_inst
     def pcFromUOp(uop: MicroOp): UInt = Sext(uop.debug_pc(vaddrBits-1,0), xLen)
-    // Print out ROB bank
-    printf("%d | ROB B%d", debug_cycle, w.U)
-    for (i <- 0 until numRobRows) {
-      val nn = (rob_head + i.U) % numRobRows.U
-      when(rob_val(nn)) {
-        val commits = (i == 0).asBool() && will_commit(w)
-        val flushes = rob_uop(nn).flush_on_commit
-        printf(" | [%b %b] (0x%x) DASM(0x%x)", commits, flushes,
-          pcFromUOp(rob_uop(nn)),
-          instrFromUOp(rob_uop(nn)))
-      } .otherwise {
-        printf(" | -")
+    when(!io.csr_stall) {
+      // Print out ROB bank
+      printf("%d | ROB B%d", debug_cycle, w.U)
+      for (i <- 0 until numRobRows) {
+        val nn = (rob_head + i.U) % numRobRows.U
+        when(rob_val(nn)) {
+          val commits = (i == 0).asBool() && will_commit(w)
+          val flushes = rob_uop(nn).flush_on_commit
+          printf(" | [%b %b] (0x%x) DASM(0x%x)", commits, flushes,
+            pcFromUOp(rob_uop(nn)),
+            instrFromUOp(rob_uop(nn)))
+        } .otherwise {
+          printf(" | -")
+        }
       }
+      printf("\n")
     }
-    printf("\n")
-
   } //for (w <- 0 until coreWidth)
 
   // **************************************************************************
