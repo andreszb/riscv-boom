@@ -24,17 +24,10 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
     val release_queue_tail_out = Output(UInt(log2Ceil(numLdqEntries).W))
   }
 
-  def IsIndexBetweenHeadAndTail(Index: UInt, Head: UInt, Tail: UInt): Bool = {
-    ((Head < Tail) && Index >= Head && Index < Tail) || ((Head > Tail) && (Index < Tail || Index >= Head)) || (Head === Tail && io.sb_full)
-  }
-
-  def ValidAndSame(ValidIn: chisel3.util.Valid[UInt], Value: UInt): Bool = {
-    ValidIn.valid && ValidIn.bits === Value
-  }
-
   val index_check = Wire(Vec(coreWidth, Bool()))
   val same_check = Wire(Vec(coreWidth, Bool()))
   val all_valid = Wire(Vec(coreWidth, Bool()))
+  val sb_full_last_cycle = RegNext(io.sb_full)
 
   val ShadowStampList = Reg(Vec(numLdqEntries, Valid(UInt(log2Ceil(maxBrCount).W))))
   val LoadQueueIndexList = Reg(Vec(numLdqEntries, UInt(log2Ceil(numLdqEntries).W)))
@@ -44,6 +37,13 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
 
   io.release_queue_tail_out := ReleaseQueueTail
 
+  def IsIndexBetweenHeadAndTail(Index: UInt, Head: UInt, Tail: UInt): Bool = {
+    ((Head < Tail) && Index >= Head && Index < Tail) || ((Head > Tail) && (Index < Tail || Index >= Head)) || (Head === Tail && (io.sb_full || io.sb_full_last_cycle))
+  }
+
+  def ValidAndSame(ValidIn: chisel3.util.Valid[UInt], Value: UInt): Bool = {
+    ValidIn.valid && ValidIn.bits === Value
+  }
 
 
   dontTouch(index_check)
