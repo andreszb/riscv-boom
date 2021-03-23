@@ -25,7 +25,7 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
   }
 
   def IsIndexBetweenHeadAndTail(Index: UInt, Head: UInt, Tail: UInt): Bool = {
-    ((Head < Tail) && Index >= Head && Index < Tail) || ((Head > Tail) && (Index < Tail || Index >= Head)) || Head === Tail
+    ((Head < Tail) && Index >= Head && Index < Tail) || ((Head > Tail) && (Index < Tail || Index >= Head)) || (Head === Tail && io.sb_full)
   }
 
   def ValidAndSame(ValidIn: chisel3.util.Valid[UInt], Value: UInt): Bool = {
