@@ -21,6 +21,7 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
     val shadow_buffer_head_out = Output(UInt(log2Ceil(maxBrCount).W))
     val shadow_buffer_tail_out = Output(UInt(log2Ceil(maxBrCount).W))
     val shadow_buffer_full_out = Output(Bool())
+    val shadow_buffer_empty_out = Output(Bool())
   }
 
   def IsIndexBetweenHeadAndTail(Index: UInt, Head: UInt, Tail: UInt): Bool = {
@@ -36,10 +37,12 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
 
   val update_release_queue = RegNext(io.br_mispred_shadow_buffer_idx.valid)
   val update_release_queue_idx = RegNext(ReleaseQueueIndex(io.br_mispred_shadow_buffer_idx.bits))
+  //TODO: Add HEAD==TAIL wire
 
   io.shadow_buffer_head_out := ShadowBufferHead
   io.shadow_buffer_tail_out := ShadowBufferTail
   io.shadow_buffer_full_out := (ShadowBufferHead === ShadowBufferTail) && ShadowCaster(ShadowBufferHead)
+  io.shadow_buffer_empty_out := (ShadowBufferHead === ShadowBufferTail) && !ShadowCaster(ShadowBufferHead)
 
   ShadowBufferTail := WrapAdd(ShadowBufferTail, PopCount(io.new_branch_op), maxBrCount)
 

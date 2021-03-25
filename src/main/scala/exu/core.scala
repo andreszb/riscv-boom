@@ -715,7 +715,8 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   val br_last_cycle = RegNext(Mux(dis_ready, br_to_commit, 0.U))
   val br_2_cycles_ago = RegNext(br_last_cycle)
   val br_sum = br_to_commit + br_last_cycle + br_2_cycles_ago
-  val shadow_buffer_full_stall = IsElementBetweenValues(
+  val shadow_buffer_full_stall = !ShadowBuffer.io.shadow_buffer_empty_out &&
+    IsElementBetweenValues(
     ShadowBuffer.io.shadow_buffer_head_out,
     ShadowBuffer.io.shadow_buffer_tail_out,
     WrapAdd(ShadowBuffer.io.shadow_buffer_tail_out, br_sum, maxBrCount))
