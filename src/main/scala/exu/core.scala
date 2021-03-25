@@ -706,6 +706,23 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   val dis_rocc_alloc_stall = (dis_uops.map(_.uopc === uopROCC) zip block_rocc) map {case (p,r) =>
                                if (usingRoCC) p && r else false.B}
 
+  //amundbk
+  def IsElementBetweenValues(Element: UInt, Head: UInt, Tail: UInt): Bool = {
+    ((Head < Tail) && Element >= Head && Element < Tail) || ((Head > Tail) && (Element < Tail || Element >= Head))
+  }
+
+  val br_to_commit = PopCount(dis_uops.map(e => e.is_br || e.is_jalr))
+  val br_last_cycle = RegNext(Mux(dis_ready, br_to_commit, 0.U))
+  val br_2_cycles_ago = RegNext(br_last_cycle)
+  val br_sum = br_to_commit + br_last_cycle + br_2_cycles_ago
+  val shadow_buffer_full_stall = IsElementBetweenValues(
+    ShadowBuffer.io.shadow_buffer_head_out,
+    ShadowBuffer.io.shadow_buffer_tail_out,
+    WrapAdd(ShadowBuffer.io.shadow_buffer_tail_out, br_sum, maxBrCount))
+
+  dontTouch(shadow_buffer_full_stall)
+  //end amundbk
+
   val dis_hazards = (0 until coreWidth).map(w =>
                       dis_valids(w) &&
                       (  !rob.io.ready
@@ -719,7 +736,8 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
                       || dis_rocc_alloc_stall(w)
                       || brupdate.b1.mispredict_mask =/= 0.U
                       || brupdate.b2.mispredict
-                      || io.ifu.redirect_flush))
+                      || io.ifu.redirect_flush
+                      || shadow_buffer_full_stall ))
 
 
   io.lsu.fence_dmem := (dis_valids zip wait_for_empty_pipeline).map {case (v,w) => v && w} .reduce(_||_)
