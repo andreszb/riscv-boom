@@ -19,6 +19,7 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
     val sb_head = Input(UInt(log2Ceil(maxBrCount).W))
     val sb_tail = Input(UInt(log2Ceil(maxBrCount).W))
     val sb_full = Input(Bool())
+    val sb_empty = Input(Bool())
 
     val load_queue_index_out = Output(Vec(coreWidth, Valid(UInt())))
     val release_queue_tail_out = Output(UInt(log2Ceil(numLdqEntries).W))
@@ -103,7 +104,7 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
   }
 
   for (w <- 0 until coreWidth) {
-    when(((io.sb_tail =/= io.sb_head) || io.sb_full) && io.new_ldq_idx(w).valid) {
+    when(!io.sb_empty && io.new_ldq_idx(w).valid) {
       ShadowStampList(rq_load_offset(w)).bits := sb_branch_offset(w)
       ShadowStampList(rq_load_offset(w)).valid := true.B
       LoadQueueIndexList(rq_load_offset(w)) := io.new_ldq_idx(w).bits
