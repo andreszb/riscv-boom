@@ -41,8 +41,8 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
 
   io.shadow_buffer_head_out := ShadowBufferHead
   io.shadow_buffer_tail_out := ShadowBufferTail
-  io.shadow_buffer_full_out := (ShadowBufferHead === ShadowBufferTail) && ShadowCaster(ShadowBufferHead)
-  io.shadow_buffer_empty_out := (ShadowBufferHead === ShadowBufferTail) && !ShadowCaster(ShadowBufferHead)
+  io.shadow_buffer_full_out := PopCount(ShadowCaster) === maxBrCount.U
+  io.shadow_buffer_empty_out := PopCount(ShadowCaster) === 0.U
 
   ShadowBufferTail := WrapAdd(ShadowBufferTail, PopCount(io.new_branch_op), maxBrCount)
 
