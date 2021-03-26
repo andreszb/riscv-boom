@@ -117,7 +117,7 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
   }
 
   //ReleaseQueueTail incremented by number of loads when in shadow mode, or loads after branch if not
-  when((io.sb_tail =/= io.sb_head) || io.sb_full) {
+  when(!io.sb_empty) {
     ReleaseQueueTail := WrapAdd(ReleaseQueueTail, PopCount(io.new_ldq_idx.map(_.valid)), numLdqEntries)
   }.otherwise{
     ReleaseQueueTail := WrapAdd(ReleaseQueueTail, masked_ldq(coreWidth), numLdqEntries)
