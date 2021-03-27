@@ -711,11 +711,13 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     ((Head < Tail) && Element >= Head && Element < Tail) || ((Head > Tail) && (Element < Tail || Element >= Head))
   }
 
-  val br_to_commit = PopCount(dis_uops.map(e => e.is_br || e.is_jalr))
+  val br_to_commit = Wire(UInt(log2Ceil(maxBrCount).W))
+
+  br_to_commit := PopCount(dis_uops.map(e => e.is_br || e.is_jalr))
   val br_last_cycle = RegNext(Mux(dis_ready, br_to_commit, 0.U))
   val br_2_cycles_ago = RegNext(br_last_cycle)
   //Explicitly make it larger to prevent overflow
-  val br_sum = Wire(UInt(8.W))
+  val br_sum = Wire(UInt(log2Ceil(maxBrCount).W))
   br_sum := br_to_commit + br_last_cycle + br_2_cycles_ago
   val shadow_buffer_full_stall = !ShadowBuffer.io.shadow_buffer_empty_out &&
     IsElementBetweenValues(
