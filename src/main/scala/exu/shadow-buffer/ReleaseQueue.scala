@@ -20,6 +20,7 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
     val sb_tail = Input(UInt(log2Ceil(maxBrCount).W))
     val sb_full = Input(Bool())
     val sb_empty = Input(Bool())
+    val leading_shadow_tag = Output(Valid(UInt(log2Ceil(maxBrCount).W)))
 
     val load_queue_index_out = Output(Vec(coreWidth, Valid(UInt())))
     val release_queue_tail_out = Output(UInt(log2Ceil(numLdqEntries).W))
@@ -37,6 +38,8 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
   val ReleaseQueueHead = RegInit(UInt(log2Ceil(numLdqEntries).W), 0.U)
 
   io.release_queue_tail_out := ReleaseQueueTail
+  io.leading_shadow_tag.valid := ShadowStampList(WrapAdd(ReleaseQueueHead, (2*coreWidth).U, numLdqEntries)).valid
+  io.leading_shadow_tag.bits := ShadowStampList(WrapAdd(ReleaseQueueHead, (2*coreWidth).U, numLdqEntries)).bits
 
   def IsIndexBetweenHeadAndTail(Index: UInt, Head: UInt, Tail: UInt): Bool = {
     ((Head < Tail) && Index >= Head && Index < Tail) || ((Head > Tail) && (Index < Tail || Index >= Head)) || (Head === Tail && !io.sb_empty)

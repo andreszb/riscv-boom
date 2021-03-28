@@ -719,11 +719,18 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   //Explicitly make it larger to prevent overflow
   val br_sum = Wire(UInt(log2Ceil(maxBrCount).W))
   br_sum := br_to_commit + br_last_cycle + br_2_cycles_ago
+  //Will this overfill the ShadowBuffer?
   val shadow_buffer_full_stall = !ShadowBuffer.io.shadow_buffer_empty_out &&
     IsElementBetweenValues(
     ShadowBuffer.io.shadow_buffer_head_out,
     ShadowBuffer.io.shadow_buffer_tail_out,
     WrapAdd(ShadowBuffer.io.shadow_buffer_tail_out, br_sum, maxBrCount))
+  //Will this overwrite a tag in 2 cycles in ReleaseQueue?
+  val release_queue_tag_overwrite = ReleaseQueue.io.leading_shadow_tag.valid &&
+    IsElementBetweenValues(
+      ShadowBuffer.io.shadow_buffer_head_out,
+      ShadowBuffer.io.shadow_buffer_tail_out,
+      WrapAdd(ReleaseQueue.io.leading_shadow_tag.bits, br_sum, maxBrCount))
 
   dontTouch(shadow_buffer_full_stall)
   //end amundbk
@@ -742,7 +749,8 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
                       || brupdate.b1.mispredict_mask =/= 0.U
                       || brupdate.b2.mispredict
                       || io.ifu.redirect_flush
-                      || shadow_buffer_full_stall ))
+                      || shadow_buffer_full_stall
+                      || release_queue_tag_overwrite ))
 
 
   io.lsu.fence_dmem := (dis_valids zip wait_for_empty_pipeline).map {case (v,w) => v && w} .reduce(_||_)
