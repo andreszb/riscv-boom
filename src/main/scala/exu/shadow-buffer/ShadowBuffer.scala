@@ -55,7 +55,8 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
     ShadowCasterIsFalse(w) := ! ShadowCaster(WrapAdd(ShadowBufferHead, w.U, maxBrCount))
   }
 
-  HeadIsNotTail(0) := ShadowBufferHead =/= ShadowBufferTail || ShadowBufferFullLastCycle
+  //Increment can only hit head at 0 steps, if empty, so check if it is
+  HeadIsNotTail(0) := PopCount(ShadowCaster) =/= 0.U
   ShadowCasterValidIncrement(0) := (ShadowCasterIsFalse(0) && HeadIsNotTail(0))
   for (w <- 1 until coreWidth) {
     HeadIsNotTail(w) := WrapAdd(ShadowBufferHead, w.U, maxBrCount) =/= ShadowBufferTail
