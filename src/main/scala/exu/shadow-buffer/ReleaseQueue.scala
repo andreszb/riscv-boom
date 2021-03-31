@@ -114,7 +114,7 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
     }.elsewhen(io.new_ldq_idx(w).valid && branch_before(w)) {
       ShadowStampList(WrapAdd(ReleaseQueueTail, masked_ldq(w), numLdqEntries)).bits := sb_branch_offset(w)
       ShadowStampList(WrapAdd(ReleaseQueueTail, masked_ldq(w), numLdqEntries)).valid := true.B
-      LoadQueueIndexList(rq_load_offset(w)) := io.new_ldq_idx(w).bits
+      LoadQueueIndexList(WrapAdd(ReleaseQueueTail, masked_ldq(w), numLdqEntries)) := io.new_ldq_idx(w).bits
     }
     assert(!(io.new_ldq_idx(w).valid && io.new_branch_op(w)))
   }
