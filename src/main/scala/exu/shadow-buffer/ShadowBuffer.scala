@@ -90,7 +90,7 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
   for (w <- 0 until coreWidth) {
     when(io.new_branch_op(w)) {
       ShadowCaster(WrapAdd(ShadowBufferTail, PopCount(io.new_branch_op.slice(0, w)), maxBrCount)) := true.B
-      when(ShadowBufferHead =/= ShadowBufferTail) {
+      when(!io.shadow_buffer_empty_out) {
         ReleaseQueueIndex(WrapAdd(ShadowBufferTail, PopCount(io.new_branch_op.slice(0, w)), maxBrCount)) := WrapAdd(io.release_queue_tail_checkpoint, PopCount(io.new_ldq_op.slice(0, w)), numLdqEntries)
       }.otherwise {
         ReleaseQueueIndex(WrapAdd(ShadowBufferTail, PopCount(io.new_branch_op.slice(0, w)), maxBrCount)) := WrapAdd(io.release_queue_tail_checkpoint, masked_ldq(w) , numLdqEntries)
