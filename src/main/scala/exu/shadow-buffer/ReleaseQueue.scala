@@ -148,7 +148,8 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
     }
   }
 
-  when(io.flush_in) {
+  //Reset on a flush and ignore signals for one cycle
+  when(io.flush_in || RegNext(io.flush_in)) {
     ReleaseQueueHead := 0.U
     ReleaseQueueTail := 0.U
     ShadowStampList(0).valid := false.B

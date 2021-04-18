@@ -113,6 +113,9 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
     ShadowBufferHead := 0.U
     ShadowBufferTail := 0.U
 
+    //On a flush, don't send signals to mispredict. Reset instead
+    io.br_mispredict_release_queue_idx := 0.U
+
     //TODO: Remove this
     for (w <- 0 until maxBrCount) {
       ShadowCaster(w) := false.B
