@@ -109,7 +109,8 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
     io.br_mispredict_release_queue_idx.valid := true.B
   }
 
-  when(io.flush_in) {
+  //Flush has at least a 2 cycle penalty before execution stops. TODO: Check this later
+  when(io.flush_in || RegNext(io.flush_in)) {
     ShadowBufferHead := 0.U
     ShadowBufferTail := 0.U
 
