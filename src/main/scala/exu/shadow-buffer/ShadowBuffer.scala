@@ -35,7 +35,7 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
   val ShadowCaster = Reg(Vec(maxBrCount, Bool()))
   val ReleaseQueueIndex = Reg(Vec(maxBrCount, UInt(log2Ceil(numLdqEntries).W)))
 
-  val update_release_queue = RegNext(io.br_mispred_shadow_buffer_idx.valid)
+  val update_release_queue = RegNext(io.br_mispred_shadow_buffer_idx.valid && !io.flush_in)
   val update_release_queue_idx = RegNext(ReleaseQueueIndex(io.br_mispred_shadow_buffer_idx.bits))
   //TODO: Add HEAD==TAIL wire
 
