@@ -161,4 +161,6 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
     }
   }
 
+  assert(!(PopCount(ShadowStampList.map(e => e.valid)) === 0.U && ReleaseQueueHead =/= ReleaseQueueTail), "Empty ReleaseQueue, yet head and tail disjointed")
+
 }

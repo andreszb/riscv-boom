@@ -6,6 +6,8 @@ import boom.util.{WrapAdd, WrapDec}
 import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 
+import java.util.stream.IntStream
+
 class ShadowBuffer(implicit p: Parameters) extends BoomModule {
 
   val io = new Bundle {
@@ -35,7 +37,7 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
   val ShadowCaster = Reg(Vec(maxBrCount, Bool()))
   val ReleaseQueueIndex = Reg(Vec(maxBrCount, UInt(log2Ceil(numLdqEntries).W)))
 
-  val update_release_queue = RegNext(io.br_mispred_shadow_buffer_idx.valid && !(io.flush_in || RegNext(io.flush_in)))
+  val update_release_queue = RegNext(io.br_mispred_shadow_buffer_idx.valid && !io.flush_in)
   val update_release_queue_idx = RegNext(ReleaseQueueIndex(io.br_mispred_shadow_buffer_idx.bits))
   //TODO: Add HEAD==TAIL wire
 
@@ -63,20 +65,11 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
     HeadIsNotTail(w) := WrapAdd(ShadowBufferHead, w.U, maxBrCount) =/= ShadowBufferTail
     ShadowCasterValidIncrement(w) := (ShadowCasterIsFalse(w) && HeadIsNotTail(w)) && ShadowCasterValidIncrement(w-1)
   }
-
-
   val incrementLevel = MuxCase(coreWidth.U, (0 until coreWidth).map(e => ShadowCasterValidIncrement(e) -> e.U))
   ShadowBufferHead := WrapAdd(ShadowBufferHead, PopCount(ShadowCasterValidIncrement), maxBrCount)
 
-  dontTouch(ShadowCasterValidIncrement)
-  dontTouch(ShadowCaster)
-  dontTouch(incrementLevel)
-
   val branch_before = WireInit(VecInit(Seq.fill(coreWidth + 1)(false.B)))
   val masked_ldq = WireInit(VecInit(Seq.fill(coreWidth+1)(0.U(log2Ceil(numLdqEntries).W))))
-
-  dontTouch(branch_before)
-  dontTouch(masked_ldq)
 
   for (w <- 0 until coreWidth) {
     when(io.new_branch_op(w) || branch_before(w)) {
@@ -120,20 +113,21 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
     //TODO: Remove this
     for (w <- 0 until maxBrCount) {
       ShadowCaster(w) := false.B
+      ReleaseQueueIndex(w) := 0.U
     }
   }.elsewhen(io.br_mispred_shadow_buffer_idx.valid) {
     ShadowBufferTail := io.br_mispred_shadow_buffer_idx.bits
 
-    //TODO: Remove this
     ShadowCaster(io.br_mispred_shadow_buffer_idx.bits) := false.B
     ReleaseQueueIndex(io.br_mispred_shadow_buffer_idx.bits) := 0.U
 
-    //TODO: Remove this
     for (w <- 0 until maxBrCount) {
       when(!IsIndexBetweenHeadAndTail(w.U, ShadowBufferHead, io.br_mispred_shadow_buffer_idx.bits)) {
         ShadowCaster(w) := false.B
+        ReleaseQueueIndex(w) := 0.U
       }
     }
   }
 
+  assert(!(PopCount(io.new_branch_op) > 0.U && ShadowBufferHead === ShadowBufferTail && !io.shadow_buffer_empty_out), "New entry put into ShadowBuffer while full. Overwriting Valid Entry")
 }
