@@ -54,6 +54,7 @@ class RobIo(
   val br_safe_out = Output(Vec(coreWidth, Valid(UInt(log2Ceil(maxBrCount).W))))
   val sb_reset_idx = Output(Valid(UInt(log2Ceil(maxBrCount).W)))
   val spec_ld_idx = Output(Vec(coreWidth, Valid(UInt(log2Ceil(numLdqEntries).W))))
+  //TODO: Use this
   val rob_rollback = Output(Bool())
   //amundbk
   val enq_partial_stall= Input(Bool()) // we're dispatching only a partial packet,

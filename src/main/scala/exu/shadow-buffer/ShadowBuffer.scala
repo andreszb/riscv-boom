@@ -1,8 +1,8 @@
 package boom.exu
 
-import Chisel.{MuxCase, PopCount, Valid, log2Ceil}
+import Chisel.{MuxCase, PopCount, ShiftRegister, Valid, log2Ceil}
 import boom.common.BoomModule
-import boom.util.{WrapAdd}
+import boom.util.WrapAdd
 import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 
@@ -35,11 +35,10 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
   val sb = Reg(Vec(maxBrCount, Bool()))
   val rq_reset_idx = Reg(Vec(maxBrCount, UInt(log2Ceil(numLdqEntries).W)))
 
-  val mispred_rq = RegNext(io.sb_tail_reset_idx.valid && !io.flush_in)
-  val mispred_rq_idx = RegNext(rq_reset_idx(io.sb_tail_reset_idx.bits))
-
   val head_is_tail = sb_head === sb_tail
   val sb_empty = PopCount(sb) === 0.U
+
+  val recent_flush = ShiftRegister(io.flush_in, 4)
 
   io.sb_head := sb_head
   io.sb_tail := sb_tail
@@ -95,15 +94,18 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
     }
   }
 
+  val mispred_rq = RegNext(io.sb_tail_reset_idx.valid && !io.flush_in)
+  val mispred_rq_idx = RegNext(rq_reset_idx(io.sb_tail_reset_idx.bits))
+
   io.rq_tail_reset_idx.valid := false.B
   io.rq_tail_reset_idx.bits := mispred_rq_idx
 
-  when(mispred_rq) {
+  when(mispred_rq && !(io.flush_in || recent_flush.asBool())) {
     io.rq_tail_reset_idx.valid := true.B
   }
 
-  //Flush has at least a 2 cycle penalty before execution stops. TODO: Check this later
-  when(io.flush_in || RegNext(io.flush_in)) {
+  //Flush kills all live instructions, so wait 4 cycles before caring about new signals
+  when(io.flush_in || recent_flush.asBool()) {
     sb_head := 0.U
     sb_tail := 0.U
 

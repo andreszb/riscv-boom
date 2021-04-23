@@ -1,6 +1,6 @@
 package boom.exu
 
-import Chisel.{PopCount, Valid, log2Ceil}
+import Chisel.{PopCount, ShiftRegister, Valid, log2Ceil}
 import boom.common.BoomModule
 import boom.util.{WrapAdd, WrapDec}
 import chipsalliance.rocketchip.config.Parameters
@@ -33,6 +33,8 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
 
   val rq_tail = RegInit(UInt(log2Ceil(numLdqEntries).W), 0.U)
   val rq_head = RegInit(UInt(log2Ceil(numLdqEntries).W), 0.U)
+
+  val recent_flush = ShiftRegister(io.flush_in, 4)
 
   io.rq_tail := rq_tail
   io.leading_shadow_tag.valid := shadow_tag_list(WrapAdd(rq_head, (2*coreWidth).U, numLdqEntries)).valid
@@ -134,8 +136,8 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
     }
   }
 
-  //Reset on a flush and ignore signals for one cycle
-  when(io.flush_in || RegNext(io.flush_in)) {
+  //Reset on a flush and ignore signals for 4 cycles
+  when(io.flush_in || recent_flush.asBool()) {
     rq_head := 0.U
     rq_tail := 0.U
     shadow_tag_list(0).valid := false.B
