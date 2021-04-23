@@ -5,41 +5,38 @@ import boom.common.BoomModule
 import boom.util.{WrapAdd, WrapDec}
 import chipsalliance.rocketchip.config.Parameters
 import chisel3._
-import chisel3.util.MuxCase
 
 class ReleaseQueue(implicit p: Parameters) extends BoomModule {
 
   val io = new Bundle {
+    val new_branch_op = Input(Vec(coreWidth, Bool()))
     val new_ldq_idx = Input(Vec(coreWidth, Valid(UInt(log2Ceil(numLdqEntries).W))))
 
     val flush_in = Input(Bool())
-    val mispredict_new_tail = Input(Valid(UInt(log2Ceil(numLdqEntries).W)))
-    val new_branch_op = Input(Vec(coreWidth, Bool()))
+    val rq_tail_reset_idx = Input(Valid(UInt(log2Ceil(numLdqEntries).W)))
 
     val sb_head = Input(UInt(log2Ceil(maxBrCount).W))
     val sb_tail = Input(UInt(log2Ceil(maxBrCount).W))
-    val sb_full = Input(Bool())
     val sb_empty = Input(Bool())
-    val leading_shadow_tag = Output(Valid(UInt(log2Ceil(maxBrCount).W)))
 
-    val load_queue_index_out = Output(Vec(coreWidth, Valid(UInt())))
-    val release_queue_tail_out = Output(UInt(log2Ceil(numLdqEntries).W))
+    val lq_index = Output(Vec(coreWidth, Valid(UInt())))
+    val rq_tail = Output(UInt(log2Ceil(numLdqEntries).W))
+    val leading_shadow_tag = Output(Valid(UInt(log2Ceil(maxBrCount).W)))
   }
 
   val index_check = Wire(Vec(coreWidth, Bool()))
   val same_check = Wire(Vec(coreWidth, Bool()))
   val all_valid = Wire(Vec(coreWidth, Bool()))
-  val sb_full_last_cycle = RegNext(io.sb_full)
 
-  val ShadowStampList = Reg(Vec(numLdqEntries, Valid(UInt(log2Ceil(maxBrCount).W))))
-  val LoadQueueIndexList = Reg(Vec(numLdqEntries, UInt(log2Ceil(numLdqEntries).W)))
+  val shadow_tag_list = Reg(Vec(numLdqEntries, Valid(UInt(log2Ceil(maxBrCount).W))))
+  val ldq_idx_list = Reg(Vec(numLdqEntries, UInt(log2Ceil(numLdqEntries).W)))
 
-  val ReleaseQueueTail = RegInit(UInt(log2Ceil(numLdqEntries).W), 0.U)
-  val ReleaseQueueHead = RegInit(UInt(log2Ceil(numLdqEntries).W), 0.U)
+  val rq_tail = RegInit(UInt(log2Ceil(numLdqEntries).W), 0.U)
+  val rq_head = RegInit(UInt(log2Ceil(numLdqEntries).W), 0.U)
 
-  io.release_queue_tail_out := ReleaseQueueTail
-  io.leading_shadow_tag.valid := ShadowStampList(WrapAdd(ReleaseQueueHead, (2*coreWidth).U, numLdqEntries)).valid
-  io.leading_shadow_tag.bits := ShadowStampList(WrapAdd(ReleaseQueueHead, (2*coreWidth).U, numLdqEntries)).bits
+  io.rq_tail := rq_tail
+  io.leading_shadow_tag.valid := shadow_tag_list(WrapAdd(rq_head, (2*coreWidth).U, numLdqEntries)).valid
+  io.leading_shadow_tag.bits := shadow_tag_list(WrapAdd(rq_head, (2*coreWidth).U, numLdqEntries)).bits
 
   def IsIndexBetweenHeadAndTail(Index: UInt, Head: UInt, Tail: UInt): Bool = {
     ((Head < Tail) && Index >= Head && Index < Tail) || ((Head > Tail) && (Index < Tail || Index >= Head)) || (Head === Tail && !io.sb_empty)
@@ -50,42 +47,37 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
   }
 
 
-  dontTouch(index_check)
-  dontTouch(same_check)
-  dontTouch(io.load_queue_index_out)
-
   for (w <- 0 until coreWidth) {
-    index_check(w) := IsIndexBetweenHeadAndTail(ShadowStampList(WrapAdd(ReleaseQueueHead, w.U, numLdqEntries)).bits, io.sb_head, io.sb_tail)
-    same_check(w) := ValidAndSame(io.mispredict_new_tail, WrapAdd(ReleaseQueueHead, w.U, numLdqEntries))
+    index_check(w) := IsIndexBetweenHeadAndTail(shadow_tag_list(WrapAdd(rq_head, w.U, numLdqEntries)).bits, io.sb_head, io.sb_tail)
+    same_check(w) := ValidAndSame(io.rq_tail_reset_idx, WrapAdd(rq_head, w.U, numLdqEntries))
   }
-  all_valid(0) := ShadowStampList(ReleaseQueueHead).valid
+  all_valid(0) := shadow_tag_list(rq_head).valid
   for (w <- 1 until coreWidth) {
-    all_valid(w) := all_valid(w-1) && ShadowStampList(WrapAdd(ReleaseQueueHead, w.U, numLdqEntries)).valid
+    all_valid(w) := all_valid(w-1) && shadow_tag_list(WrapAdd(rq_head, w.U, numLdqEntries)).valid
   }
 
 
   //Release as fast as new ones can enter
   for (w <- 0 until coreWidth) {
-    io.load_queue_index_out(w).valid := false.B
-    io.load_queue_index_out(w).bits := LoadQueueIndexList(WrapAdd(ReleaseQueueHead, w.U, numLdqEntries))
+    io.lq_index(w).valid := false.B
+    io.lq_index(w).bits := ldq_idx_list(WrapAdd(rq_head, w.U, numLdqEntries))
 
     //All current entries for the checks needs to be 0
     when(PopCount(index_check.slice(0, w+1)) === 0.U
       && PopCount(same_check.slice(0, w+1)) === 0.U
       && all_valid(w)) {
-      io.load_queue_index_out(w).valid := true.B
+      io.lq_index(w).valid := true.B
 
-      ShadowStampList(WrapAdd(ReleaseQueueHead, w.U, numLdqEntries)).valid := false.B
-      ShadowStampList(WrapAdd(ReleaseQueueHead, w.U, numLdqEntries)).bits := 0.U
+      shadow_tag_list(WrapAdd(rq_head, w.U, numLdqEntries)).valid := false.B
+      shadow_tag_list(WrapAdd(rq_head, w.U, numLdqEntries)).bits := 0.U
     }
   }
 
   //ReleaseQueueHead should be incremented by the amount of freed loads
-  ReleaseQueueHead := WrapAdd(ReleaseQueueHead, PopCount(io.load_queue_index_out.map(e => e.valid)), numLdqEntries)
+  rq_head := WrapAdd(rq_head, PopCount(io.lq_index.map(e => e.valid)), numLdqEntries)
 
-  //This comes from ROB. Can have coreWidth number of new lds.
-  //can have br, ld, br, ld. Track how many sb_inc we have had
-
+  //This comes from ROB. Can have coreWidth number of new lds or brs.
+  //Can come in any order. Need count of lds after branch
   val branch_before = WireInit(VecInit(Seq.fill(coreWidth + 1)(false.B)))
   val masked_ldq = WireInit(VecInit(Seq.fill(coreWidth+1)(0.U(log2Ceil(numLdqEntries).W))))
 
@@ -103,64 +95,58 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
 
   for (w <- 0 until coreWidth) {
     sb_branch_offset(w) := WrapDec(WrapAdd(io.sb_tail, PopCount(io.new_branch_op.slice(0, w)), maxBrCount), maxBrCount)
-    rq_load_offset(w) := WrapAdd(ReleaseQueueTail, PopCount(io.new_ldq_idx.slice(0, w).map(_.valid)), numLdqEntries)
+    rq_load_offset(w) := WrapAdd(rq_tail, PopCount(io.new_ldq_idx.slice(0, w).map(_.valid)), numLdqEntries)
   }
 
   for (w <- 0 until coreWidth) {
     when(!io.sb_empty && io.new_ldq_idx(w).valid) {
-      ShadowStampList(rq_load_offset(w)).bits := sb_branch_offset(w)
-      ShadowStampList(rq_load_offset(w)).valid := true.B
-      LoadQueueIndexList(rq_load_offset(w)) := io.new_ldq_idx(w).bits
+      shadow_tag_list(rq_load_offset(w)).bits := sb_branch_offset(w)
+      shadow_tag_list(rq_load_offset(w)).valid := true.B
+      ldq_idx_list(rq_load_offset(w)) := io.new_ldq_idx(w).bits
     }.elsewhen(io.new_ldq_idx(w).valid && branch_before(w)) {
-      ShadowStampList(WrapAdd(ReleaseQueueTail, masked_ldq(w), numLdqEntries)).bits := sb_branch_offset(w)
-      ShadowStampList(WrapAdd(ReleaseQueueTail, masked_ldq(w), numLdqEntries)).valid := true.B
-      LoadQueueIndexList(WrapAdd(ReleaseQueueTail, masked_ldq(w), numLdqEntries)) := io.new_ldq_idx(w).bits
+      shadow_tag_list(WrapAdd(rq_tail, masked_ldq(w), numLdqEntries)).bits := sb_branch_offset(w)
+      shadow_tag_list(WrapAdd(rq_tail, masked_ldq(w), numLdqEntries)).valid := true.B
+      ldq_idx_list(WrapAdd(rq_tail, masked_ldq(w), numLdqEntries)) := io.new_ldq_idx(w).bits
     }
     assert(!(io.new_ldq_idx(w).valid && io.new_branch_op(w)))
   }
 
   //ReleaseQueueTail incremented by number of loads when in shadow mode, or loads after branch if not
   when(!io.sb_empty) {
-    ReleaseQueueTail := WrapAdd(ReleaseQueueTail, PopCount(io.new_ldq_idx.map(_.valid)), numLdqEntries)
+    rq_tail := WrapAdd(rq_tail, PopCount(io.new_ldq_idx.map(_.valid)), numLdqEntries)
   }.otherwise{
-    ReleaseQueueTail := WrapAdd(ReleaseQueueTail, masked_ldq(coreWidth), numLdqEntries)
+    rq_tail := WrapAdd(rq_tail, masked_ldq(coreWidth), numLdqEntries)
   }
 
-  dontTouch(branch_before)
-  dontTouch(masked_ldq)
-  dontTouch(sb_branch_offset)
-  dontTouch(rq_load_offset)
-
-
   val NewTail = Wire(UInt())
-  NewTail := io.mispredict_new_tail.bits
+  NewTail := io.rq_tail_reset_idx.bits
 
-  when(io.mispredict_new_tail.valid) {
-    ReleaseQueueTail := NewTail
-    ShadowStampList(NewTail).valid := false.B
+  when(io.rq_tail_reset_idx.valid) {
+    rq_tail := NewTail
+    shadow_tag_list(NewTail).valid := false.B
 
     for (i <- 0 until numLdqEntries) {
-      when(!IsIndexBetweenHeadAndTail(i.U, ReleaseQueueHead, NewTail) || NewTail === ReleaseQueueHead) {
-        ShadowStampList(i.U).valid := false.B
-        ShadowStampList(i.U).bits := 0.U
-        LoadQueueIndexList(i.U) := 0.U
+      when(!IsIndexBetweenHeadAndTail(i.U, rq_head, NewTail) || NewTail === rq_head) {
+        shadow_tag_list(i.U).valid := false.B
+        shadow_tag_list(i.U).bits := 0.U
+        ldq_idx_list(i.U) := 0.U
       }
     }
   }
 
   //Reset on a flush and ignore signals for one cycle
   when(io.flush_in || RegNext(io.flush_in)) {
-    ReleaseQueueHead := 0.U
-    ReleaseQueueTail := 0.U
-    ShadowStampList(0).valid := false.B
+    rq_head := 0.U
+    rq_tail := 0.U
+    shadow_tag_list(0).valid := false.B
 
     for (i <- 0 until numLdqEntries) {
-      ShadowStampList(i.U).valid := false.B
-      ShadowStampList(i.U).bits := 0.U
-      LoadQueueIndexList(i.U) := 0.U
+      shadow_tag_list(i.U).valid := false.B
+      shadow_tag_list(i.U).bits := 0.U
+      ldq_idx_list(i.U) := 0.U
     }
   }
 
-  assert(!(PopCount(ShadowStampList.map(e => e.valid)) === 0.U && ReleaseQueueHead =/= ReleaseQueueTail), "Empty ReleaseQueue, yet head and tail disjointed")
+  assert(!(PopCount(shadow_tag_list.map(e => e.valid)) === 0.U && rq_head =/= rq_tail), "Empty ReleaseQueue, yet head and tail disjointed")
 
 }

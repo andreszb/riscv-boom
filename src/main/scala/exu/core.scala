@@ -139,11 +139,11 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
                            numIrfWritePorts + numFpWakeupPorts, // +memWidth for ll writebacks
                            numFpWakeupPorts))
   //amundbk
-  val ShadowBuffer     = Module(new ShadowBuffer())
-  val ReleaseQueue     = Module(new ReleaseQueue())
+  val sb     = Module(new ShadowBuffer())
+  val rq     = Module(new ReleaseQueue())
 
 
-  ShadowBuffer.io.new_branch_op := rob.io.branch_instr_added
+  sb.io.new_branch_op := rob.io.br_added
 
   //end amundbk
   // Used to wakeup registers in rename and issue. ROB needs to listen to something else.
@@ -720,17 +720,17 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   val br_sum = Wire(UInt(log2Ceil(maxBrCount).W))
   br_sum := br_to_commit + br_last_cycle + br_2_cycles_ago
   //Will this overfill the ShadowBuffer?
-  val shadow_buffer_full_stall = !ShadowBuffer.io.shadow_buffer_empty_out &&
+  val shadow_buffer_full_stall = !sb.io.sb_empty &&
     IsElementBetweenValues(
-    ShadowBuffer.io.shadow_buffer_head_out,
-    ShadowBuffer.io.shadow_buffer_tail_out,
-    WrapAdd(ShadowBuffer.io.shadow_buffer_tail_out, br_sum, maxBrCount))
+    sb.io.sb_head,
+    sb.io.sb_tail,
+    WrapAdd(sb.io.sb_tail, br_sum, maxBrCount))
   //Will this overwrite a tag in 2 cycles in ReleaseQueue?
-  val release_queue_tag_overwrite = ReleaseQueue.io.leading_shadow_tag.valid &&
+  val release_queue_tag_overwrite = rq.io.leading_shadow_tag.valid &&
     IsElementBetweenValues(
-      ShadowBuffer.io.shadow_buffer_head_out,
-      ShadowBuffer.io.shadow_buffer_tail_out,
-      WrapAdd(ReleaseQueue.io.leading_shadow_tag.bits, br_sum, maxBrCount))
+      sb.io.sb_head,
+      sb.io.sb_tail,
+      WrapAdd(rq.io.leading_shadow_tag.bits, br_sum, maxBrCount))
 
   dontTouch(shadow_buffer_full_stall)
   //end amundbk
@@ -1179,28 +1179,27 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   //-------------------------------------------------------------
 
 
-  ReleaseQueue.io.sb_head := ShadowBuffer.io.shadow_buffer_head_out
-  ReleaseQueue.io.sb_tail := ShadowBuffer.io.shadow_buffer_tail_out
-  ReleaseQueue.io.sb_full := ShadowBuffer.io.shadow_buffer_full_out
-  ReleaseQueue.io.sb_empty := ShadowBuffer.io.shadow_buffer_empty_out
-  ReleaseQueue.io.new_ldq_idx := rob.io.spec_ld_idx
-  ReleaseQueue.io.mispredict_new_tail := ShadowBuffer.io.br_mispredict_release_queue_idx
-  ReleaseQueue.io.flush_in := rob.io.flush.valid
-  ReleaseQueue.io.new_branch_op := rob.io.branch_instr_added
+  rq.io.sb_head := sb.io.sb_head
+  rq.io.sb_tail := sb.io.sb_tail
+  rq.io.sb_empty := sb.io.sb_empty
+  rq.io.new_ldq_idx := rob.io.spec_ld_idx
+  rq.io.rq_tail_reset_idx := sb.io.rq_tail_reset_idx
+  rq.io.flush_in := rob.io.flush.valid
+  rq.io.new_branch_op := rob.io.br_added
 
-  ShadowBuffer.io.new_branch_op := rob.io.branch_instr_added
-  ShadowBuffer.io.new_ldq_op := rob.io.spec_ld_idx.map(e => e.valid)
-  ShadowBuffer.io.br_safe_in := rob.io.br_safe_out
-  ShadowBuffer.io.br_mispred_shadow_buffer_idx := rob.io.br_mispred_shadow_buffer_idx
-  ShadowBuffer.io.release_queue_tail_checkpoint := ReleaseQueue.io.release_queue_tail_out
-  ShadowBuffer.io.flush_in := rob.io.flush.valid
+  sb.io.new_branch_op := rob.io.br_added
+  sb.io.new_ldq_op := rob.io.spec_ld_idx.map(e => e.valid)
+  sb.io.br_safe_in := rob.io.br_safe_out
+  sb.io.sb_tail_reset_idx := rob.io.sb_reset_idx
+  sb.io.rq_tail := rq.io.rq_tail
+  sb.io.flush_in := rob.io.flush.valid
 
-  rob.io.shadow_buffer_tail_in := ShadowBuffer.io.shadow_buffer_tail_out
+  rob.io.sb_tail := sb.io.sb_tail
   rob.io.br_resolve_rob_idx := br_resolve_rob_idx
 
-  io.lsu.spec_ld_free := ReleaseQueue.io.load_queue_index_out
-  io.lsu.shadow_head := ShadowBuffer.io.shadow_buffer_head_out
-  io.lsu.shadow_tail := ShadowBuffer.io.shadow_buffer_tail_out
+  io.lsu.spec_ld_free := rq.io.lq_index
+  io.lsu.shadow_head := sb.io.sb_head
+  io.lsu.shadow_tail := sb.io.sb_tail
 
 
   //-------------------------------------------------------------

@@ -49,11 +49,12 @@ class RobIo(
   val enq_uops         = Input(Vec(coreWidth, new MicroOp()))
   //amundbk
   val br_resolve_rob_idx = Input(Vec(coreWidth, Valid(UInt(log2Ceil(numRobEntries).W))))
-  val shadow_buffer_tail_in = Input(UInt(log2Ceil(maxBrCount).W))
-  val branch_instr_added = Output(Vec(coreWidth, Bool()))
+  val sb_tail = Input(UInt(log2Ceil(maxBrCount).W))
+  val br_added = Output(Vec(coreWidth, Bool()))
   val br_safe_out = Output(Vec(coreWidth, Valid(UInt(log2Ceil(maxBrCount).W))))
-  val br_mispred_shadow_buffer_idx = Output(Valid(UInt(log2Ceil(maxBrCount).W)))
+  val sb_reset_idx = Output(Valid(UInt(log2Ceil(maxBrCount).W)))
   val spec_ld_idx = Output(Vec(coreWidth, Valid(UInt(log2Ceil(numLdqEntries).W))))
+  val rob_rollback = Output(Bool())
   //amundbk
   val enq_partial_stall= Input(Bool()) // we're dispatching only a partial packet,
                                        // and stalling on the rest of it (don't
@@ -313,8 +314,9 @@ class Rob(
     io.br_safe_out(i).bits := 0.U
   }
 
-  io.br_mispred_shadow_buffer_idx.valid := false.B
-  io.br_mispred_shadow_buffer_idx.bits := 0.U
+  io.sb_reset_idx.valid := false.B
+  io.sb_reset_idx.bits := 0.U
+  io.rob_rollback := rob_state === s_rollback
   //end amundbk
 
   for (w <- 0 until coreWidth) {
@@ -332,8 +334,8 @@ class Rob(
     val rob_debug_wdata = Mem(numRobRows, UInt(xLen.W))
 
     //amundbk
-    val rob_shadow_casting_idx = Reg(Vec(numRobRows, UInt(log2Ceil(maxBrCount).W)))
-    val rob_is_shadow_caster = Reg(Vec(numRobRows, Bool()))
+    val sb_idx = Reg(Vec(numRobRows, UInt(log2Ceil(maxBrCount).W)))
+    val sb_cast = Reg(Vec(numRobRows, Bool()))
     //end amundbk
 
     //-----------------------------------------------
@@ -342,7 +344,7 @@ class Rob(
     rob_debug_inst_wmask(w) := io.enq_valids(w)
     rob_debug_inst_wdata(w) := io.enq_uops(w).debug_inst
 
-    io.branch_instr_added(w) := false.B
+    io.br_added(w) := false.B
     io.spec_ld_idx(w).valid := false.B
 
     when (io.enq_valids(w)) {
@@ -353,12 +355,12 @@ class Rob(
       rob_uop(rob_tail)       := io.enq_uops(w)
 
       //amundbk
-      rob_shadow_casting_idx(rob_tail) := WrapAdd(io.shadow_buffer_tail_in,
+      sb_idx(rob_tail) := WrapAdd(io.sb_tail,
         PopCount((0 until w).map(i => (io.enq_uops(i).is_br || io.enq_uops(i).is_jalr) && io.enq_valids(i))), maxBrCount)
-      rob_is_shadow_caster(rob_tail) := io.enq_uops(w).is_br || io.enq_uops(w).is_jalr
+      sb_cast(rob_tail) := io.enq_uops(w).is_br || io.enq_uops(w).is_jalr
 
       when(io.enq_uops(w).is_br || io.enq_uops(w).is_jalr) {
-        io.branch_instr_added(w) := true.B
+        io.br_added(w) := true.B
       }
 
       when(io.enq_uops(w).uses_ldq) {
@@ -477,8 +479,8 @@ class Rob(
       rob_exception(com_idx) := false.B
 
       //amundbk
-      rob_shadow_casting_idx(com_idx) := 0.U
-      rob_is_shadow_caster(com_idx) := false.B
+      sb_idx(com_idx) := 0.U
+      sb_cast(com_idx) := false.B
       //end amundbk
     }
 
@@ -499,7 +501,7 @@ class Rob(
     for (i <- 0 until coreWidth) {
       when(io.br_resolve_rob_idx(i).valid && GetBankIdx(io.br_resolve_rob_idx(i).bits) === w.U) {
         io.br_safe_out(i).valid := true.B
-        io.br_safe_out(i).bits := rob_shadow_casting_idx(GetRowIdx(io.br_resolve_rob_idx(i).bits))
+        io.br_safe_out(i).bits := sb_idx(GetRowIdx(io.br_resolve_rob_idx(i).bits))
       }
     }
     dontTouch(io.br_resolve_rob_idx)
@@ -507,12 +509,12 @@ class Rob(
 
 
     when(io.brupdate.b2.mispredict && GetBankIdx(io.brupdate.b2.uop.rob_idx) === w.U) {
-      io.br_mispred_shadow_buffer_idx.valid := true.B
-      io.br_mispred_shadow_buffer_idx.bits := rob_shadow_casting_idx(GetRowIdx(io.brupdate.b2.uop.rob_idx))
-      rob_is_shadow_caster(GetRowIdx(io.brupdate.b2.uop.rob_idx)) := false.B
+      io.sb_reset_idx.valid := true.B
+      io.sb_reset_idx.bits := sb_idx(GetRowIdx(io.brupdate.b2.uop.rob_idx))
+      sb_cast(GetRowIdx(io.brupdate.b2.uop.rob_idx)) := false.B
     }
 
-    dontTouch(io.br_mispred_shadow_buffer_idx)
+    dontTouch(io.sb_reset_idx)
 
     //end amundbk
 
@@ -526,7 +528,7 @@ class Rob(
       {
         rob_val(i) := false.B
         rob_uop(i.U).debug_inst := BUBBLE
-        rob_is_shadow_caster(i) := false.B
+        sb_cast(i) := false.B
       } .elsewhen (rob_val(i)) {
         // clear speculation bit even on correct speculation
         rob_uop(i).br_mask := GetNewBrMask(io.brupdate, br_mask)

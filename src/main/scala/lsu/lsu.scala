@@ -21,7 +21,7 @@
 //
 // Currently, loads are sent to memory immediately, and in parallel do an
 // associative search of the SAQ, on entering the LSU.
-// amundbk: Since they are sent immediately, we want to ensure that whatever is fired has is_speculative flag
+// amundbk: Since they are sent immediately, we want to ensure that whatever is fired has is_spec flag
 // If a hit on the SAQ
 // search, the memory request is killed on the next cycle, and if the SDQ entry
 // is valid, the store data is forwarded to the load (delayed to match the
@@ -199,7 +199,7 @@ class LDQEntry(implicit p: Parameters) extends BoomBundle()(p)
   val debug_wb_data       = UInt(xLen.W)
 
   //amundbk
-  val is_speculative      = Bool()
+  val is_spec      = Bool()
   //end amundbk
 }
 
@@ -317,7 +317,7 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
 
     //amundbk
     when(io.core.spec_ld_free(w).valid) {
-      ldq(io.core.spec_ld_free(w).bits).bits.is_speculative := false.B
+      ldq(io.core.spec_ld_free(w).bits).bits.is_spec := false.B
     }
     //end amundbk
 
@@ -337,7 +337,7 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
 
       //amundbk
       //Set this using uop
-      ldq(ld_enq_idx).bits.is_speculative := io.core.dis_uops(w).bits.br_mask =/= 0.U
+      ldq(ld_enq_idx).bits.is_spec := io.core.dis_uops(w).bits.br_mask =/= 0.U
       //end amundbk
 
       assert (ld_enq_idx === io.core.dis_uops(w).bits.ldq_idx, "[lsu] mismatch enq load tag.")
@@ -529,7 +529,7 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
   val can_fire_load_wakeup = widthMap(w =>
                              ( ldq_wakeup_e.valid                                      &&
                                ldq_wakeup_e.bits.addr.valid                            &&
-                              !ldq_wakeup_e.bits.is_speculative                        &&
+                              !ldq_wakeup_e.bits.is_spec                        &&
                               !ldq_wakeup_e.bits.succeeded                             &&
                               !ldq_wakeup_e.bits.addr_is_virtual                       &&
                               !ldq_wakeup_e.bits.executed                              &&
@@ -798,7 +798,7 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
       dmem_req(w).valid      := !exe_tlb_miss(w) && !exe_tlb_uncacheable(w)
       dmem_req(w).bits.addr  := exe_tlb_paddr(w)
       dmem_req(w).bits.uop   := exe_tlb_uop(w)
-      dmem_req(w).bits.is_speculative := ldq(exe_tlb_uop(w).ldq_idx).bits.is_speculative
+      dmem_req(w).bits.is_speculative := ldq(exe_tlb_uop(w).ldq_idx).bits.is_spec
 
       s0_executing_loads(ldq_incoming_idx(w)) := dmem_req_fire(w)
       assert(!ldq_incoming_e(w).bits.executed)
@@ -806,7 +806,7 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
       dmem_req(w).valid      := !exe_tlb_miss(w) && !exe_tlb_uncacheable(w)
       dmem_req(w).bits.addr  := exe_tlb_paddr(w)
       dmem_req(w).bits.uop   := exe_tlb_uop(w)
-      dmem_req(w).bits.is_speculative := ldq(exe_tlb_uop(w).ldq_idx).bits.is_speculative
+      dmem_req(w).bits.is_speculative := ldq(exe_tlb_uop(w).ldq_idx).bits.is_spec
 
       s0_executing_loads(ldq_retry_idx) := dmem_req_fire(w)
       assert(!ldq_retry_e.bits.executed)
@@ -828,7 +828,7 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
       dmem_req(w).valid      := true.B
       dmem_req(w).bits.addr  := ldq_wakeup_e.bits.addr.bits
       dmem_req(w).bits.uop   := ldq_wakeup_e.bits.uop
-      dmem_req(w).bits.is_speculative := ldq(ldq_wakeup_e.bits.uop.ldq_idx).bits.is_speculative
+      dmem_req(w).bits.is_speculative := ldq(ldq_wakeup_e.bits.uop.ldq_idx).bits.is_spec
 
       s0_executing_loads(ldq_wakeup_idx) := dmem_req_fire(w)
 
