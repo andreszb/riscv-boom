@@ -1395,10 +1395,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     idle_cycles := 0.U
   }
   assert (!(idle_cycles.value(13)), "Pipeline has hung.")
-
-  val no_progress_cnt_reg = RegInit(0.U(xLen.W))
-  no_progress_cnt_reg := Mux(!csr.io.csr_stall, Mux(rob.io.commit.arch_valids.reduce(_||_), 0.U, no_progress_cnt_reg + 1.U), no_progress_cnt_reg)
-  assert(no_progress_cnt_reg < 1000.U, "System is not making progress.")
+  
 
   if (usingFPU) {
     fp_pipeline.io.debug_tsc_reg := debug_tsc_reg
