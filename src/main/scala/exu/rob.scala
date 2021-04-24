@@ -369,7 +369,7 @@ class Rob(
         io.spec_ld_idx(w).bits := io.enq_uops(w).ldq_idx
       }
       when(io.enq_uops(w).uses_ldq && (io.enq_uops(w).is_br || io.enq_uops(w).is_jalr)) {
-        printf(midas.targetutils.SynthesizePrintf("LDQ and BR op detected: %s %s\n", io.enq_uops(w).uopc, io.enq_uops(w).debug_pc))
+        printf(midas.targetutils.SynthesizePrintf("LDQ and BR op detected: %x %x\n", io.enq_uops(w).uopc, io.enq_uops(w).debug_pc))
       }
       //end amundbk
 
