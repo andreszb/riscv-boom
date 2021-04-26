@@ -355,26 +355,30 @@ class Rob(
       rob_unsafe(rob_tail)    := io.enq_uops(w).unsafe
       rob_uop(rob_tail)       := io.enq_uops(w)
 
-      //amundbk
-      sb_idx(rob_tail) := WrapAdd(io.sb_tail,
-        PopCount((0 until w).map(i => (io.enq_uops(i).is_br || io.enq_uops(i).is_jalr) && io.enq_valids(i))), maxBrCount)
-      sb_cast(rob_tail) := io.enq_uops(w).is_br || io.enq_uops(w).is_jalr
 
-      when(io.enq_uops(w).is_br || io.enq_uops(w).is_jalr) {
-        io.br_added(w) := true.B
-      }
-
-      when(io.enq_uops(w).uses_ldq) {
-        io.spec_ld_idx(w).valid := true.B
-        io.spec_ld_idx(w).bits := io.enq_uops(w).ldq_idx
-      }
-      
-      assert(!(io.enq_uops(w).uses_ldq && (io.enq_uops(w).is_br || io.enq_uops(w).is_jalr)), "BR uop, but uses ldq. Not permitted")
-      //end amundbk
 
       rob_exception(rob_tail) := io.enq_uops(w).exception
       rob_predicated(rob_tail)   := false.B
       rob_fflags(rob_tail)    := 0.U
+
+      //amundbk
+      when(!io.enq_uops(w).exception) {
+        sb_idx(rob_tail) := WrapAdd(io.sb_tail,
+          PopCount((0 until w).map(i => (io.enq_uops(i).is_br || io.enq_uops(i).is_jalr) && io.enq_valids(i))), maxBrCount)
+        sb_cast(rob_tail) := io.enq_uops(w).is_br || io.enq_uops(w).is_jalr
+
+        when(io.enq_uops(w).is_br || io.enq_uops(w).is_jalr) {
+          io.br_added(w) := true.B
+        }
+
+        when(io.enq_uops(w).uses_ldq) {
+          io.spec_ld_idx(w).valid := true.B
+          io.spec_ld_idx(w).bits := io.enq_uops(w).ldq_idx
+        }
+
+        assert(!(io.enq_uops(w).uses_ldq && (io.enq_uops(w).is_br || io.enq_uops(w).is_jalr)), "BR uop, but uses ldq. Not permitted")
+      }
+      //end amundbk
 
 
       assert (rob_val(rob_tail) === false.B, "[rob] overwriting a valid entry.")
