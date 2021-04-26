@@ -105,7 +105,7 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
   }
 
   //Flush kills all live instructions, so wait 4 cycles before caring about new signals
-  when(io.flush_in || recent_flush.asBool()) {
+  when(io.flush_in || recent_flush.orR()) {
     sb_head := 0.U
     sb_tail := 0.U
 

@@ -137,7 +137,7 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
   }
 
   //Reset on a flush and ignore signals for 4 cycles
-  when(io.flush_in || recent_flush.asBool()) {
+  when(io.flush_in || recent_flush.orR()) {
     rq_head := 0.U
     rq_tail := 0.U
     shadow_tag_list(0).valid := false.B
