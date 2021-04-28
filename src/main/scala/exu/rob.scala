@@ -364,7 +364,7 @@ class Rob(
       //amundbk
       when(!io.enq_uops(w).exception) {
         sb_idx(rob_tail) := WrapAdd(io.sb_tail,
-          PopCount((0 until w).map(i => (io.enq_uops(i).is_br || io.enq_uops(i).is_jalr) && io.enq_valids(i))), maxBrCount)
+          PopCount((0 until w).map(i => (io.enq_uops(i).is_br || io.enq_uops(i).is_jalr) && (io.enq_valids(i) && !io.enq_uops(i).exception))), maxBrCount)
         sb_cast(rob_tail) := io.enq_uops(w).is_br || io.enq_uops(w).is_jalr
 
         when(io.enq_uops(w).is_br || io.enq_uops(w).is_jalr) {
@@ -516,7 +516,7 @@ class Rob(
 
 
     when(io.brupdate.b2.mispredict && GetBankIdx(io.brupdate.b2.uop.rob_idx) === w.U) {
-      io.sb_reset_idx.valid := true.B
+      io.sb_reset_idx.valid := !rob_uop(GetRowIdx(io.brupdate.b2.uop.rob_idx)).exception
       io.sb_reset_idx.bits := sb_idx(GetRowIdx(io.brupdate.b2.uop.rob_idx))
       sb_cast(GetRowIdx(io.brupdate.b2.uop.rob_idx)) := false.B
     }
