@@ -104,6 +104,9 @@ class WithNSmallBooms(n: Int = 1, overrideIdOffset: Option[Int] = None) extends 
               numLdqEntries = 8,
               numStqEntries = 8,
               maxBrCount = 8,
+              //amundbk
+              numSbEntries = 16,
+              numRqEntries = 16,
               numFetchBufferEntries = 8,
               ftq = FtqParameters(nEntries=16),
               nPerfCounters = 2,
@@ -151,6 +154,9 @@ class WithNMediumBooms(n: Int = 1, overrideIdOffset: Option[Int] = None) extends
               numLdqEntries = 16,
               numStqEntries = 16,
               maxBrCount = 12,
+              //amundbk
+              numSbEntries = 24,
+              numRqEntries = 32,
               numFetchBufferEntries = 16,
               ftq = FtqParameters(nEntries=32),
               nPerfCounters = 6,
@@ -198,6 +204,9 @@ class WithNLargeBooms(n: Int = 1, overrideIdOffset: Option[Int] = None) extends 
               numLdqEntries = 24,
               numStqEntries = 24,
               maxBrCount = 16,
+              //amundbk
+              numSbEntries = 32,
+              numRqEntries = 48,
               numFetchBufferEntries = 24,
               ftq = FtqParameters(nEntries=32),
               fpu = Some(freechips.rocketchip.tile.FPUParams(sfmaLatency=4, dfmaLatency=4, divSqrt=true))
@@ -245,6 +254,9 @@ class WithNMegaBooms(n: Int = 1, overrideIdOffset: Option[Int] = None) extends C
               numLdqEntries = 32,
               numStqEntries = 32,
               maxBrCount = 20,
+              //amundbk
+              numSbEntries = 40,
+              numRqEntries = 64,
               numFetchBufferEntries = 32,
               enablePrefetching = true,
               ftq = FtqParameters(nEntries=40),
@@ -292,6 +304,9 @@ class WithNGigaBooms(n: Int = 1, overrideIdOffset: Option[Int] = None) extends C
               numLdqEntries = 32,
               numStqEntries = 32,
               maxBrCount = 20,
+              //amundbk
+              numSbEntries = 40,
+              numRqEntries = 64,
               numFetchBufferEntries = 32,
               enablePrefetching = true,
               numDCacheBanks = 1,

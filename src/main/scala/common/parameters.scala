@@ -66,6 +66,10 @@ case class BoomCoreParams(
   numRasEntries: Int = 32,
   enableRasTopRepair: Boolean = true,
 
+  /* shadow buffer */
+  numSbEntries: Int = 4,
+  numRqEntries: Int = 16,
+
   /* more stuff */
   useCompressed: Boolean = true,
   useFetchMonitor: Boolean = true,
@@ -169,6 +173,10 @@ trait HasBoomCoreParameters extends freechips.rocketchip.tile.HasCoreParameters
 
   val numIntPhysRegs= boomParams.numIntPhysRegisters // size of the integer physical register file
   val numFpPhysRegs = boomParams.numFpPhysRegisters  // size of the floating point physical register file
+
+  //Shadow Buffer Sizes
+  val numSbEntries = boomParams.numSbEntries
+  val numRqEntries = boomParams.numRqEntries
 
   //************************************
   // Functional Units

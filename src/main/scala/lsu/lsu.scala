@@ -529,7 +529,7 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
   val can_fire_load_wakeup = widthMap(w =>
                              ( ldq_wakeup_e.valid                                      &&
                                ldq_wakeup_e.bits.addr.valid                            &&
-                              !ldq_wakeup_e.bits.is_spec                        &&
+                              !ldq_wakeup_e.bits.is_spec                               &&
                               !ldq_wakeup_e.bits.succeeded                             &&
                               !ldq_wakeup_e.bits.addr_is_virtual                       &&
                               !ldq_wakeup_e.bits.executed                              &&
@@ -1461,6 +1461,7 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
       {
         ldq(i).valid           := false.B
         ldq(i).bits.addr.valid := false.B
+        ldq(i).bits.is_spec
       }
     }
   }
@@ -1668,6 +1669,7 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
       ldq(i).valid           := false.B
       ldq(i).bits.addr.valid := false.B
       ldq(i).bits.executed   := false.B
+      ldq(i).bits.is_spec    := false.B
     }
   }
 

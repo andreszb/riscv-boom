@@ -724,13 +724,13 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     IsElementBetweenValues(
     sb.io.sb_head,
     sb.io.sb_tail,
-    WrapAdd(sb.io.sb_tail, br_sum, maxBrCount))
+    WrapAdd(sb.io.sb_tail, br_sum, numSbEntries))
   //Will this overwrite a tag in 2 cycles in ReleaseQueue?
   val release_queue_tag_overwrite = rq.io.leading_shadow_tag.valid &&
     IsElementBetweenValues(
       sb.io.sb_head,
       sb.io.sb_tail,
-      WrapAdd(rq.io.leading_shadow_tag.bits, br_sum, maxBrCount))
+      WrapAdd(rq.io.leading_shadow_tag.bits, br_sum, numSbEntries))
 
   dontTouch(shadow_buffer_full_stall)
   //end amundbk

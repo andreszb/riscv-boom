@@ -49,10 +49,10 @@ class RobIo(
   val enq_uops         = Input(Vec(coreWidth, new MicroOp()))
   //amundbk
   val br_resolve_rob_idx = Input(Vec(coreWidth, Valid(UInt(log2Ceil(numRobEntries).W))))
-  val sb_tail = Input(UInt(log2Ceil(maxBrCount).W))
+  val sb_tail = Input(UInt(log2Ceil(numSbEntries).W))
   val br_added = Output(Vec(coreWidth, Bool()))
-  val br_safe_out = Output(Vec(coreWidth, Valid(UInt(log2Ceil(maxBrCount).W))))
-  val sb_reset_idx = Output(Valid(UInt(log2Ceil(maxBrCount).W)))
+  val br_safe_out = Output(Vec(coreWidth, Valid(UInt(log2Ceil(numSbEntries).W))))
+  val sb_reset_idx = Output(Valid(UInt(log2Ceil(numSbEntries).W)))
   val spec_ld_idx = Output(Vec(coreWidth, Valid(UInt(log2Ceil(numLdqEntries).W))))
   //TODO: Use this
   val rob_rollback = Output(Bool())
@@ -335,7 +335,7 @@ class Rob(
     val rob_debug_wdata = Mem(numRobRows, UInt(xLen.W))
 
     //amundbk
-    val sb_idx = Reg(Vec(numRobRows, UInt(log2Ceil(maxBrCount).W)))
+    val sb_idx = Reg(Vec(numRobRows, UInt(log2Ceil(numSbEntries).W)))
     val sb_cast = Reg(Vec(numRobRows, Bool()))
     //end amundbk
 
@@ -364,7 +364,7 @@ class Rob(
       //amundbk
       when(!io.enq_uops(w).exception) {
         sb_idx(rob_tail) := WrapAdd(io.sb_tail,
-          PopCount((0 until w).map(i => (io.enq_uops(i).is_br || io.enq_uops(i).is_jalr) && (io.enq_valids(i) && !io.enq_uops(i).exception))), maxBrCount)
+          PopCount((0 until w).map(i => (io.enq_uops(i).is_br || io.enq_uops(i).is_jalr) && (io.enq_valids(i) && !io.enq_uops(i).exception))), numSbEntries)
         sb_cast(rob_tail) := io.enq_uops(w).is_br || io.enq_uops(w).is_jalr
 
         when(io.enq_uops(w).is_br || io.enq_uops(w).is_jalr) {

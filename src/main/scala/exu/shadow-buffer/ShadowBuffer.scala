@@ -11,16 +11,16 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
 
   val io = new Bundle {
     val flush_in = Input(Bool())
-    val sb_tail_reset_idx = Input(Valid(UInt(log2Ceil(maxBrCount).W)))
-    val rq_tail = Input(UInt(log2Ceil(numLdqEntries).W))
-    val rq_tail_reset_idx = Output(Valid(UInt(log2Ceil(numLdqEntries).W)))
+    val sb_tail_reset_idx = Input(Valid(UInt(log2Ceil(numSbEntries).W)))
+    val rq_tail = Input(UInt(log2Ceil(numRqEntries).W))
+    val rq_tail_reset_idx = Output(Valid(UInt(log2Ceil(numRqEntries).W)))
 
     val new_branch_op = Input(Vec(coreWidth, Bool()))
     val new_ldq_op = Input(Vec(coreWidth, Bool()))
-    val br_safe_in = Input(Vec(coreWidth, Valid(UInt(log2Ceil(maxBrCount).W))))
+    val br_safe_in = Input(Vec(coreWidth, Valid(UInt(log2Ceil(numSbEntries).W))))
 
-    val sb_head = Output(UInt(log2Ceil(maxBrCount).W))
-    val sb_tail = Output(UInt(log2Ceil(maxBrCount).W))
+    val sb_head = Output(UInt(log2Ceil(numSbEntries).W))
+    val sb_tail = Output(UInt(log2Ceil(numSbEntries).W))
     val sb_empty = Output(Bool())
   }
 
@@ -29,11 +29,11 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
   }
 
   //Remember: Head is oldest speculative op, Tail is newest speculative op
-  val sb_head = RegInit(UInt(log2Ceil(maxBrCount).W), 0.U)
-  val sb_tail = RegInit(UInt(log2Ceil(maxBrCount).W), 0.U)
+  val sb_head = RegInit(UInt(log2Ceil(numSbEntries).W), 0.U)
+  val sb_tail = RegInit(UInt(log2Ceil(numSbEntries).W), 0.U)
 
-  val sb = Reg(Vec(maxBrCount, Bool()))
-  val rq_reset_idx = Reg(Vec(maxBrCount, UInt(log2Ceil(numLdqEntries).W)))
+  val sb = Reg(Vec(numSbEntries, Bool()))
+  val rq_reset_idx = Reg(Vec(numSbEntries, UInt(log2Ceil(numRqEntries).W)))
 
   val head_is_tail = sb_head === sb_tail
   val sb_empty = PopCount(sb) === 0.U
@@ -44,14 +44,14 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
   io.sb_tail := sb_tail
   io.sb_empty := sb_empty
 
-  sb_tail := WrapAdd(sb_tail, PopCount(io.new_branch_op), maxBrCount)
+  sb_tail := WrapAdd(sb_tail, PopCount(io.new_branch_op), numSbEntries)
 
   val sb_is_false = Wire(Vec(coreWidth, Bool()))
   val head_is_not_tail = Wire(Vec(coreWidth, Bool()))
   val sb_valid_inc = WireInit(VecInit(Seq.fill(coreWidth)(false.B)))
 
   for (w <- 0 until coreWidth) {
-    sb_is_false(w) := ! sb(WrapAdd(sb_head, w.U, maxBrCount))
+    sb_is_false(w) := ! sb(WrapAdd(sb_head, w.U, numSbEntries))
   }
 
   //Increment can only hit head at 0 steps, if empty, so check if it is
@@ -60,15 +60,15 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
   sb_valid_inc(0) := (sb_is_false(0) && head_is_not_tail(0))
 
   for (w <- 1 until coreWidth) {
-    head_is_not_tail(w) := WrapAdd(sb_head, w.U, maxBrCount) =/= sb_tail
+    head_is_not_tail(w) := WrapAdd(sb_head, w.U, numSbEntries) =/= sb_tail
     sb_valid_inc(w) := (sb_is_false(w) && head_is_not_tail(w)) && sb_valid_inc(w-1)
   }
 
   val incrementLevel = MuxCase(coreWidth.U, (0 until coreWidth).map(e => sb_valid_inc(e) -> e.U))
-  sb_head := WrapAdd(sb_head, PopCount(sb_valid_inc), maxBrCount)
+  sb_head := WrapAdd(sb_head, PopCount(sb_valid_inc), numSbEntries)
 
   val br_before = WireInit(VecInit(Seq.fill(coreWidth + 1)(false.B)))
-  val masked_ldq = WireInit(VecInit(Seq.fill(coreWidth+1)(0.U(log2Ceil(numLdqEntries).W))))
+  val masked_ldq = WireInit(VecInit(Seq.fill(coreWidth+1)(0.U(log2Ceil(numRqEntries).W))))
 
   for (w <- 0 until coreWidth) {
     when(io.new_branch_op(w) || br_before(w)) {
@@ -81,11 +81,11 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
 
   for (w <- 0 until coreWidth) {
     when(io.new_branch_op(w)) {
-      sb(WrapAdd(sb_tail, PopCount(io.new_branch_op.slice(0, w)), maxBrCount)) := true.B
+      sb(WrapAdd(sb_tail, PopCount(io.new_branch_op.slice(0, w)), numSbEntries)) := true.B
       when(!sb_empty) {
-        rq_reset_idx(WrapAdd(sb_tail, PopCount(io.new_branch_op.slice(0, w)), maxBrCount)) := WrapAdd(io.rq_tail, PopCount(io.new_ldq_op.slice(0, w)), numLdqEntries)
+        rq_reset_idx(WrapAdd(sb_tail, PopCount(io.new_branch_op.slice(0, w)), numSbEntries)) := WrapAdd(io.rq_tail, PopCount(io.new_ldq_op.slice(0, w)), numRqEntries)
       }.otherwise {
-        rq_reset_idx(WrapAdd(sb_tail, PopCount(io.new_branch_op.slice(0, w)), maxBrCount)) := WrapAdd(io.rq_tail, masked_ldq(w) , numLdqEntries)
+        rq_reset_idx(WrapAdd(sb_tail, PopCount(io.new_branch_op.slice(0, w)), numSbEntries)) := WrapAdd(io.rq_tail, masked_ldq(w) , numRqEntries)
       }
     }
 
@@ -113,7 +113,7 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
     io.rq_tail_reset_idx.valid := false.B
 
     //TODO: Remove this
-    for (w <- 0 until maxBrCount) {
+    for (w <- 0 until numSbEntries) {
       sb(w) := false.B
       rq_reset_idx(w) := 0.U
     }
@@ -123,7 +123,7 @@ class ShadowBuffer(implicit p: Parameters) extends BoomModule {
     sb(io.sb_tail_reset_idx.bits) := false.B
     rq_reset_idx(io.sb_tail_reset_idx.bits) := 0.U
 
-    for (w <- 0 until maxBrCount) {
+    for (w <- 0 until numSbEntries) {
       when(!IsIndexBetweenHeadAndTail(w.U, sb_head, io.sb_tail_reset_idx.bits)) {
         sb(w) := false.B
         rq_reset_idx(w) := 0.U
