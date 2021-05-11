@@ -15,20 +15,20 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
     val flush_in = Input(Bool())
     val rq_tail_reset_idx = Input(Valid(UInt(log2Ceil(numRqEntries).W)))
 
-    val sb_head = Input(UInt(log2Ceil(maxBrCount).W))
-    val sb_tail = Input(UInt(log2Ceil(maxBrCount).W))
+    val sb_head = Input(UInt(log2Ceil(numSbEntries).W))
+    val sb_tail = Input(UInt(log2Ceil(numSbEntries).W))
     val sb_empty = Input(Bool())
 
     val lq_index = Output(Vec(coreWidth, Valid(UInt())))
     val rq_tail = Output(UInt(log2Ceil(numRqEntries).W))
-    val leading_shadow_tag = Output(Valid(UInt(log2Ceil(maxBrCount).W)))
+    val leading_shadow_tag = Output(Valid(UInt(log2Ceil(numRqEntries).W)))
   }
 
   val index_check = Wire(Vec(coreWidth, Bool()))
   val same_check = Wire(Vec(coreWidth, Bool()))
   val all_valid = Wire(Vec(coreWidth, Bool()))
 
-  val shadow_tag_list = Reg(Vec(numRqEntries, Valid(UInt(log2Ceil(maxBrCount).W))))
+  val shadow_tag_list = Reg(Vec(numRqEntries, Valid(UInt(log2Ceil(numSbEntries).W))))
   val ldq_idx_list = Reg(Vec(numRqEntries, UInt(log2Ceil(numLdqEntries).W)))
 
   val rq_tail = RegInit(UInt(log2Ceil(numRqEntries).W), 0.U)
@@ -96,7 +96,7 @@ class ReleaseQueue(implicit p: Parameters) extends BoomModule {
   val rq_load_offset = Wire(Vec(coreWidth, UInt(log2Ceil(numRqEntries).W)))
 
   for (w <- 0 until coreWidth) {
-    sb_branch_offset(w) := WrapDec(WrapAdd(io.sb_tail, PopCount(io.new_branch_op.slice(0, w)), maxBrCount), maxBrCount)
+    sb_branch_offset(w) := WrapDec(WrapAdd(io.sb_tail, PopCount(io.new_branch_op.slice(0, w)), numSbEntries), numSbEntries)
     rq_load_offset(w) := WrapAdd(rq_tail, PopCount(io.new_ldq_idx.slice(0, w).map(_.valid)), numRqEntries)
   }
 
