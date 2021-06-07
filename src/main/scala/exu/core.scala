@@ -140,7 +140,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
                            numFpWakeupPorts))
   //amundbk
   val sb     = Module(new ShadowBuffer())
-  val rq     = Module(new ReleaseQueue())
+  val rq     = Module(new   ReleaseQueue())
 
 
   sb.io.new_branch_op := rob.io.br_added
@@ -731,8 +731,6 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
       sb.io.sb_head,
       sb.io.sb_tail,
       WrapAdd(rq.io.leading_shadow_tag.bits, br_sum, numSbEntries))
-
-  dontTouch(shadow_buffer_full_stall)
   //end amundbk
 
   val dis_hazards = (0 until coreWidth).map(w =>
