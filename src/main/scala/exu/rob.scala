@@ -24,14 +24,11 @@
 package boom.exu
 
 import scala.math.ceil
-
 import chisel3._
 import chisel3.util._
 import chisel3.experimental.chiselName
-
 import freechips.rocketchip.config.Parameters
 import freechips.rocketchip.util.Str
-
 import boom.common._
 import boom.util._
 
@@ -108,19 +105,22 @@ class RobIo(
   // Stall the frontend if we know we will redirect the PC
   val flush_frontend = Output(Bool())
 
-
   val debug_tsc = Input(UInt(xLen.W))
 }
+
+
 
 /**
  * Bundle to send commit signals across processor
  */
 class CommitSignals(implicit p: Parameters) extends BoomBundle
 {
-  val valids      = Vec(retireWidth, Bool()) // These instructions may not correspond to an architecturally executed insn
-  val arch_valids = Vec(retireWidth, Bool())
-  val uops        = Vec(retireWidth, new MicroOp())
-  val fflags      = Valid(UInt(5.W))
+  val valids        = Vec(retireWidth, Bool()) // These instructions may not correspond to an architecturally executed insn
+  val arch_valids   = Vec(retireWidth, Bool())
+  val uops          = Vec(retireWidth, new MicroOp())
+  val fflags        = Valid(UInt(5.W))
+  val instr_valids  = Vec(retireWidth, Bool()) // These instructions are valid
+  val misspeculated = Vec(retireWidth, Bool()) // These instructions caused a mispeculation
 
   // These come a cycle later
   val debug_insts = Vec(retireWidth, UInt(32.W))
@@ -300,6 +300,7 @@ class Rob(
   rob_debug_inst_mem.write(rob_tail, rob_debug_inst_wdata, rob_debug_inst_wmask)
   val rob_debug_inst_rdata = rob_debug_inst_mem.read(rob_head, will_commit.reduce(_||_))
 
+
   for (w <- 0 until coreWidth) {
     def MatchBank(bank_idx: UInt): Bool = (bank_idx === w.U)
 
@@ -311,8 +312,10 @@ class Rob(
     val rob_exception = Reg(Vec(numRobRows, Bool()))
     val rob_predicated = Reg(Vec(numRobRows, Bool())) // Was this instruction predicated out?
     val rob_fflags    = Mem(numRobRows, Bits(freechips.rocketchip.tile.FPConstants.FLAGS_SZ.W))
+    val rob_misspeculated = Reg(Vec(numRobRows, Bool()))
 
     val rob_debug_wdata = Mem(numRobRows, UInt(xLen.W))
+
 
     //-----------------------------------------------
     // Dispatch: Add Entry to ROB
@@ -329,6 +332,7 @@ class Rob(
       rob_exception(rob_tail) := io.enq_uops(w).exception
       rob_predicated(rob_tail)   := false.B
       rob_fflags(rob_tail)    := 0.U
+      rob_misspeculated(rob_tail) := false.B
 
       assert (rob_val(rob_tail) === false.B, "[rob] overwriting a valid entry.")
       assert ((io.enq_uops(w).rob_idx >> log2Ceil(coreWidth)) === rob_tail)
@@ -403,12 +407,13 @@ class Rob(
     // Can this instruction commit? (the check for exceptions/rob_state happens later).
     can_commit(w) := rob_val(rob_head) && !(rob_bsy(rob_head)) && !io.csr_stall
 
-
     // use the same "com_uop" for both rollback AND commit
     // Perform Commit
     io.commit.valids(w) := will_commit(w)
     io.commit.arch_valids(w) := will_commit(w) && !rob_predicated(com_idx)
     io.commit.uops(w)   := rob_uop(com_idx)
+    io.commit.instr_valids(w)   := rob_val(com_idx)
+    io.commit.misspeculated(w) := rob_misspeculated(com_idx)
     io.commit.debug_insts(w) := rob_debug_inst_rdata(w)
 
     // We unbusy branches in b1, but its easier to mark the taken/provider src in b2,
@@ -418,6 +423,7 @@ class Rob(
       GetRowIdx(io.brupdate.b2.uop.rob_idx) === com_idx) {
       io.commit.uops(w).debug_fsrc := BSRC_C
       io.commit.uops(w).taken      := io.brupdate.b2.taken
+      io.commit.misspeculated(w)   := true.B
     }
 
 
@@ -468,6 +474,7 @@ class Rob(
       MatchBank(GetBankIdx(io.brupdate.b2.uop.rob_idx))) {
       rob_uop(GetRowIdx(io.brupdate.b2.uop.rob_idx)).debug_fsrc := BSRC_C
       rob_uop(GetRowIdx(io.brupdate.b2.uop.rob_idx)).taken      := io.brupdate.b2.taken
+      rob_misspeculated(GetRowIdx(io.brupdate.b2.uop.rob_idx)) := true.B
     }
 
     // -----------------------------------------------
