@@ -569,6 +569,19 @@ class BoomMSHRFile(implicit edge: TLEdgeOut, p: Parameters) extends BoomModule()
   val lb_read_arb  = Module(new Arbiter(new LineBufferReadReq, cfg.nMSHRs))
   val lb_write_arb = Module(new Arbiter(new LineBufferWriteReq, cfg.nMSHRs))
 
+  lb_read_arb.io.out.ready  := true.B
+  lb_write_arb.io.out.ready := true.B
+
+  val lb_read_data = WireInit(0.U(encRowBits.W))
+  when (lb_write_arb.io.out.fire()) {
+    lb.write(lb_write_arb.io.out.bits.lb_addr, lb_write_arb.io.out.bits.data)
+  }
+  when (lb_read_arb.io.out.fire()) {
+    lb_read_data := lb.read(lb_read_arb.io.out.bits.lb_addr)
+  }
+
+  /*
+  // Linebuffer write blocks read (old implementation)
   lb_read_arb.io.out.ready  := false.B
   lb_write_arb.io.out.ready := true.B
 
@@ -581,6 +594,8 @@ class BoomMSHRFile(implicit edge: TLEdgeOut, p: Parameters) extends BoomModule()
       lb_read_data := lb.read(lb_read_arb.io.out.bits.lb_addr)
     }
   }
+  */
+
   def widthMap[T <: Data](f: Int => T) = VecInit((0 until memWidth).map(f))
 
 
