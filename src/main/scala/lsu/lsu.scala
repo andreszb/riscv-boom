@@ -150,6 +150,11 @@ class LSUCoreIO(implicit p: Parameters) extends BoomBundle()(p)
 
   val tsc_reg     = Input(UInt())
 
+  //STT
+  val ldq_taint_free = Output(Valid(UInt(ldqAddrSz.W)))
+
+  val ldq_flipped = Output(Bool())
+
   val perf        = Output(new Bundle {
     val acquire = Bool()
     val release = Bool()
@@ -185,6 +190,13 @@ class LDQEntry(implicit p: Parameters) extends BoomBundle()(p)
   val forward_stq_idx     = UInt(stqAddrSz.W) // Which store did we get the store-load forward from?
 
   val debug_wb_data       = UInt(xLen.W)
+
+  //Tracking
+  val d_shadow_mask       = UInt(numStqEntries.W)
+  //This is just a duplicate for br_mask
+  val c_shadow_mask       = UInt(maxBrCount.W)
+  //STT
+  val reg_reset_mask = UInt(32.W)
 }
 
 class STQEntry(implicit p: Parameters) extends BoomBundle()(p)
@@ -209,6 +221,7 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
   val ldq = Reg(Vec(numLdqEntries, Valid(new LDQEntry)))
   val stq = Reg(Vec(numStqEntries, Valid(new STQEntry)))
 
+  val ldq_flipped = RegInit(false.B)
 
 
   val ldq_head         = Reg(UInt(ldqAddrSz.W))
@@ -343,6 +356,12 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
 
   ldq_tail := ld_enq_idx
   stq_tail := st_enq_idx
+  
+  when (ld_enq_idx < ldq_tail) {
+    ldq_flipped := ! ldq_flipped
+  }
+
+  io.core.ldq_flipped := ldq_flipped
 
   io.dmem.force_order   := io.core.fence_dmem
   io.core.fencei_rdy    := !stq_nonempty && io.dmem.ordered

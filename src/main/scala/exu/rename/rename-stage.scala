@@ -86,6 +86,9 @@ abstract class AbstractRenameStage(
 
     val debug_rob_empty = Input(Bool())
     val debug = Output(new DebugRenameStageIO(numPhysRegs))
+
+    // STT
+    val ldq_flipped = Input(Bool())
   })
 
   def BypassAllocations(uop: MicroOp, older_uops: Seq[MicroOp], alloc_reqs: Seq[Bool]): MicroOp
@@ -224,6 +227,11 @@ class RenameStage(
     numWbPorts,
     false,
     float))
+  // STT
+  val taint_tracker = Module(new TaintTracker(
+    plWidth,
+    32
+  ))
 
 
 
@@ -269,6 +277,19 @@ class RenameStage(
   maptable.io.brupdate      := io.brupdate
   maptable.io.rollback    := io.rollback
 
+  //STT 
+  val ren1_br_tags = Wire(Vec(plWidth, Valid(UInt(brTagSz.W))))
+
+  for (w <- 0 until plWidth) {
+    taint_tracker.io.ren1_uops(w) := ren1_uops(w)
+    ren1_br_tags(w).valid := ren1_uops(w).allocate_brtag
+    ren1_br_tags(w).bits := ren1_uops(w).br_tag
+  }
+  taint_tracker.io.ldq_flipped := io.ldq_flipped
+  taint_tracker.io.ren_br_tags := ren1_br_tags
+  taint_tracker.io.brupdate := io.brupdate
+  taint_tracker.io.rollback := io.rollback
+
   // Maptable outputs.
   for ((uop, w) <- ren1_uops.zipWithIndex) {
     val mappings = maptable.io.map_resps(w)
@@ -277,6 +298,8 @@ class RenameStage(
     uop.prs2       := mappings.prs2
     uop.prs3       := mappings.prs3 // only FP has 3rd operand
     uop.stale_pdst := mappings.stale_pdst
+    //STT
+    uop.yrot := taint_tracker.io.uops_yrot(w)
   }
 
 

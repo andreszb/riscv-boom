@@ -75,6 +75,8 @@ class MicroOp(implicit p: Parameters) extends BoomBundle
                                               // then translate and sign-extend in execute
   val csr_addr         = UInt(CSR_ADDR_SZ.W)    // only used for critical path reasons in Exe
   val rob_idx          = UInt(robAddrSz.W)
+  //Tracking
+  val ldq_flipped      = Bool()
   val ldq_idx          = UInt(ldqAddrSz.W)
   val stq_idx          = UInt(stqAddrSz.W)
   val rxq_idx          = UInt(log2Ceil(numRxqEntries).W)
@@ -141,6 +143,9 @@ class MicroOp(implicit p: Parameters) extends BoomBundle
   // What prediction structure provides the prediction TO this op
   val debug_tsrc       = UInt(BSRC_SZ.W)
 
+  //STT
+  val yrot             = UInt(ldqAddrSz.W)
+  
   // Do we allocate a branch tag for this?
   // SFB branches don't get a mask, they get a predicate bit
   def allocate_brtag   = (is_br && !is_sfb) || is_jalr

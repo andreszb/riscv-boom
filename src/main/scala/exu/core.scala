@@ -99,6 +99,10 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   val pred_rename_stage = Module(new PredRenameStage(coreWidth, ftqSz, 1))
   val rename_stages    = if (usingFPU) Seq(rename_stage, fp_rename_stage, pred_rename_stage) else Seq(rename_stage, pred_rename_stage)
 
+  rename_stage.io.ldq_flipped := io.lsu.ldq_flipped
+  fp_rename_stage.io.ldq_flipped := io.lsu.ldq_flipped
+  pred_rename_stage.io.ldq_flipped := io.lsu.ldq_flipped
+
   val mem_iss_unit     = Module(new IssueUnitCollapsing(memIssueParam, numIntIssueWakeupPorts))
   mem_iss_unit.suggestName("mem_issue_unit")
   val int_iss_unit     = Module(new IssueUnitCollapsing(intIssueParam, numIntIssueWakeupPorts))

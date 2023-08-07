@@ -45,6 +45,7 @@ class IssueSlotIO(val numWakeupPorts: Int)(implicit p: Parameters) extends BoomB
   val wakeup_ports  = Flipped(Vec(numWakeupPorts, Valid(new IqWakeup(maxPregSz))))
   val pred_wakeup_port = Flipped(Valid(UInt(log2Ceil(ftqSz).W)))
   val spec_ld_wakeup = Flipped(Vec(memWidth, Valid(UInt(width=maxPregSz.W))))
+  //val taint_wakeup_port = Flipped(Vec(numTaintWakeupPorts, Valid(new TaintWakeup(maxPregSz))))
   val in_uop        = Flipped(Valid(new MicroOp())) // if valid, this WILL overwrite an entry!
   val out_uop   = Output(new MicroOp()) // the updated slot uop; will be shifted upwards in a collasping queue.
   val uop           = Output(new MicroOp()) // the current Slot's uop. Sent down the pipeline when issued.
@@ -54,6 +55,7 @@ class IssueSlotIO(val numWakeupPorts: Int)(implicit p: Parameters) extends BoomB
       val p1 = Bool()
       val p2 = Bool()
       val p3 = Bool()
+      //val yrot_r = Bool()
       val ppred = Bool()
       val state = UInt(width=2.W)
     }
@@ -88,6 +90,8 @@ class IssueSlot(val numWakeupPorts: Int)(implicit p: Parameters)
   val p2    = RegInit(false.B)
   val p3    = RegInit(false.B)
   val ppred = RegInit(false.B)
+  // Is yrot broadcast as ready
+  val yrot_r= RegInit(false.B)
 
   // Poison if woken up by speculative load.
   // Poison lasts 1 cycle (as ldMiss will come on the next cycle).
@@ -164,6 +168,8 @@ class IssueSlot(val numWakeupPorts: Int)(implicit p: Parameters)
   val next_p2 = WireInit(p2)
   val next_p3 = WireInit(p3)
   val next_ppred = WireInit(ppred)
+  // STT
+  val next_yrot_r = WireInit(yrot_r)
 
   when (io.in_uop.valid) {
     p1 := !(io.in_uop.bits.prs1_busy)
@@ -195,6 +201,15 @@ class IssueSlot(val numWakeupPorts: Int)(implicit p: Parameters)
       p3 := true.B
     }
   }
+
+  // // STT
+  // for (i <- 0 until numTaintWakeupPorts) {
+  //   when (io.taint_wakeup_port(i).valid &&
+  //         (io.taint_wakeup_port(i).bits.ldq_idx === next_uop.yrot)) {
+  //     yrot_r := true.B
+  //   }
+  // }
+  
   when (io.pred_wakeup_port.valid && io.pred_wakeup_port.bits === next_uop.ppred) {
     ppred := true.B
   }
