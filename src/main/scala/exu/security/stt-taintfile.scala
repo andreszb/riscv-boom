@@ -32,6 +32,7 @@ class TaintTracker(
 
     val io = IO(new Bundle {
         val ren1_uops = Input(Vec(plWidth, new MicroOp()))
+        val ren1_fire = Input(Vec(plWidth, Bool()))
 
         val ldq_flipped = Input(Bool())
 
@@ -44,7 +45,7 @@ class TaintTracker(
 
     })
 
-    val rtype = RT_FLT
+    val rtype = RT_FIX
 
     def FindAndCompareTaints(
             uop: MicroOp, 
@@ -116,7 +117,11 @@ class TaintTracker(
         
 
         when(!any_valid) {
-            new TaintEntry()
+            val f_entry = Wire(new TaintEntry())
+            f_entry.valid := false.B
+            f_entry.ldq_idx := 0.U
+            f_entry.age := 0.U
+            f_entry.flipped_age := false.B
         }.elsewhen(t1_oldest) {
             t1
         }.elsewhen(t2_oldest) {
@@ -127,8 +132,10 @@ class TaintTracker(
     }
 
     val ren1_uops = Wire(Vec(plWidth, new MicroOp()))
+    val ren1_fire = Wire(Vec(plWidth, new Bool()))
 
     ren1_uops := io.ren1_uops
+    ren1_fire := io.ren1_fire
 
     val taint_file = Reg(Vec(numLregs, new TaintEntry()))
 
@@ -150,20 +157,23 @@ class TaintTracker(
         
         ren1_uops(i).yrot := t_ent.ldq_idx
 
-        when(ren1_uops(i).ctrl.is_load) {
+        when(ren1_fire(i) && ren1_uops(i).uses_ldq) {
             t_ent.ldq_idx := ren1_uops(i).ldq_idx
             t_ent.age := ren1_uops(i).ldq_idx
-            t_ent.valid := True.B
+            t_ent.valid := true.B
+            new_taint_entries(i) := t_ent
+        }. elsewhen(ren1_fire(i)) {
             new_taint_entries(i) := t_ent
         }. otherwise {
+            t_ent.valid := false.B
             new_taint_entries(i) := t_ent
         }
         
     }
 
     for (i <- 0 until numLregs) {
-        val remapped_entry = (ren1_uops.map(uop => uop.ldst_val && uop.dst_rtype === rtype) zip new_taint_entries)
-            .scanLeft(taint_file(i)) {case (t_ent, (ldst, new_t_ent)) => Mux(ldst === i.U, new_t_ent, t_ent)}
+        val remapped_entry = (ren1_uops.map(uop => (uop.ldst_val, uop.ldst)) zip ren1_fire zip new_taint_entries)
+            .scanLeft(taint_file(i)) {case (t_ent, (((ldst_val, ldst), fire), new_t_ent)) => Mux(fire && ldst_val && ldst === i.U, new_t_ent, t_ent)}
         
         for (j <- 0 until plWidth+1) {
             br_remap_table(j)(i) := remapped_entry(j)
@@ -188,6 +198,7 @@ class TaintTracker(
 
     dontTouch(taint_file)
     dontTouch(br_snapshots)
+    dontTouch(br_remap_table)
     dontTouch(io)
 
 }

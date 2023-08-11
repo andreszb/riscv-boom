@@ -97,6 +97,9 @@ case class BoomCoreParams(
   mcontextWidth: Int = 0,
   scontextWidth: Int = 0,
 
+  /* taint tracking */
+  numTaintWakeupPorts: Int = 4,
+
   /* debug stuff */
   enableCommitLogPrintf: Boolean = false,
   enableBranchPrintf: Boolean = false,
@@ -171,6 +174,9 @@ trait HasBoomCoreParameters extends freechips.rocketchip.tile.HasCoreParameters
   val maxBrCount    = boomParams.maxBrCount          // number of branches we can speculate simultaneously
   val ftqSz         = boomParams.ftq.nEntries        // number of FTQ entries
   val numFetchBufferEntries = boomParams.numFetchBufferEntries // number of instructions that stored between fetch&decode
+
+  // TaintTracking
+  val numTaintWakeupPorts = boomParams.numTaintWakeupPorts
 
   val numIntPhysRegs= boomParams.numIntPhysRegisters // size of the integer physical register file
   val numFpPhysRegs = boomParams.numFpPhysRegisters  // size of the floating point physical register file

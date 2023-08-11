@@ -151,7 +151,7 @@ class LSUCoreIO(implicit p: Parameters) extends BoomBundle()(p)
   val tsc_reg     = Input(UInt())
 
   //STT
-  val ldq_taint_free = Output(Valid(UInt(ldqAddrSz.W)))
+  val taint_wakeup_port = Output(Vec(numTaintWakeupPorts, Valid(UInt(ldqAddrSz.W))))
 
   val ldq_flipped = Output(Bool())
 
@@ -167,6 +167,7 @@ class LSUIO(implicit p: Parameters, edge: TLEdgeOut) extends BoomBundle()(p)
   val ptw   = new rocket.TLBPTWIO
   val core  = new LSUCoreIO
   val dmem  = new LSUDMemIO
+  
 
   val hellacache = Flipped(new freechips.rocketchip.rocket.HellaCacheIO)
 }
@@ -230,6 +231,10 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
   val stq_tail         = Reg(UInt(stqAddrSz.W))
   val stq_commit_head  = Reg(UInt(stqAddrSz.W)) // point to next store to commit
   val stq_execute_head = Reg(UInt(stqAddrSz.W)) // point to next store to execute
+
+  // Taint Tracking
+  val ldq_yrot_idx     = RegInit(0.U(ldqAddrSz.W))
+  val ldq_yrot_flipped = RegInit(false.B)
 
 
   // If we got a mispredict, the tail will be misaligned for 1 extra cycle
@@ -1286,6 +1291,27 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
 
   //-------------------------------------------------------------
   //-------------------------------------------------------------
+  // Taint Tracking and propagation
+  //-------------------------------------------------------------
+  //-------------------------------------------------------------
+
+  var temp_yrot = ldq_yrot_idx
+  for (w <- 0 until numTaintWakeupPorts) {
+    val ldq_e = ldq(temp_yrot)
+    when(ldq_e.valid && ldq_e.bits.uop.br_mask === 0.U) {
+
+      io.core.taint_wakeup_port(w).valid := true.B
+      io.core.taint_wakeup_port(w).bits := temp_yrot  
+
+    }
+    temp_yrot = WrapInc(temp_yrot, numLdqEntries)
+  }
+
+  ldq_yrot_idx := temp_yrot
+
+
+  //-------------------------------------------------------------
+  //-------------------------------------------------------------
   // Writeback Cycle (St->Ld Forwarding Path)
   //-------------------------------------------------------------
   //-------------------------------------------------------------
@@ -1618,6 +1644,9 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
   {
     ldq_head := 0.U
     ldq_tail := 0.U
+
+    //Taint Tracking
+    ldq_yrot_idx := 0.U
 
     when (reset.asBool)
     {

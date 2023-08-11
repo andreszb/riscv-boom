@@ -282,6 +282,7 @@ class RenameStage(
 
   for (w <- 0 until plWidth) {
     taint_tracker.io.ren1_uops(w) := ren1_uops(w)
+    taint_tracker.io.ren1_fire(w) := ren1_fire(w)
     ren1_br_tags(w).valid := ren1_uops(w).allocate_brtag
     ren1_br_tags(w).bits := ren1_uops(w).br_tag
   }

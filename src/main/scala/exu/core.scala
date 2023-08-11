@@ -958,6 +958,15 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     require (iu.io.wakeup_ports.length == int_iss_wakeups.length)
   }
 
+  // Taint Tracking
+  for {
+      iu <- issue_units 
+      (taint_wakeup, lsu_tw) <- iu.io.taint_wakeup_port zip io.lsu.taint_wakeup_port
+  } {
+    taint_wakeup.valid := lsu_tw.valid
+    taint_wakeup.bits := lsu_tw.bits
+  }
+
   //-------------------------------------------------------------
   //-------------------------------------------------------------
   // **** Register Read Stage ****
@@ -1259,6 +1268,11 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
       assert (!(wakeup.valid && !wakeup.bits.uop.fp_val),
         "[core] FP wakeup does not involve an FP instruction.")
     }
+  }
+
+  // Taint Tracking
+  if (usingFPU) {
+    fp_pipeline.io.taint_wakeup_port := io.lsu.taint_wakeup_port
   }
 
   require (cnt == rob.numWakeupPorts)

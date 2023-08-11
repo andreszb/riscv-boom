@@ -48,6 +48,8 @@ class FpPipeline(implicit p: Parameters) extends BoomModule with tile.HasFPUPara
     val to_int           = Decoupled(new ExeUnitResp(xLen))           // to integer RF
 
     val wakeups          = Vec(numWakeupPorts, Valid(new ExeUnitResp(fLen+1)))
+    // Taint tracking
+    val taint_wakeup_port     = Flipped(Vec(numTaintWakeupPorts, Valid(UInt(ldqAddrSz.W))))
     val wb_valids        = Input(Vec(numWakeupPorts, Bool()))
     val wb_pdsts         = Input(Vec(numWakeupPorts, UInt(width=fpPregSz.W)))
 
@@ -126,6 +128,12 @@ class FpPipeline(implicit p: Parameters) extends BoomModule with tile.HasFPUPara
     issue_unit.io.fu_types(i) := fu_types
 
     require (exe_units(i).readsFrf)
+  }
+
+  // Taint Tracking
+  for ((iu, twp) <- issue_unit.io.taint_wakeup_port zip io.taint_wakeup_port) {
+    iu.valid := twp.valid
+    iu.bits := twp.bits
   }
 
   // Wakeup

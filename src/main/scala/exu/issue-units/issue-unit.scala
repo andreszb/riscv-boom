@@ -75,6 +75,7 @@ class IssueUnitIO(
   val iss_valids       = Output(Vec(issueWidth, Bool()))
   val iss_uops         = Output(Vec(issueWidth, new MicroOp()))
   val wakeup_ports     = Flipped(Vec(numWakeupPorts, Valid(new IqWakeup(maxPregSz))))
+  val taint_wakeup_port= Flipped(Vec(numTaintWakeupPorts, Valid(UInt(ldqAddrSz.W))))
   val pred_wakeup_port = Flipped(Valid(UInt(log2Ceil(ftqSz).W)))
 
   val spec_ld_wakeup   = Flipped(Vec(memWidth, Valid(UInt(width=maxPregSz.W))))
@@ -155,6 +156,8 @@ abstract class IssueUnit(
 
   for (i <- 0 until numIssueSlots) {
     issue_slots(i).wakeup_ports     := io.wakeup_ports
+    //Taint Tracking
+    issue_slots(i).taint_wakeup_port := io.taint_wakeup_port
     issue_slots(i).pred_wakeup_port := io.pred_wakeup_port
     issue_slots(i).spec_ld_wakeup   := io.spec_ld_wakeup
     issue_slots(i).ldspec_miss      := io.ld_miss
