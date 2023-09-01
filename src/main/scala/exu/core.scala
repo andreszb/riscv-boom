@@ -99,9 +99,12 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   val pred_rename_stage = Module(new PredRenameStage(coreWidth, ftqSz, 1))
   val rename_stages    = if (usingFPU) Seq(rename_stage, fp_rename_stage, pred_rename_stage) else Seq(rename_stage, pred_rename_stage)
 
-  rename_stage.io.ldq_flipped := io.lsu.ldq_flipped
-  fp_rename_stage.io.ldq_flipped := io.lsu.ldq_flipped
-  pred_rename_stage.io.ldq_flipped := io.lsu.ldq_flipped
+
+  // STT
+  val taint_tracker = Module(new TaintTracker(
+    coreWidth,
+    32
+  ))
 
   val mem_iss_unit     = Module(new IssueUnitCollapsing(memIssueParam, numIntIssueWakeupPorts))
   mem_iss_unit.suggestName("mem_issue_unit")
@@ -633,6 +636,30 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   ren_stalls := rename_stage.io.ren_stalls
 
 
+
+
+  //-------------------------------------------------------------
+  //-------------------------------------------------------------
+  // **** Taint Tracking Stage (Parallel to Rename) ****
+  //-------------------------------------------------------------
+  //-------------------------------------------------------------
+
+  taint_tracker.io.kill := io.ifu.redirect_flush
+  taint_tracker.io.brupdate := brupdate
+
+  taint_tracker.io.dec_fire := dec_fire
+  taint_tracker.io.dec_uops := dec_uops
+
+  taint_tracker.io.dis_fire := dis_fire
+  taint_tracker.io.dis_ready := dis_ready
+
+  taint_tracker.io.com_valids := rob.io.commit.valids
+  taint_tracker.io.com_uops := rob.io.commit.uops
+  taint_tracker.io.rbk_valids := rob.io.commit.rbk_valids
+  taint_tracker.io.rollback := rob.io.commit.rollback
+
+  taint_tracker.io.ldq_flipped := io.lsu.ldq_flipped
+
   /**
    * TODO This is a bit nasty, but it's currently necessary to
    * split the INT/FP rename pipelines into separate instantiations.
@@ -664,6 +691,8 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     dis_uops(w).ppred_busy := p_uop.ppred_busy && dis_uops(w).is_sfb_shadow
 
     ren_stalls(w) := rename_stage.io.ren_stalls(w) || f_stall || p_stall
+
+    dis_uops(w).yrot := taint_tracker.io.ren2_yrot(w)
   }
 
   //-------------------------------------------------------------
