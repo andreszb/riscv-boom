@@ -39,6 +39,8 @@ class TaintTracker(
         val dec_fire = Input(Vec(plWidth, Bool()))
         val dec_uops = Input(Vec(plWidth, new MicroOp()))
 
+        val ldq_tail = Input(UInt(ldqAddrSz.W))
+
         val brupdate = Input(new BrUpdateInfo())
 
         val ren2_yrot = Output(Vec(plWidth, (UInt(ldqAddrSz.W))))
@@ -104,9 +106,11 @@ class TaintTracker(
         t3: TaintEntry)
         : TaintEntry = {
 
+        val rs3_en = uop.frs3_en
+
         val t1_valid = t1.valid
         val t2_valid = t2.valid
-        val t3_valid = t3.valid
+        val t3_valid = t3.valid && rs3_en
 
         val t1_age = t1.age 
         val t1_flipped = t1.flipped_age
@@ -122,29 +126,35 @@ class TaintTracker(
         val t3_youngness = Mux(io.ldq_flipped === t3_flipped, 256.U - t3_age, 512.U - t3_age)
         
         val t1_oldest = (t1_valid 
-                        && ((!t2_valid) || t1_youngness < t2_youngness)
-                        && ((!t3_valid) || t1_youngness < t3_youngness))
+                        && ((!t2_valid) || t1_youngness <= t2_youngness)
+                        && ((!t3_valid) || t1_youngness <= t3_youngness))
         val t2_oldest = ((!t1_oldest)
                         && t2_valid
-                        && ((!t3_valid) || t2_youngness < t3_youngness))
+                        && ((!t3_valid) || t2_youngness <= t3_youngness))
         val t3_oldest = ((!t1_oldest)
                         && (!t2_oldest)
                         && t3_valid) 
         
+        assert(!(t1_oldest && t2_oldest))
+        assert(!(t1_oldest && t3_oldest))
+        assert(!(t2_oldest && t3_oldest)) 
 
-        when(!any_valid) {
-            val f_entry = Wire(new TaintEntry())
-            f_entry.valid := false.B
-            f_entry.ldq_idx := 0.U
-            f_entry.age := 0.U
-            f_entry.flipped_age := false.B
-        }.elsewhen(t1_oldest) {
-            t1
-        }.elsewhen(t2_oldest) {
-            t2
+        val chosen_t = Wire(new TaintEntry())
+
+        chosen_t.valid := false.B
+        chosen_t.ldq_idx := 31.U
+        chosen_t.age := 13.U
+        chosen_t.flipped_age := false.B
+        
+        when(t1_oldest) {
+            chosen_t := t1
+        } .elsewhen(t2_oldest) {
+            chosen_t := t2
+        } .elsewhen(t3_oldest) {
+            chosen_t := t3
         }
-
-        t3
+        
+        chosen_t
     }
 
     def GetRegTaints(uop: MicroOp) : (TaintEntry, TaintEntry, TaintEntry) = {
@@ -162,6 +172,10 @@ class TaintTracker(
         (t1, t2, t3)
     }
 
+    val load_ops = ((io.dec_fire zip io.dec_uops) map { case (f, u) => Mux(f && u.uses_ldq, 1.U, 0.U) })
+                    .scanLeft(0.U)((total, load) => total + load)
+    val loads_last_cycle = RegNext(load_ops.last)
+
     val int_taint_file = Reg(Vec(numLregs, new TaintEntry()))
     val fp_taint_file = Reg(Vec(numLregs, new TaintEntry()))
 
@@ -176,7 +190,8 @@ class TaintTracker(
 
     val ren1_br_tags = Wire(Vec(plWidth, Valid(UInt(brTagSz.W))))
 
-
+    dontTouch(ren1_uops)
+    dontTouch(ren1_fire)
 
     val ren2_fire       = io.dis_fire
     val ren2_ready      = io.dis_ready
@@ -211,26 +226,29 @@ class TaintTracker(
         }
         ren2_valids(w) := r_valid
         ren2_uops(w) := r_uop
+        dontTouch(next_uop)
     }
     val new_taint_entries = Wire(Vec(plWidth, new TaintEntry()))
-
 
     for (i <- 0 until plWidth) {
         val t_ent = Wire(new TaintEntry())
 
         val (t1, t2, t3) = GetRegTaints(ren1_uops(i))
 
-        if (i > 0) t_ent := FindAndCompareTaints(ren1_uops(i), 
-                                                 ren1_uops.slice(0, i),
-                                                 new_taint_entries.slice(0, i))
-                                        
-        else       t_ent := GetTaintEntry(ren1_uops(i), t1, t2, t3)
-        
+
+        if (i > 0) {
+            t_ent := FindAndCompareTaints(ren1_uops(i), 
+                                          ren1_uops.slice(0, i),
+                                          new_taint_entries.slice(0, i))
+        } else {
+            t_ent := GetTaintEntry(ren1_uops(i), t1, t2, t3)
+        }
+
         ren1_uops(i).yrot := t_ent.ldq_idx
 
         when(ren1_fire(i) && ren1_uops(i).uses_ldq) {
-            t_ent.ldq_idx := ren1_uops(i).ldq_idx
-            t_ent.age := ren1_uops(i).ldq_idx
+            t_ent.ldq_idx := WrapAdd(io.ldq_tail, loads_last_cycle + load_ops(i), numLdqEntries) //ren1_uops(i).ldq_idx
+            t_ent.age := WrapAdd(io.ldq_tail, loads_last_cycle +  load_ops(i), numLdqEntries) //ren1_uops(i).ldq_idx
             t_ent.valid := true.B
             new_taint_entries(i) := t_ent
         }. elsewhen(ren1_fire(i)) {
@@ -238,8 +256,7 @@ class TaintTracker(
         }. otherwise {
             t_ent.valid := false.B
             new_taint_entries(i) := t_ent
-        }
-        
+        }   
     }
 
     // Int update
@@ -289,5 +306,6 @@ class TaintTracker(
     dontTouch(int_br_remap_table)
     dontTouch(fp_br_remap_table)
     dontTouch(io)
+    dontTouch(new_taint_entries)
 
 }

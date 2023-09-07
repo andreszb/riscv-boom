@@ -116,6 +116,8 @@ class LSUCoreIO(implicit p: Parameters) extends BoomBundle()(p)
   val dis_ldq_idx = Output(Vec(coreWidth, UInt(ldqAddrSz.W)))
   val dis_stq_idx = Output(Vec(coreWidth, UInt(stqAddrSz.W)))
 
+  val ldq_tail    = Output(UInt(ldqAddrSz.W))
+
   val ldq_full    = Output(Vec(coreWidth, Bool()))
   val stq_full    = Output(Vec(coreWidth, Bool()))
 
@@ -305,6 +307,8 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
 
   var ldq_full = Bool()
   var stq_full = Bool()
+
+  io.core.ldq_tail := ldq_tail
 
   for (w <- 0 until coreWidth)
   {
