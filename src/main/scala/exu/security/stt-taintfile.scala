@@ -172,8 +172,8 @@ class TaintTracker(
         (t1, t2, t3)
     }
 
-    val load_ops = ((io.dec_fire zip io.dec_uops) map { case (f, u) => Mux(f && u.uses_ldq, 1.U, 0.U) })
-                    .scanLeft(0.U)((total, load) => total + load)
+    val load_ops = ((io.dec_fire zip io.dec_uops) map { case (f, u) => (f && u.uses_ldq)})
+                    .scanLeft(0.U(4.W))((total, load) => total + load.asUInt())
     val loads_last_cycle = RegNext(load_ops.last)
 
     val int_taint_file = Reg(Vec(numLregs, new TaintEntry()))
