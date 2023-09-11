@@ -655,6 +655,8 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
 
   taint_tracker.io.ldq_tail := io.lsu.ldq_tail
 
+  taint_tracker.io.taint_wakeup_port := io.lsu.taint_wakeup_port
+
   taint_tracker.io.com_valids := rob.io.commit.valids
   taint_tracker.io.com_uops := rob.io.commit.uops
   taint_tracker.io.rbk_valids := rob.io.commit.rbk_valids

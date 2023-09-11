@@ -53,7 +53,7 @@ import freechips.rocketchip.util.Str
 
 import boom.common._
 import boom.exu.{BrUpdateInfo, Exception, FuncUnitResp, CommitSignals, ExeUnitResp}
-import boom.util.{BoolToChar, AgePriorityEncoder, IsKilledByBranch, GetNewBrMask, WrapInc, IsOlder, UpdateBrMask}
+import boom.util.{BoolToChar, AgePriorityEncoder, IsKilledByBranch, GetNewBrMask, WrapInc, IsOlder, UpdateBrMask, WrapAdd}
 
 class LSUExeIO(implicit p: Parameters) extends BoomBundle()(p)
 {
@@ -1299,19 +1299,21 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
   //-------------------------------------------------------------
   //-------------------------------------------------------------
 
-  var temp_yrot = ldq_yrot_idx
   for (w <- 0 until numTaintWakeupPorts) {
-    val ldq_e = ldq(temp_yrot)
-    when(ldq_e.valid && ldq_e.bits.uop.br_mask === 0.U) {
+    io.core.taint_wakeup_port(w).valid := false.B
+    io.core.taint_wakeup_port(w).bits := 0.U
 
+    val ldq_e = ldq(WrapAdd(ldq_yrot_idx, w.U, numLdqEntries))
+    val valid = io.core.taint_wakeup_port.slice(0, w).map (tw => tw.valid)
+                .foldLeft(true.B){case (v, tw) => v && tw}
+
+    when(valid && ldq_e.valid && ldq_e.bits.uop.br_mask === 0.U) {
       io.core.taint_wakeup_port(w).valid := true.B
-      io.core.taint_wakeup_port(w).bits := temp_yrot  
-
+      io.core.taint_wakeup_port(w).bits := WrapAdd(ldq_yrot_idx, w.U, numLdqEntries)  
     }
-    temp_yrot = WrapInc(temp_yrot, numLdqEntries)
   }
 
-  ldq_yrot_idx := temp_yrot
+  ldq_yrot_idx := WrapAdd(ldq_yrot_idx, PopCount(io.core.taint_wakeup_port map (p => p.valid)), numLdqEntries)
 
 
   //-------------------------------------------------------------

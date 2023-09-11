@@ -46,6 +46,8 @@ class TaintTracker(
         val ren2_yrot = Output(Vec(plWidth, (UInt(ldqAddrSz.W))))
         val ren2_valid = Output(Vec(plWidth, Bool()))
 
+        val taint_wakeup_port = Flipped(Vec(numTaintWakeupPorts, Valid(UInt(ldqAddrSz.W))))
+
         val dis_fire = Input(Vec(coreWidth, Bool()))
         val dis_ready = Input(Bool())
 
@@ -190,6 +192,26 @@ class TaintTracker(
 
     val ren1_br_tags = Wire(Vec(plWidth, Valid(UInt(brTagSz.W))))
 
+    val int_taint_file_freed_taints = Wire(Vec(numLregs, new TaintEntry()))
+    val fp_taint_file_freed_taints = Wire(Vec(numLregs, new TaintEntry()))
+
+    for (i <- 0 until numLregs) {
+        val i_ent = int_taint_file(i)
+        val f_ent = fp_taint_file(i)
+        
+        int_taint_file_freed_taints(i) := i_ent
+        int_taint_file_freed_taints(i).valid := io.taint_wakeup_port.foldLeft(i_ent.valid)
+            {case (valid, twake) => valid && !(twake.valid && (twake.bits === i_ent.ldq_idx))}
+
+        fp_taint_file_freed_taints(i) := f_ent
+        fp_taint_file_freed_taints(i).valid := io.taint_wakeup_port.foldLeft(f_ent.valid)
+            {case (valid, twake) => valid && !(twake.valid && (twake.bits === f_ent.ldq_idx))}
+    }
+
+    dontTouch(int_taint_file_freed_taints)
+    dontTouch(fp_taint_file_freed_taints)
+
+
     dontTouch(ren1_uops)
     dontTouch(ren1_fire)
 
@@ -252,6 +274,13 @@ class TaintTracker(
             t_ent.valid := true.B
             new_taint_entries(i) := t_ent
         }. elsewhen(ren1_fire(i)) {
+            // Is the load that is tainting us being declared non-speculative this cycle?
+            for (j <- 0 until plWidth) {
+                when(io.taint_wakeup_port(i).valid && (io.taint_wakeup_port(i).bits === t_ent.ldq_idx)) {
+                    t_ent.valid := false.B
+                }
+            }
+
             new_taint_entries(i) := t_ent
         }. otherwise {
             t_ent.valid := false.B
@@ -262,7 +291,7 @@ class TaintTracker(
     // Int update
     for (i <- 0 until numLregs) {
         val remapped_int_entry = (ren1_uops.map(uop => (uop.ldst_val, uop.ldst, uop.dst_rtype)) zip ren1_fire zip new_taint_entries)
-            .scanLeft(int_taint_file(i)) {case (t_ent, (((ldst_val, ldst, rtype), fire), new_t_ent)) => Mux(fire && ldst_val && ldst === i.U && rtype === int_type, new_t_ent, t_ent)}
+            .scanLeft(int_taint_file_freed_taints(i)) {case (t_ent, (((ldst_val, ldst, rtype), fire), new_t_ent)) => Mux(fire && ldst_val && ldst === i.U && rtype === int_type, new_t_ent, t_ent)}
         
         for (j <- 0 until plWidth+1) {
             int_br_remap_table(j)(i) := remapped_int_entry(j)
@@ -272,8 +301,8 @@ class TaintTracker(
     // Float update
     for (i <- 0 until numLregs) {
         val remapped_float_entry = (ren1_uops.map(uop => (uop.ldst_val, uop.ldst, uop.dst_rtype)) zip ren1_fire zip new_taint_entries)
-            .scanLeft(fp_taint_file(i)) {case (t_ent, (((ldst_val, ldst, rtype), fire), new_t_ent)) => Mux(fire && ldst_val && ldst === i.U && rtype === fp_type, new_t_ent, t_ent)}
-        
+            .scanLeft(fp_taint_file_freed_taints(i)) {case (t_ent, (((ldst_val, ldst, rtype), fire), new_t_ent)) => Mux(fire && ldst_val && ldst === i.U && rtype === fp_type, new_t_ent, t_ent)}
+
         for (j <- 0 until plWidth+1) {
             fp_br_remap_table(j)(i) := remapped_float_entry(j)
         }
