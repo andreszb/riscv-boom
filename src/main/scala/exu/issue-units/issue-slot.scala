@@ -55,7 +55,7 @@ class IssueSlotIO(val numWakeupPorts: Int)(implicit p: Parameters) extends BoomB
       val p1 = Bool()
       val p2 = Bool()
       val p3 = Bool()
-      //val yrot_r = Bool()
+      val yrot_r = Bool()
       val ppred = Bool()
       val state = UInt(width=2.W)
     }
@@ -252,7 +252,7 @@ class IssueSlot(val numWakeupPorts: Int)(implicit p: Parameters)
   }
 
   //-------------------------------------------------------------
-  // Request Logic
+  // Request Logic - yrot is STT 
   io.request := is_valid && p1 && p2 && p3 && ppred && !io.kill
   val high_priority = slot_uop.is_br || slot_uop.is_jal || slot_uop.is_jalr
   io.request_hp := io.request && high_priority
@@ -285,6 +285,7 @@ class IssueSlot(val numWakeupPorts: Int)(implicit p: Parameters)
   io.out_uop.prs1_busy  := !p1
   io.out_uop.prs2_busy  := !p2
   io.out_uop.prs3_busy  := !p3
+  io.out_uop.yrot_r     := yrot_r
   io.out_uop.ppred_busy := !ppred
   io.out_uop.iw_p1_poisoned := p1_poisoned
   io.out_uop.iw_p2_poisoned := p2_poisoned
