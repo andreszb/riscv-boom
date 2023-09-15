@@ -116,6 +116,9 @@ class LSUCoreIO(implicit p: Parameters) extends BoomBundle()(p)
   val dis_ldq_idx = Output(Vec(coreWidth, UInt(ldqAddrSz.W)))
   val dis_stq_idx = Output(Vec(coreWidth, UInt(stqAddrSz.W)))
 
+  // STT
+  val ldq_head    = Output(UInt())
+  val ldq_btc_head = Output(UInt())
   val ldq_tail    = Output(UInt(ldqAddrSz.W))
 
   val ldq_full    = Output(Vec(coreWidth, Bool()))
@@ -154,7 +157,6 @@ class LSUCoreIO(implicit p: Parameters) extends BoomBundle()(p)
 
   //STT
   val taint_wakeup_port = Output(Vec(numTaintWakeupPorts, Valid(UInt(ldqAddrSz.W))))
-
   val ldq_flipped = Output(Bool())
 
   val perf        = Output(new Bundle {
@@ -1295,7 +1297,7 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
 
   //-------------------------------------------------------------
   //-------------------------------------------------------------
-  // Taint Tracking and propagation
+  // Taint Tracking and propagation - STT
   //-------------------------------------------------------------
   //-------------------------------------------------------------
 
@@ -1314,6 +1316,7 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
   }
 
   ldq_yrot_idx := WrapAdd(ldq_yrot_idx, PopCount(io.core.taint_wakeup_port map (p => p.valid)), numLdqEntries)
+  io.core.ldq_btc_head := ldq_yrot_idx
 
 
   //-------------------------------------------------------------
@@ -1542,6 +1545,8 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
   }
   stq_commit_head := temp_stq_commit_head
   ldq_head        := temp_ldq_head
+
+  io.core.ldq_head := ldq_head
 
   // store has been committed AND successfully sent data to memory
   when (stq(stq_head).valid && stq(stq_head).bits.committed)

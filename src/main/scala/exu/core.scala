@@ -653,6 +653,8 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   taint_tracker.io.dis_fire := dis_fire
   taint_tracker.io.dis_ready := dis_ready
 
+  taint_tracker.io.ldq_head := io.lsu.ldq_head
+  taint_tracker.io.ldq_btc_head := io.lsu.ldq_btc_head
   taint_tracker.io.ldq_tail := io.lsu.ldq_tail
 
   taint_tracker.io.taint_wakeup_port := io.lsu.taint_wakeup_port
@@ -697,7 +699,9 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     ren_stalls(w) := rename_stage.io.ren_stalls(w) || f_stall || p_stall
 
     dis_uops(w).yrot := taint_tracker.io.ren2_yrot(w)
+    dis_uops(w).yrot_r := taint_tracker.io.ren2_yrot_r(w)
   }
+  dontTouch(dis_uops)
 
   //-------------------------------------------------------------
   //-------------------------------------------------------------

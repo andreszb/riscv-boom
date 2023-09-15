@@ -40,6 +40,8 @@ class TaintTracker(
         val dec_uops = Input(Vec(plWidth, new MicroOp()))
 
         val ldq_tail = Input(UInt(ldqAddrSz.W))
+        val ldq_head = Input(UInt(ldqAddrSz.W))
+        val ldq_btc_head = Input(UInt(ldqAddrSz.W))
 
         val brupdate = Input(new BrUpdateInfo())
 
@@ -67,6 +69,14 @@ class TaintTracker(
     dud_entry.ldq_idx := 0.U
     dud_entry.age := 0.U
     dud_entry.flipped_age := false.B
+
+    def idxBetween(idx: UInt) : Bool = {
+        val isBetween = Mux(io.ldq_btc_head <= io.ldq_tail,
+                           (io.ldq_btc_head <= idx) && (idx < io.ldq_tail),
+                           (io.ldq_btc_head <= idx) || (idx < io.ldq_tail))
+
+        isBetween
+    }
 
     def FindAndCompareTaints(
             uop: MicroOp, 
@@ -246,11 +256,12 @@ class TaintTracker(
         when(ren1_fire(i) && ren1_uops(i).uses_ldq) {
             new_tent.ldq_idx := WrapAdd(io.ldq_tail, loads_last_cycle + load_ops(i), numLdqEntries) //ren1_uops(i).ldq_idx
             new_tent.age := WrapAdd(io.ldq_tail, loads_last_cycle +  load_ops(i), numLdqEntries) //ren1_uops(i).ldq_idx
+            new_tent.flipped_age := Mux(io.ldq_tail > WrapAdd(io.ldq_tail, loads_last_cycle + load_ops(i), numLdqEntries), !io.ldq_flipped, io.ldq_flipped)
             new_tent.valid := true.B
         }. elsewhen(ren1_fire(i)) {
             // Is the load that is tainting us being declared non-speculative this cycle?
-            for (j <- 0 until plWidth) {
-                when(io.taint_wakeup_port(i).valid && (io.taint_wakeup_port(i).bits === t_ent.ldq_idx)) {
+            for (j <- 0 until numTaintWakeupPorts) {
+                when(io.taint_wakeup_port(j).valid && (io.taint_wakeup_port(j).bits === t_ent.ldq_idx)) {
                     t_ent.valid := false.B
                     new_tent.valid := false.B
                 }
@@ -293,9 +304,35 @@ class TaintTracker(
             fp_br_snapshots(ren1_br_tags(i).bits) := fp_br_remap_table(i+1)
         }
     }
+
+    
+    val temp_int_file = Wire(Vec(numLregs, new TaintEntry()))
+    val temp_fp_file = Wire(Vec(numLregs, new TaintEntry()))
+    temp_int_file := int_taint_file
+    temp_fp_file := fp_taint_file
+    dontTouch(temp_int_file)
+    
     when (io.brupdate.b2.mispredict) {
-        int_taint_file := int_br_snapshots(io.brupdate.b2.uop.br_tag)
-        fp_taint_file := fp_br_snapshots(io.brupdate.b2.uop.br_tag)
+        temp_int_file := int_br_snapshots(io.brupdate.b2.uop.br_tag)
+        temp_fp_file := fp_br_snapshots(io.brupdate.b2.uop.br_tag)
+
+        for (i <- 0 until numLregs) {
+            val temp_i_reg = int_br_snapshots(io.brupdate.b2.uop.br_tag)(i)
+            temp_int_file(i) := temp_i_reg
+            temp_int_file(i).valid := io.taint_wakeup_port.foldLeft(temp_i_reg.valid && idxBetween(temp_i_reg.ldq_idx))
+                                        {case (valid, wakeup) => valid && !(wakeup.valid && wakeup.bits === temp_i_reg.ldq_idx)}
+
+
+            val temp_f_reg = fp_br_snapshots(io.brupdate.b2.uop.br_tag)(i)
+            temp_fp_file(i) := temp_f_reg
+            temp_fp_file(i).valid := io.taint_wakeup_port.foldLeft(temp_f_reg.valid && idxBetween(temp_f_reg.ldq_idx))
+                                        {case (valid, wakeup) => valid && !(wakeup.valid && wakeup.bits === temp_f_reg.ldq_idx)}
+        }
+
+        int_taint_file := temp_int_file
+        fp_taint_file := temp_fp_file
+
+
     } .otherwise {
         int_taint_file := int_br_remap_table(plWidth)
         fp_taint_file := fp_br_remap_table(plWidth)
@@ -324,6 +361,12 @@ class TaintTracker(
         }.otherwise {
             r_valid := r_valid && !ren2_fire(w)
             next_uop := r_uop
+
+            for (i <- 0 until numTaintWakeupPorts) {
+                 when(io.taint_wakeup_port(i).valid && (io.taint_wakeup_port(i).bits === r_uop.yrot)) {
+                    next_uop.yrot_r := true.B
+                }
+            }
         }
 
         val temp = WireInit(next_uop)
@@ -339,7 +382,8 @@ class TaintTracker(
     for (w <- 0 until plWidth) {
         io.ren2_yrot(w)     := ren2_uops(w).yrot
         io.ren2_valid(w)    := ren2_valids(w)
-        io.ren2_yrot_r(w)   := ren2_uops(w).yrot_r
+        io.ren2_yrot_r(w)   := io.taint_wakeup_port.foldLeft(ren2_uops(w).yrot_r)
+                                {case (yrot_r, wakeup) => yrot_r && !(wakeup.valid && wakeup.bits === ren2_uops(w).yrot)}
     }
 
     dontTouch(int_taint_file)
