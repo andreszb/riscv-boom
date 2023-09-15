@@ -81,7 +81,8 @@ class TaintTracker(
     def FindAndCompareTaints(
             uop: MicroOp, 
             older_uops: Seq[MicroOp], 
-            taint_entries: Seq[TaintEntry]) 
+            taint_entries: Seq[TaintEntry],
+            idx: UInt) 
             : TaintEntry = {
         val matching_uop = Wire(new MicroOp)
         matching_uop := uop
@@ -108,7 +109,7 @@ class TaintTracker(
         t2 := Mux(do_bypass_rs2, Mux1H(bypass_sel_rs2, taint_entries), d_t2)
         t3 := Mux(do_bypass_rs3, Mux1H(bypass_sel_rs3, taint_entries), d_t3)
 
-        GetTaintEntry(matching_uop, t1, t2, t3)
+        GetTaintEntry(matching_uop, t1, t2, t3, idx)
 
     }
 
@@ -116,7 +117,8 @@ class TaintTracker(
         uop: MicroOp,
         t1: TaintEntry,
         t2: TaintEntry,
-        t3: TaintEntry)
+        t3: TaintEntry,
+        idx: UInt)
         : TaintEntry = {
 
         val rs3_en = uop.frs3_en
@@ -134,9 +136,12 @@ class TaintTracker(
 
         val any_valid = t1_valid || t2_valid || t3_valid
 
-        val t1_youngness = Mux(io.ldq_flipped === t1_flipped, 256.U - t1_age, 512.U - t1_age)
-        val t2_youngness = Mux(io.ldq_flipped === t2_flipped, 256.U - t2_age, 512.U - t2_age)
-        val t3_youngness = Mux(io.ldq_flipped === t3_flipped, 256.U - t3_age, 512.U - t3_age)
+        val t1_youngness = Mux(Mux(ldq_will_flip(idx), io.ldq_flipped =/= t1_flipped, io.ldq_flipped === t1_flipped), 
+                                                    numLdqEntries.U - t1_age, (numLdqEntries*2).U - t1_age)
+        val t2_youngness = Mux(Mux(ldq_will_flip(idx), io.ldq_flipped =/= t2_flipped, io.ldq_flipped === t2_flipped),
+                                                    numLdqEntries.U - t2_age, (numLdqEntries*2).U - t2_age)
+        val t3_youngness = Mux(Mux(ldq_will_flip(idx), io.ldq_flipped =/= t3_flipped, io.ldq_flipped === t3_flipped),
+                                                    numLdqEntries.U - t3_age, (numLdqEntries*2).U - t3_age)
         
         val t1_oldest = (t1_valid 
                         && ((!t2_valid) || t1_youngness <= t2_youngness)
@@ -188,6 +193,10 @@ class TaintTracker(
     val load_ops = ((io.dec_fire zip io.dec_uops) map { case (f, u) => (f && u.uses_ldq)})
                     .scanLeft(0.U(4.W))((total, load) => total + load.asUInt())
     val loads_last_cycle = RegNext(load_ops.last)
+
+    val ldq_will_flip = load_ops.scanLeft(io.ldq_tail + loads_last_cycle)
+                            { case (sum, add) => sum + add}
+                            .map( i => i >= numLdqEntries.U)
 
     val int_taint_file = Reg(Vec(numLregs, new TaintEntry()))
     val fp_taint_file = Reg(Vec(numLregs, new TaintEntry()))
@@ -246,9 +255,10 @@ class TaintTracker(
         if (i > 0) {
             t_ent := FindAndCompareTaints(ren1_uops(i), 
                                           ren1_uops.slice(0, i),
-                                          new_taint_entries.slice(0, i))
+                                          new_taint_entries.slice(0, i),
+                                          i.U)
         } else {
-            t_ent := GetTaintEntry(ren1_uops(i), t1, t2, t3)
+            t_ent := GetTaintEntry(ren1_uops(i), t1, t2, t3, i.U)
         }
         
         val new_tent = WireInit(t_ent)
@@ -256,7 +266,7 @@ class TaintTracker(
         when(ren1_fire(i) && ren1_uops(i).uses_ldq) {
             new_tent.ldq_idx := WrapAdd(io.ldq_tail, loads_last_cycle + load_ops(i), numLdqEntries) //ren1_uops(i).ldq_idx
             new_tent.age := WrapAdd(io.ldq_tail, loads_last_cycle +  load_ops(i), numLdqEntries) //ren1_uops(i).ldq_idx
-            new_tent.flipped_age := Mux(io.ldq_tail > WrapAdd(io.ldq_tail, loads_last_cycle + load_ops(i), numLdqEntries), !io.ldq_flipped, io.ldq_flipped)
+            new_tent.flipped_age := Mux(ldq_will_flip(i), !io.ldq_flipped, io.ldq_flipped)
             new_tent.valid := true.B
         }. elsewhen(ren1_fire(i)) {
             // Is the load that is tainting us being declared non-speculative this cycle?
