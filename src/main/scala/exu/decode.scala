@@ -78,6 +78,8 @@ class CtrlSigs extends Bundle
   val flush_on_commit = Bool()
   val csr_cmd         = UInt(freechips.rocketchip.rocket.CSR.SZ.W)
   val rocc            = Bool()
+  //STT
+  val transmitter     = Bool()
 
   def decode(inst: UInt, table: Iterable[(BitPat, List[BitPat])]) = {
     val decoder = freechips.rocketchip.rocket.DecodeLogic(inst, XDecode.decode_default, table)
@@ -88,6 +90,7 @@ class CtrlSigs extends Bundle
           is_br, is_sys_pc2epc, inst_unique, flush_on_commit, csr_cmd)
       sigs zip decoder map {case(s,d) => s := d}
       rocc := false.B
+      transmitter := false.B
       this
   }
 }
@@ -575,6 +578,17 @@ class DecodeUnit(implicit p: Parameters) extends BoomModule
   uop.flush_on_commit := cs.flush_on_commit || (csr_en && !csr_ren && io.csr_decode.write_flush)
 
   uop.bypassable   := cs.bypassable
+
+  // STT
+  uop.transmitter := cs.uses_ldq || cs.uses_stq || 
+    cs.inst_unique            || cs.is_br
+    (cs.uopc === uopFDIV_S)   || (cs.uopc === uopFDIV_D)  ||
+    (cs.uopc === uopFSQRT_S)  || (cs.uopc === uopFSQRT_D) ||
+    (cs.uopc === uopDIV)      || (cs.uopc === uopDIVU)    ||
+    (cs.uopc === uopDIVW)     || (cs.uopc === uopDIVUW)   ||
+    (cs.uopc === uopREM)      || (cs.uopc === uopREMU)    ||
+    (cs.uopc === uopREMW)     || (cs.uopc === uopREMUW)   ||
+    (cs.uopc === uopJAL)      || (cs.uopc === uopJALR)
 
   //-------------------------------------------------------------
   // immediates

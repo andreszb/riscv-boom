@@ -146,6 +146,7 @@ class MicroOp(implicit p: Parameters) extends BoomBundle
   //STT
   val yrot             = UInt(ldqAddrSz.W)
   val yrot_r           = Bool()
+  val transmitter      = Bool()
   
   // Do we allocate a branch tag for this?
   // SFB branches don't get a mask, they get a predicate bit

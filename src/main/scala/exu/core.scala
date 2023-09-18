@@ -699,7 +699,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     ren_stalls(w) := rename_stage.io.ren_stalls(w) || f_stall || p_stall
 
     dis_uops(w).yrot := taint_tracker.io.ren2_yrot(w)
-    dis_uops(w).yrot_r := taint_tracker.io.ren2_yrot_r(w)
+    dis_uops(w).yrot_r := taint_tracker.io.ren2_yrot_r(w) || !dis_uops(w).transmitter
   }
   dontTouch(dis_uops)
 

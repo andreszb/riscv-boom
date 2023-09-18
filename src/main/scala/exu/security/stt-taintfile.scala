@@ -36,30 +36,30 @@ class TaintTracker(
 
         val kill = Input(Bool())
 
-        val dec_fire = Input(Vec(plWidth, Bool()))
-        val dec_uops = Input(Vec(plWidth, new MicroOp()))
+        val dec_fire        = Input(Vec(plWidth, Bool()))
+        val dec_uops        = Input(Vec(plWidth, new MicroOp()))
 
-        val ldq_tail = Input(UInt(ldqAddrSz.W))
-        val ldq_head = Input(UInt(ldqAddrSz.W))
-        val ldq_btc_head = Input(UInt(ldqAddrSz.W))
+        val ldq_tail        = Input(UInt(ldqAddrSz.W))
+        val ldq_head        = Input(UInt(ldqAddrSz.W))
+        val ldq_btc_head    = Input(UInt(ldqAddrSz.W))
 
-        val brupdate = Input(new BrUpdateInfo())
+        val brupdate        = Input(new BrUpdateInfo())
 
-        val ren2_yrot   = Output(Vec(plWidth, (UInt(ldqAddrSz.W))))
-        val ren2_yrot_r = Output(Vec(plWidth, Bool()))
-        val ren2_valid  = Output(Vec(plWidth, Bool()))
+        val ren2_yrot       = Output(Vec(plWidth, (UInt(ldqAddrSz.W))))
+        val ren2_yrot_r     = Output(Vec(plWidth, Bool()))
+        val ren2_valid      = Output(Vec(plWidth, Bool()))
 
         val taint_wakeup_port = Flipped(Vec(numTaintWakeupPorts, Valid(UInt(ldqAddrSz.W))))
 
-        val dis_fire = Input(Vec(coreWidth, Bool()))
-        val dis_ready = Input(Bool())
+        val dis_fire        = Input(Vec(coreWidth, Bool()))
+        val dis_ready       = Input(Bool())
 
-        val com_valids = Input(Vec(plWidth, Bool()))
-        val com_uops = Input(Vec(plWidth, new MicroOp()))
-        val rbk_valids = Input(Vec(plWidth, Bool()))
-        val rollback = Input(Bool())
+        val com_valids      = Input(Vec(plWidth, Bool()))
+        val com_uops        = Input(Vec(plWidth, new MicroOp()))
+        val rbk_valids      = Input(Vec(plWidth, Bool()))
+        val rollback        = Input(Bool())
 
-        val ldq_flipped = Input(Bool())
+        val ldq_flipped     = Input(Bool())
     })
 
     val int_type = RT_FIX
@@ -198,22 +198,22 @@ class TaintTracker(
                             { case (sum, add) => sum + add}
                             .map( i => i >= numLdqEntries.U)
 
-    val int_taint_file = Reg(Vec(numLregs, new TaintEntry()))
-    val fp_taint_file = Reg(Vec(numLregs, new TaintEntry()))
+    val int_taint_file              = Reg(Vec(numLregs, new TaintEntry()))
+    val fp_taint_file               = Reg(Vec(numLregs, new TaintEntry()))
 
-    val int_br_snapshots = Reg(Vec(maxBrCount, Vec(numLregs, new TaintEntry())))
-    val fp_br_snapshots = Reg(Vec(maxBrCount, Vec(numLregs, new TaintEntry())))
+    val int_br_snapshots            = Reg(Vec(maxBrCount, Vec(numLregs, new TaintEntry())))
+    val fp_br_snapshots             = Reg(Vec(maxBrCount, Vec(numLregs, new TaintEntry())))
 
-    val int_br_remap_table  = Wire(Vec(plWidth+1, Vec(numLregs, new TaintEntry())))
-    val fp_br_remap_table  = Wire(Vec(plWidth+1, Vec(numLregs, new TaintEntry())))
+    val int_br_remap_table          = Wire(Vec(plWidth+1, Vec(numLregs, new TaintEntry())))
+    val fp_br_remap_table           = Wire(Vec(plWidth+1, Vec(numLregs, new TaintEntry())))
 
-    val ren1_uops = Wire(Vec(plWidth, new MicroOp()))
-    val ren1_fire = Wire(Vec(plWidth, Bool()))
+    val ren1_uops                   = Wire(Vec(plWidth, new MicroOp()))
+    val ren1_fire                   = Wire(Vec(plWidth, Bool()))
 
-    val ren1_br_tags = Wire(Vec(plWidth, Valid(UInt(brTagSz.W))))
+    val ren1_br_tags                = Wire(Vec(plWidth, Valid(UInt(brTagSz.W))))
 
     val int_taint_file_freed_taints = Wire(Vec(numLregs, new TaintEntry()))
-    val fp_taint_file_freed_taints = Wire(Vec(numLregs, new TaintEntry()))
+    val fp_taint_file_freed_taints  = Wire(Vec(numLregs, new TaintEntry()))
 
     for (i <- 0 until numLregs) {
         val i_ent = int_taint_file(i)
