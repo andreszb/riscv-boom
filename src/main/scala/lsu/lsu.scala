@@ -120,6 +120,7 @@ class LSUCoreIO(implicit p: Parameters) extends BoomBundle()(p)
   val ldq_head    = Output(UInt())
   val ldq_btc_head = Output(UInt())
   val ldq_tail    = Output(UInt(ldqAddrSz.W))
+  // End STT
 
   val ldq_full    = Output(Vec(coreWidth, Bool()))
   val stq_full    = Output(Vec(coreWidth, Bool()))
@@ -158,6 +159,7 @@ class LSUCoreIO(implicit p: Parameters) extends BoomBundle()(p)
   //STT
   val taint_wakeup_port = Output(Vec(numTaintWakeupPorts, Valid(UInt(ldqAddrSz.W))))
   val ldq_flipped = Output(Bool())
+  // End STT
 
   val perf        = Output(new Bundle {
     val acquire = Bool()
@@ -200,8 +202,6 @@ class LDQEntry(implicit p: Parameters) extends BoomBundle()(p)
   val d_shadow_mask       = UInt(numStqEntries.W)
   //This is just a duplicate for br_mask
   val c_shadow_mask       = UInt(maxBrCount.W)
-  //STT
-  val reg_reset_mask = UInt(32.W)
 }
 
 class STQEntry(implicit p: Parameters) extends BoomBundle()(p)

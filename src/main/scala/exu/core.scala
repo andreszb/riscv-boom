@@ -101,10 +101,11 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
 
 
   // STT
-  val taint_tracker = Module(new TaintTracker(
+  val taint_tracker = if (enableTaintTracking) Module(new TaintTracker(
     coreWidth,
     32
-  ))
+  )) else null
+  // End STT
 
   val mem_iss_unit     = Module(new IssueUnitCollapsing(memIssueParam, numIntIssueWakeupPorts))
   mem_iss_unit.suggestName("mem_issue_unit")
@@ -640,10 +641,11 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
 
   //-------------------------------------------------------------
   //-------------------------------------------------------------
-  // **** Taint Tracking Stage (Parallel to Rename) ****
+  // **** Taint Tracking Stage (Parallel to Rename) (STT) ****
   //-------------------------------------------------------------
   //-------------------------------------------------------------
 
+  if (enableTaintTracking) {
   taint_tracker.io.kill := io.ifu.redirect_flush
   taint_tracker.io.brupdate := brupdate
 
@@ -665,6 +667,9 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   taint_tracker.io.rollback := rob.io.commit.rollback
 
   taint_tracker.io.ldq_flipped := io.lsu.ldq_flipped
+  }
+
+  // End STT
 
   /**
    * TODO This is a bit nasty, but it's currently necessary to
@@ -698,8 +703,14 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
 
     ren_stalls(w) := rename_stage.io.ren_stalls(w) || f_stall || p_stall
 
-    dis_uops(w).yrot := taint_tracker.io.ren2_yrot(w)
-    dis_uops(w).yrot_r := taint_tracker.io.ren2_yrot_r(w) || !dis_uops(w).transmitter
+    //STT
+    if (enableTaintTracking) {
+      dis_uops(w).yrot := taint_tracker.io.ren2_yrot(w)
+      dis_uops(w).yrot_r := taint_tracker.io.ren2_yrot_r(w) || !dis_uops(w).transmitter
+    } else {
+      dis_uops(w).yrot_r := true.B 
+    }
+    // End STT
   }
   dontTouch(dis_uops)
 

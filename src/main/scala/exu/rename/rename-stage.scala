@@ -269,13 +269,6 @@ class RenameStage(
   maptable.io.brupdate      := io.brupdate
   maptable.io.rollback    := io.rollback
 
-  //STT 
-  val ren1_br_tags = Wire(Vec(plWidth, Valid(UInt(brTagSz.W))))
-
-  for (w <- 0 until plWidth) {
-    ren1_br_tags(w).valid := ren1_uops(w).allocate_brtag
-    ren1_br_tags(w).bits := ren1_uops(w).br_tag
-  }
   // Maptable outputs.
   for ((uop, w) <- ren1_uops.zipWithIndex) {
     val mappings = maptable.io.map_resps(w)

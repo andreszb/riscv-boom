@@ -80,6 +80,7 @@ class CtrlSigs extends Bundle
   val rocc            = Bool()
   //STT
   val transmitter     = Bool()
+  // End STT
 
   def decode(inst: UInt, table: Iterable[(BitPat, List[BitPat])]) = {
     val decoder = freechips.rocketchip.rocket.DecodeLogic(inst, XDecode.decode_default, table)
@@ -580,6 +581,7 @@ class DecodeUnit(implicit p: Parameters) extends BoomModule
   uop.bypassable   := cs.bypassable
 
   // STT
+  if (enableTaintTracking) {
   uop.transmitter := cs.uses_ldq || cs.uses_stq || 
     cs.inst_unique            || cs.is_br
     (cs.uopc === uopFDIV_S)   || (cs.uopc === uopFDIV_D)  ||
@@ -589,6 +591,10 @@ class DecodeUnit(implicit p: Parameters) extends BoomModule
     (cs.uopc === uopREM)      || (cs.uopc === uopREMU)    ||
     (cs.uopc === uopREMW)     || (cs.uopc === uopREMUW)   ||
     (cs.uopc === uopJAL)      || (cs.uopc === uopJALR)
+  } else {
+    uop.transmitter := false.B
+  } // End STT
+  
 
   //-------------------------------------------------------------
   // immediates

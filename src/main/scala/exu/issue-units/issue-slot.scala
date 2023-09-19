@@ -170,6 +170,7 @@ class IssueSlot(val numWakeupPorts: Int)(implicit p: Parameters)
   val next_ppred = WireInit(ppred)
   // STT
   val next_yrot_r = WireInit(yrot_r)
+  // End STT
 
   when (io.in_uop.valid) {
     p1 := !(io.in_uop.bits.prs1_busy)
@@ -178,6 +179,7 @@ class IssueSlot(val numWakeupPorts: Int)(implicit p: Parameters)
     ppred := !(io.in_uop.bits.ppred_busy)
     // STT
     yrot_r := io.in_uop.bits.yrot_r
+    // End STT
   }
 
   when (io.ldspec_miss && next_p1_poisoned) {
@@ -204,13 +206,14 @@ class IssueSlot(val numWakeupPorts: Int)(implicit p: Parameters)
     }
   }
 
-   // STT
+  // STT
   for (i <- 0 until numTaintWakeupPorts) {
     when (io.taint_wakeup_port(i).valid &&
         (io.taint_wakeup_port(i).bits === next_uop.yrot)) {
       yrot_r := true.B
     }
   }
+  // End STT
   
   when (io.pred_wakeup_port.valid && io.pred_wakeup_port.bits === next_uop.ppred) {
     ppred := true.B
@@ -254,7 +257,8 @@ class IssueSlot(val numWakeupPorts: Int)(implicit p: Parameters)
   }
 
   //-------------------------------------------------------------
-  // Request Logic - yrot_r is STT 
+  // Request Logic - yrot_r is STT - yrot always high
+  // if STT is disabled
   io.request := is_valid && p1 && p2 && p3 && ppred && yrot_r && !io.kill
   val high_priority = slot_uop.is_br || slot_uop.is_jal || slot_uop.is_jalr
   io.request_hp := io.request && high_priority
