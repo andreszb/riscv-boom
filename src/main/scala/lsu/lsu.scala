@@ -193,6 +193,9 @@ class LDQEntry(implicit p: Parameters) extends BoomBundle()(p)
   val st_dep_mask         = UInt(numStqEntries.W) // list of stores older than us
   val youngest_stq_idx    = UInt(stqAddrSz.W) // index of the oldest store younger than us
 
+  //STT
+  val st_addr_mask        = UInt(numStqEntries.W)
+
   val forward_std_val     = Bool()
   val forward_stq_idx     = UInt(stqAddrSz.W) // Which store did we get the store-load forward from?
 
@@ -1168,6 +1171,19 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
     }
   }
 
+  // STT
+  val stq_no_addr = (0 until numStqEntries).map (i => ((stq(i).valid && (!stq(i).bits.addr.valid)).asUInt))
+                    .reverse
+                    .foldLeft(0.U(numStqEntries.W)) ((mask, no_addr) => ((mask << 1) | no_addr))(numStqEntries-1, 0)
+  // End STT
+
+  for (i <- 0 until numLdqEntries) {
+    ldq(i).bits.st_addr_mask := ldq(i).bits.st_dep_mask & stq_no_addr
+  }
+
+  dontTouch(stq_no_addr)
+  dontTouch(ldq)
+
   for (i <- 0 until numStqEntries) {
     val s_addr = stq(i).bits.addr.bits
     val s_uop  = stq(i).bits.uop
@@ -1309,7 +1325,7 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
     val valid = io.core.taint_wakeup_port.slice(0, w).map (tw => tw.valid)
                 .foldLeft(true.B){case (v, tw) => v && tw}
 
-    when(valid && ldq_e.valid && ldq_e.bits.uop.br_mask === 0.U) {
+    when(valid && ldq_e.valid && ldq_e.bits.uop.br_mask === 0.U && ldq_e.bits.st_addr_mask === 0.U) {
       io.core.taint_wakeup_port(w).valid := true.B
       io.core.taint_wakeup_port(w).bits := WrapAdd(ldq_yrot_idx, w.U, numLdqEntries)  
     }
