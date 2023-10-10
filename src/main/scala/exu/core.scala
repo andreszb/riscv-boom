@@ -706,7 +706,9 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     //STT
     if (enableTaintTracking) {
       dis_uops(w).yrot := taint_tracker.io.ren2_yrot(w)
-      dis_uops(w).yrot_r := taint_tracker.io.ren2_yrot_r(w) || !dis_uops(w).transmitter
+      dis_uops(w).yrot_r := taint_tracker.io.ren2_yrot_r(w) || !dis_uops(w).transmitter //taint tracker should account for same-cycle wakeups||
+                            //io.lsu.taint_wakeup_port.foldLeft(false.B)
+                            //{case (y, port) => y || (port.valid && port.bits === taint_tracker.io.ren2_yrot(w))}
     } else {
       dis_uops(w).yrot_r := true.B 
     }
@@ -1015,6 +1017,14 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     taint_wakeup.bits := lsu_tw.bits
   }
 
+  // Debug
+  for {
+      iu <- issue_units
+  } {
+        iu.io.ldq_head := io.lsu.ldq_head
+        iu.io.ldq_tail := io.lsu.ldq_tail
+  }
+  
   //-------------------------------------------------------------
   //-------------------------------------------------------------
   // **** Register Read Stage ****
@@ -1321,6 +1331,8 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   // Taint Tracking
   if (usingFPU) {
     fp_pipeline.io.taint_wakeup_port := io.lsu.taint_wakeup_port
+    fp_pipeline.io.ldq_head := io.lsu.ldq_head
+    fp_pipeline.io.ldq_tail := io.lsu.ldq_tail
   }
 
   require (cnt == rob.numWakeupPorts)

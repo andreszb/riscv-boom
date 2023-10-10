@@ -75,7 +75,11 @@ class IssueUnitIO(
   val iss_valids       = Output(Vec(issueWidth, Bool()))
   val iss_uops         = Output(Vec(issueWidth, new MicroOp()))
   val wakeup_ports     = Flipped(Vec(numWakeupPorts, Valid(new IqWakeup(maxPregSz))))
+  // STT
   val taint_wakeup_port= Flipped(Vec(numTaintWakeupPorts, Valid(UInt(ldqAddrSz.W))))
+  val ldq_head         = Input(UInt(ldqAddrSz.W))
+  val ldq_tail         = Input(UInt(ldqAddrSz.W))
+  // End STT
   val pred_wakeup_port = Flipped(Valid(UInt(log2Ceil(ftqSz).W)))
 
   val spec_ld_wakeup   = Flipped(Vec(memWidth, Valid(UInt(width=maxPregSz.W))))
@@ -163,6 +167,9 @@ abstract class IssueUnit(
     issue_slots(i).ldspec_miss      := io.ld_miss
     issue_slots(i).brupdate         := io.brupdate
     issue_slots(i).kill             := io.flush_pipeline
+    //Debug
+    issue_slots(i).ldq_head         := io.ldq_head
+    issue_slots(i).ldq_tail         := io.ldq_tail
   }
 
   io.event_empty := !(issue_slots.map(s => s.valid).reduce(_|_))

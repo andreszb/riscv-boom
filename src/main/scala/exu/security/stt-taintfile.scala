@@ -178,12 +178,12 @@ class TaintTracker(
     def GetRegTaints(uop: MicroOp) : (TaintEntry, TaintEntry, TaintEntry) = {
 
         val t1 = MuxLookup(uop.lrs1_rtype, dud_entry,
-                    Array(int_type -> int_taint_file(uop.lrs1),
-                          fp_type -> fp_taint_file(uop.lrs1)))
+                    Array(int_type -> int_taint_file_freed_taints(uop.lrs1),
+                          fp_type -> fp_taint_file_freed_taints(uop.lrs1)))
 
         val t2 = MuxLookup(uop.lrs2_rtype, dud_entry,
-                    Array(int_type -> int_taint_file(uop.lrs2),
-                          fp_type -> fp_taint_file(uop.lrs2)))
+                    Array(int_type -> int_taint_file_freed_taints(uop.lrs2),
+                          fp_type -> fp_taint_file_freed_taints(uop.lrs2)))
 
         val t3 = Mux(uop.frs3_en, fp_taint_file(uop.lrs3), dud_entry)
         
@@ -393,7 +393,7 @@ class TaintTracker(
         io.ren2_yrot(w)     := ren2_uops(w).yrot
         io.ren2_valid(w)    := ren2_valids(w)
         io.ren2_yrot_r(w)   := io.taint_wakeup_port.foldLeft(ren2_uops(w).yrot_r)
-                                {case (yrot_r, wakeup) => yrot_r && !(wakeup.valid && wakeup.bits === ren2_uops(w).yrot)}
+                                {case (yrot_r, wakeup) => yrot_r || (wakeup.valid && wakeup.bits === ren2_uops(w).yrot)}
     }
 
     dontTouch(int_taint_file)

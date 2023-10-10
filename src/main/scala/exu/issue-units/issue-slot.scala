@@ -46,6 +46,11 @@ class IssueSlotIO(val numWakeupPorts: Int)(implicit p: Parameters) extends BoomB
   val pred_wakeup_port = Flipped(Valid(UInt(log2Ceil(ftqSz).W)))
   val spec_ld_wakeup = Flipped(Vec(memWidth, Valid(UInt(width=maxPregSz.W))))
   val taint_wakeup_port = Flipped(Vec(numTaintWakeupPorts, Valid(UInt(ldqAddrSz.W))))
+
+  //Taint debug
+  val ldq_head = Input(UInt(ldqAddrSz.W))
+  val ldq_tail = Input(UInt(ldqAddrSz.W))
+
   val in_uop        = Flipped(Valid(new MicroOp())) // if valid, this WILL overwrite an entry!
   val out_uop   = Output(new MicroOp()) // the updated slot uop; will be shifted upwards in a collasping queue.
   val uop           = Output(new MicroOp()) // the current Slot's uop. Sent down the pipeline when issued.
@@ -213,6 +218,16 @@ class IssueSlot(val numWakeupPorts: Int)(implicit p: Parameters)
       yrot_r := true.B
     }
   }
+
+  def idxBetween(idx: UInt, ldq_head: UInt, ldq_tail: UInt) : Bool = {
+        val isBetween = Mux(ldq_head <= ldq_tail,
+                           (ldq_head <= idx) && (idx < ldq_tail),
+                           (ldq_head <= idx) || (idx < ldq_tail))
+
+        isBetween
+    }
+
+  assert(is_invalid || yrot_r || (idxBetween(slot_uop.yrot, io.ldq_head, io.ldq_tail)))
   // End STT
   
   when (io.pred_wakeup_port.valid && io.pred_wakeup_port.bits === next_uop.ppred) {
