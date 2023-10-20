@@ -57,6 +57,9 @@ class FpPipeline(implicit p: Parameters) extends BoomModule with tile.HasFPUPara
 
     val debug_tsc_reg    = Input(UInt(width=xLen.W))
     val debug_wb_wdata   = Output(Vec(numWakeupPorts, UInt((fLen+1).W)))
+    val slot0_valid      = Output(Bool())
+    val slot0_yrot       = Output(UInt(ldqAddrSz.W))
+    val slot0_yrot_r     = Output(Bool())
   })
 
   //**********************************
@@ -101,6 +104,10 @@ class FpPipeline(implicit p: Parameters) extends BoomModule with tile.HasFPUPara
     issue_unit.io.spec_ld_wakeup(w).bits := 0.U
   }
   issue_unit.io.ld_miss := false.B
+
+  io.slot0_valid := issue_unit.io.slot0_valid
+  io.slot0_yrot := issue_unit.io.slot0_yrot
+  io.slot0_yrot_r := issue_unit.io.slot0_yrot_r
 
   require (exe_units.numTotalBypassPorts == 0)
 

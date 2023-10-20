@@ -94,6 +94,11 @@ class IssueUnitIO(
   val event_empty      = Output(Bool()) // used by HPM events; is the issue unit empty?
 
   val tsc_reg          = Input(UInt(width=xLen.W))
+
+  //Debug
+  val slot0_valid      = Output(Bool())
+  val slot0_yrot       = Output(UInt(ldqAddrSz.W))
+  val slot0_yrot_r     = Output(Bool())
 }
 
 /**
@@ -181,7 +186,9 @@ abstract class IssueUnit(
 
   assert (PopCount(issue_slots.map(s => s.grant)) <= issueWidth.U, "[issue] window giving out too many grants.")
 
-
+  io.slot0_valid := issue_slots(0).valid
+  io.slot0_yrot := issue_slots(0).out_uop.yrot
+  io.slot0_yrot_r := issue_slots(0).out_uop.yrot_r
   //-------------------------------------------------------------
 
 

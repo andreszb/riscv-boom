@@ -60,6 +60,8 @@ class TaintTracker(
         val rollback        = Input(Bool())
 
         val ldq_flipped     = Input(Bool())
+
+        val int_taint_valids = Output(UInt(32.W))
     })
 
     val int_type = RT_FIX
@@ -78,6 +80,8 @@ class TaintTracker(
         isBetween
     }
 
+    // Helper function for finding the correct dependencies intra-cycle and then
+    // invoking GetTaintEntry() to find the youngest root
     def FindAndCompareTaints(
             uop: MicroOp, 
             older_uops: Seq[MicroOp], 
@@ -113,6 +117,7 @@ class TaintTracker(
 
     }
 
+    // Helper function for finding youngest root of taint amongst several TaintEntry options
     def GetTaintEntry(
         uop: MicroOp,
         t1: TaintEntry,
@@ -175,6 +180,7 @@ class TaintTracker(
         chosen_t
     }
 
+    // Get the matching TaintEntries from TaintFile for a given UOP
     def GetRegTaints(uop: MicroOp) : (TaintEntry, TaintEntry, TaintEntry) = {
 
         val t1 = MuxLookup(uop.lrs1_rtype, dud_entry,
@@ -198,6 +204,7 @@ class TaintTracker(
                             { case (sum, add) => sum + add}
                             .map( i => i >= numLdqEntries.U)
 
+    // Taint files for int and fp registers
     val int_taint_file              = Reg(Vec(numLregs, new TaintEntry()))
     val fp_taint_file               = Reg(Vec(numLregs, new TaintEntry()))
 
@@ -215,6 +222,7 @@ class TaintTracker(
     val int_taint_file_freed_taints = Wire(Vec(numLregs, new TaintEntry()))
     val fp_taint_file_freed_taints  = Wire(Vec(numLregs, new TaintEntry()))
 
+    // Handle same-cycle wakeups
     for (i <- 0 until numLregs) {
         val i_ent = int_taint_file(i)
         val f_ent = fp_taint_file(i)
@@ -230,8 +238,6 @@ class TaintTracker(
 
     dontTouch(int_taint_file_freed_taints)
     dontTouch(fp_taint_file_freed_taints)
-
-
     dontTouch(ren1_uops)
     dontTouch(ren1_fire)
 
@@ -244,13 +250,13 @@ class TaintTracker(
         ren1_br_tags(w).valid := ren1_fire(w) && ren1_uops(w).allocate_brtag
         ren1_br_tags(w).bits := ren1_uops(w).br_tag
     }
+
     val new_taint_entries = Wire(Vec(plWidth, new TaintEntry()))
 
+    // Handle new taint allocations
     for (i <- 0 until plWidth) {
         val t_ent = Wire(new TaintEntry())
-
         val (t1, t2, t3) = GetRegTaints(ren1_uops(i))
-
 
         if (i > 0) {
             t_ent := FindAndCompareTaints(ren1_uops(i), 
@@ -287,20 +293,22 @@ class TaintTracker(
         ren1_uops(i).yrot_r := !(t_ent.valid)
     }
 
-    // Int update
+    // Find remapped int entries, by checking reallocations for each of the width micro-ops
     for (i <- 0 until numLregs) {
         val remapped_int_entry = (ren1_uops.map(uop => (uop.ldst_val, uop.ldst, uop.dst_rtype)) zip ren1_fire zip new_taint_entries)
-            .scanLeft(int_taint_file_freed_taints(i)) {case (t_ent, (((ldst_val, ldst, rtype), fire), new_t_ent)) => Mux(fire && ldst_val && ldst === i.U && rtype === int_type, new_t_ent, t_ent)}
+            .scanLeft(int_taint_file_freed_taints(i)) {case (t_ent, (((ldst_val, ldst, rtype), fire), new_t_ent)) =>
+                Mux(fire && ldst_val && ldst === i.U && rtype === int_type, new_t_ent, t_ent)}
         
         for (j <- 0 until plWidth+1) {
             int_br_remap_table(j)(i) := remapped_int_entry(j)
         }
     }
 
-    // Float update
+    // Find remapped float entries, by checking reallocations for each of the width micro-ops
     for (i <- 0 until numLregs) {
         val remapped_float_entry = (ren1_uops.map(uop => (uop.ldst_val, uop.ldst, uop.dst_rtype)) zip ren1_fire zip new_taint_entries)
-            .scanLeft(fp_taint_file_freed_taints(i)) {case (t_ent, (((ldst_val, ldst, rtype), fire), new_t_ent)) => Mux(fire && ldst_val && ldst === i.U && rtype === fp_type, new_t_ent, t_ent)}
+            .scanLeft(fp_taint_file_freed_taints(i)) {case (t_ent, (((ldst_val, ldst, rtype), fire), new_t_ent)) =>
+                Mux(fire && ldst_val && ldst === i.U && rtype === fp_type, new_t_ent, t_ent)}
 
         for (j <- 0 until plWidth+1) {
             fp_br_remap_table(j)(i) := remapped_float_entry(j)
@@ -322,6 +330,7 @@ class TaintTracker(
     temp_fp_file := fp_taint_file
     dontTouch(temp_int_file)
     
+    // Reset to a known taint area, but check all tainted entries to see if they have been cleared. 
     when (io.brupdate.b2.mispredict) {
         temp_int_file := int_br_snapshots(io.brupdate.b2.uop.br_tag)
         temp_fp_file := fp_br_snapshots(io.brupdate.b2.uop.br_tag)
@@ -342,7 +351,7 @@ class TaintTracker(
         int_taint_file := temp_int_file
         fp_taint_file := temp_fp_file
 
-
+    // Update the taint_file with the most updated mappings
     } .otherwise {
         int_taint_file := int_br_remap_table(plWidth)
         fp_taint_file := fp_br_remap_table(plWidth)
@@ -356,6 +365,7 @@ class TaintTracker(
     dontTouch(ren2_uops)
     dontTouch(ren2_valids)
 
+    // Buffer stop between rename 1 and rename 2 (dispatch)
     for (w <- 0 until plWidth) {
         val r_valid = RegInit(false.B)
         val r_uop = Reg(new MicroOp)
@@ -389,11 +399,28 @@ class TaintTracker(
         dontTouch(r_uop)
     }
 
+
+    // Outputs
     for (w <- 0 until plWidth) {
         io.ren2_yrot(w)     := ren2_uops(w).yrot
         io.ren2_valid(w)    := ren2_valids(w)
         io.ren2_yrot_r(w)   := io.taint_wakeup_port.foldLeft(ren2_uops(w).yrot_r)
                                 {case (yrot_r, wakeup) => yrot_r || (wakeup.valid && wakeup.bits === ren2_uops(w).yrot)}
+    }
+    // For debug purposes
+    io.int_taint_valids := temp_int_file.foldLeft(0.U(32.W))
+                            {(uint, entry) => (uint << 1) | (entry.valid.asUInt(0))}
+
+    when(io.rollback) {
+        for (i <- 0 until numLregs) {
+            int_taint_file(i)   := dud_entry
+            fp_taint_file(i)    := dud_entry
+
+            for (j <- 0 until maxBrCount)  {
+                int_br_snapshots(j)(i)  := dud_entry
+                fp_br_snapshots(j)(i)   := dud_entry
+            }
+        }
     }
 
     dontTouch(int_taint_file)

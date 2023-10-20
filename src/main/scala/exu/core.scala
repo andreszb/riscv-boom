@@ -42,6 +42,43 @@ import boom.ifu.{GlobalHistory, HasBoomFrontendParameters}
 import boom.exu.FUConstants._
 import boom.util._
 
+class TraceBundle(implicit p: Parameters) extends BoomBundle {
+
+  val traceTimestamp = UInt(64.W)
+  
+  val ldq_head = UInt(ldqAddrSz.W)
+  val ldq_btc_head = UInt(ldqAddrSz.W)
+  val ldq_tail = UInt(ldqAddrSz.W)
+
+  val int_taints_valid = UInt(32.W)
+
+  val int_issue_0_valid = Bool()
+  val int_issue_0_yrot = UInt(ldqAddrSz.W)
+  val int_issue_0_yrot_r = Bool()
+
+  val fp_issue_0_valid = Bool()
+  val fp_issue_0_yrot = UInt(ldqAddrSz.W)
+  val fp_issue_0_yrot_r = Bool()
+
+  val agu_issue_0_valid = Bool()
+  val agu_issue_0_yrot = UInt(ldqAddrSz.W)
+  val agu_issue_0_yrot_r = Bool()
+
+  val taint_wakeup_0_valid = Bool()
+  val taint_wakeup_0_port = UInt(ldqAddrSz.W)
+
+  val taint_wakeup_1_valid = Bool()
+  val taint_wakeup_1_port = UInt(ldqAddrSz.W)
+
+  val dis_0_fire = Bool()
+  val ren2_0_yrot = UInt(ldqAddrSz.W)
+  val ren2_0_yrot_r = Bool()
+
+  val dis_1_fire = Bool()
+  val ren2_1_yrot = UInt(ldqAddrSz.W)
+  val ren2_1_yrot_r = Bool()
+}
+
 /**
  * Top level core object that connects the Frontend to the rest of the pipeline.
  */
@@ -1503,7 +1540,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     }
   }
 
-  if (io.traceDoctor.traceWidth >= (64 + 64 + (coreWidth * 64))) {
+  if (io.traceDoctor.traceWidth >= 148) {//(64 + 64 + (coreWidth * 64))) {
     // If TracerV is also included, this assignment is redundant
     for (w <- 0 until coreWidth) {
       io.ifu.debug_ftq_idx(w) := rob.io.commit.uops(w).ftq_idx
@@ -1521,17 +1558,57 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     val traceTimestamp = RegNext(debug_tsc_reg)
     val coreStalled = RegNext(csr.io.csr_stall)
 
-    io.traceDoctor.valid := traceValids.reduce(_||_) && !coreStalled
+    /* io.traceDoctor.valid := traceValids.reduce(_||_) && !coreStalled
 
     // This layout matches the endianess nicely with C-structs
     io.traceDoctor.bits := Cat(Seq(
       traceTimestamp(63, 0).pad(64),
       traceValids.reverse.asUInt()(coreWidth - 1, 0).pad(64),
       traceAddresses.map(a => a(63, 0).pad(64)).reverse.asUInt()
-    ).reverse).pad(io.traceDoctor.traceWidth).asBools
+    ).reverse).pad(io.traceDoctor.traceWidth).asBools */
+    
+    val traceData = Reg(new TraceBundle)
+
+    traceData.traceTimestamp        := debug_tsc_reg
+    traceData.ldq_head              := io.lsu.ldq_head
+    traceData.ldq_btc_head          := io.lsu.ldq_btc_head
+    traceData.ldq_tail              := io.lsu.ldq_tail
+
+    traceData.int_taints_valid      := taint_tracker.io.int_taint_valids
+
+    traceData.int_issue_0_valid     := int_iss_unit.io.slot0_valid
+    traceData.int_issue_0_yrot      := int_iss_unit.io.slot0_yrot
+    traceData.int_issue_0_yrot_r    := int_iss_unit.io.slot0_yrot_r
+
+    traceData.fp_issue_0_valid      := fp_pipeline.io.slot0_valid
+    traceData.fp_issue_0_yrot       := fp_pipeline.io.slot0_yrot
+    traceData.fp_issue_0_yrot_r     := fp_pipeline.io.slot0_yrot_r
+
+    traceData.agu_issue_0_valid     := mem_iss_unit.io.slot0_valid
+    traceData.agu_issue_0_yrot      := mem_iss_unit.io.slot0_yrot
+    traceData.agu_issue_0_yrot_r    := mem_iss_unit.io.slot0_yrot_r
+
+    traceData.taint_wakeup_0_valid  := io.lsu.taint_wakeup_port(0).valid
+    traceData.taint_wakeup_0_port   := io.lsu.taint_wakeup_port(0).bits
+    
+    traceData.taint_wakeup_1_valid  := io.lsu.taint_wakeup_port(1).valid
+    traceData.taint_wakeup_1_port   := io.lsu.taint_wakeup_port(1).bits
+
+    traceData.dis_0_fire            := dis_fire(0)
+    traceData.ren2_0_yrot           := taint_tracker.io.ren2_yrot(0)
+    traceData.ren2_0_yrot_r         := taint_tracker.io.ren2_yrot_r(0)
+
+    traceData.dis_1_fire            := dis_fire(1)
+    traceData.ren2_1_yrot           := taint_tracker.io.ren2_yrot(1)
+    traceData.ren2_1_yrot_r         := taint_tracker.io.ren2_yrot_r(1)
+
+    io.traceDoctor.valid := true.B
+    io.traceDoctor.bits := traceData.asUInt.asBools
+
   }
 
   if (usingTrace) {
+
     for (w <- 0 until coreWidth) {
       // Delay the trace so we have a cycle to pull PCs out of the FTQ
       io.trace(w).valid      := RegNext(rob.io.commit.arch_valids(w))
@@ -1574,7 +1651,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
       io.trace(w).interrupt  := RegNext(rob.io.com_xcpt.valid && rob.io.com_xcpt.bits.cause(xLen - 1))
       io.trace(w).cause      := RegNext(rob.io.com_xcpt.bits.cause)
       io.trace(w).tval       := RegNext(csr.io.tval)
-    }
+    } 
     dontTouch(io.trace)
   } else {
     io.trace := DontCare
