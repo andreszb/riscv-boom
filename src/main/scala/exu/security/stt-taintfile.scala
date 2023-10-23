@@ -316,10 +316,12 @@ class TaintTracker(
     }
 
 
-    for (i <- 0 until plWidth) {
-        when(ren1_br_tags(i).valid) {
-            int_br_snapshots(ren1_br_tags(i).bits) := int_br_remap_table(i+1)
-            fp_br_snapshots(ren1_br_tags(i).bits) := fp_br_remap_table(i+1)
+    if (enableCheckpointTaints) {
+        for (i <- 0 until plWidth) {
+            when(ren1_br_tags(i).valid) {
+                int_br_snapshots(ren1_br_tags(i).bits) := int_br_remap_table(i+1)
+                fp_br_snapshots(ren1_br_tags(i).bits) := fp_br_remap_table(i+1)
+            }
         }
     }
 
@@ -332,24 +334,29 @@ class TaintTracker(
     
     // Reset to a known taint area, but check all tainted entries to see if they have been cleared. 
     when (io.brupdate.b2.mispredict) {
-        temp_int_file := int_br_snapshots(io.brupdate.b2.uop.br_tag)
-        temp_fp_file := fp_br_snapshots(io.brupdate.b2.uop.br_tag)
+        if (enableCheckpointTaints) {
+            temp_int_file := int_br_snapshots(io.brupdate.b2.uop.br_tag)
+            temp_fp_file := fp_br_snapshots(io.brupdate.b2.uop.br_tag)
 
-        for (i <- 0 until numLregs) {
-            val temp_i_reg = int_br_snapshots(io.brupdate.b2.uop.br_tag)(i)
-            temp_int_file(i) := temp_i_reg
-            temp_int_file(i).valid := io.taint_wakeup_port.foldLeft(temp_i_reg.valid && idxBetween(temp_i_reg.ldq_idx))
-                                        {case (valid, wakeup) => valid && !(wakeup.valid && wakeup.bits === temp_i_reg.ldq_idx)}
+            for (i <- 0 until numLregs) {
+                val temp_i_reg = int_br_snapshots(io.brupdate.b2.uop.br_tag)(i)
+                temp_int_file(i) := temp_i_reg
+                temp_int_file(i).valid := io.taint_wakeup_port.foldLeft(temp_i_reg.valid && idxBetween(temp_i_reg.ldq_idx))
+                                            {case (valid, wakeup) => valid && !(wakeup.valid && wakeup.bits === temp_i_reg.ldq_idx)}
 
 
-            val temp_f_reg = fp_br_snapshots(io.brupdate.b2.uop.br_tag)(i)
-            temp_fp_file(i) := temp_f_reg
-            temp_fp_file(i).valid := io.taint_wakeup_port.foldLeft(temp_f_reg.valid && idxBetween(temp_f_reg.ldq_idx))
-                                        {case (valid, wakeup) => valid && !(wakeup.valid && wakeup.bits === temp_f_reg.ldq_idx)}
+                val temp_f_reg = fp_br_snapshots(io.brupdate.b2.uop.br_tag)(i)
+                temp_fp_file(i) := temp_f_reg
+                temp_fp_file(i).valid := io.taint_wakeup_port.foldLeft(temp_f_reg.valid && idxBetween(temp_f_reg.ldq_idx))
+                                            {case (valid, wakeup) => valid && !(wakeup.valid && wakeup.bits === temp_f_reg.ldq_idx)}
+            }
+
+            int_taint_file := temp_int_file
+            fp_taint_file := temp_fp_file
+        } else {
+            int_taint_file := VecInit.fill(numLregs)(dud_entry)
+            fp_taint_file := VecInit.fill(numLregs)(dud_entry)
         }
-
-        int_taint_file := temp_int_file
-        fp_taint_file := temp_fp_file
 
     // Update the taint_file with the most updated mappings
     } .otherwise {
@@ -425,8 +432,10 @@ class TaintTracker(
 
     dontTouch(int_taint_file)
     dontTouch(fp_taint_file)
-    dontTouch(int_br_snapshots)
-    dontTouch(fp_br_snapshots)
+    if (enableCheckpointTaints) {
+        dontTouch(int_br_snapshots)
+        dontTouch(fp_br_snapshots)
+    }
     dontTouch(int_br_remap_table)
     dontTouch(fp_br_remap_table)
     dontTouch(io)

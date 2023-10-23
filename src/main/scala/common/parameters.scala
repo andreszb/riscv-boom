@@ -100,6 +100,7 @@ case class BoomCoreParams(
   /* taint tracking */
   enableTaintTracking: Boolean = false,
   numTaintWakeupPorts: Int = 2,
+  enableCheckpointTaints: Boolean = false,
 
   /* debug stuff */
   enableCommitLogPrintf: Boolean = false,
@@ -179,6 +180,7 @@ trait HasBoomCoreParameters extends freechips.rocketchip.tile.HasCoreParameters
   // TaintTracking
   val numTaintWakeupPorts = boomParams.numTaintWakeupPorts
   val enableTaintTracking = boomParams.enableTaintTracking
+  val enableCheckpointTaints   = boomParams.enableCheckpointTaints
 
   val numIntPhysRegs= boomParams.numIntPhysRegisters // size of the integer physical register file
   val numFpPhysRegs = boomParams.numFpPhysRegisters  // size of the floating point physical register file

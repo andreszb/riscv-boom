@@ -1569,7 +1569,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     
     val traceData = Reg(new TraceBundle)
 
-    traceData.traceTimestamp        := debug_tsc_reg
+    traceData.traceTimestamp        := traceTimestamp(63, 0).pad(64)
     traceData.ldq_head              := io.lsu.ldq_head
     traceData.ldq_btc_head          := io.lsu.ldq_btc_head
     traceData.ldq_tail              := io.lsu.ldq_tail

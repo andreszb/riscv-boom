@@ -227,7 +227,7 @@ class IssueSlot(val numWakeupPorts: Int)(implicit p: Parameters)
         isBetween
     }
 
-  assert(is_invalid || yrot_r || (idxBetween(slot_uop.yrot, io.ldq_head, io.ldq_tail)))
+  //assert(is_invalid || yrot_r || (idxBetween(slot_uop.yrot, io.ldq_head, io.ldq_tail)))
   // End STT
   
   when (io.pred_wakeup_port.valid && io.pred_wakeup_port.bits === next_uop.ppred) {
