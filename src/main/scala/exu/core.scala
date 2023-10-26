@@ -70,6 +70,16 @@ class TraceBundle(implicit p: Parameters) extends BoomBundle {
   val taint_wakeup_1_valid = Bool()
   val taint_wakeup_1_port = UInt(ldqAddrSz.W)
 
+  val dec_0_fire = Bool()
+  val ren1_0_yrot = UInt(ldqAddrSz.W)
+  val ren1_0_yrot_r = Bool()
+  val ren1_0_tent_ldq_idx = UInt(ldqAddrSz.W)
+
+  val dec_1_fire = Bool()
+  val ren1_1_yrot = UInt(ldqAddrSz.W)
+  val ren1_1_yrot_r = Bool()
+  val ren1_1_tent_ldq_idx = UInt(ldqAddrSz.W)
+
   val dis_0_fire = Bool()
   val ren2_0_yrot = UInt(ldqAddrSz.W)
   val ren2_0_yrot_r = Bool()
@@ -77,6 +87,18 @@ class TraceBundle(implicit p: Parameters) extends BoomBundle {
   val dis_1_fire = Bool()
   val ren2_1_yrot = UInt(ldqAddrSz.W)
   val ren2_1_yrot_r = Bool()
+
+  val loads_last_cycle = UInt(2.W)
+  val load_ops_0 = UInt(2.W)
+  val load_ops_1 = UInt(2.W)
+  val load_ops_2 = UInt(2.W)
+  val ldq_will_flip_0 = Bool()
+  val ldq_will_flip_1 = Bool()
+  val ldq_will_flip_2 = Bool()
+  val ldq_will_flip_3 = Bool()
+
+  val rollback = Bool()
+  val br_mispredict = Bool()
 }
 
 /**
@@ -799,11 +821,27 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   //-------------------------------------------------------------
   // LDQ/STQ Allocation Logic
 
+  val misLDQ = RegInit(0.U(7.W))
+  val missed_once = RegInit(false.B)
+
+  val missed = Wire(Vec(coreWidth, Bool()))
+
   for (w <- 0 until coreWidth) {
     // Dispatching instructions request load/store queue entries when they can proceed.
     dis_uops(w).ldq_idx := io.lsu.dis_ldq_idx(w)
     dis_uops(w).stq_idx := io.lsu.dis_stq_idx(w)
+    //Assert correct ldq idx calculation
+    missed(w) := !(taint_tracker.io.ren2_ldq_idx(w) === io.lsu.dis_ldq_idx(w) || !(dis_fire(w) && dis_uops(w).uses_ldq))
   }
+  missed_once := missed_once || missed.foldLeft(false.B)(_||_)
+
+  when(!missed_once) {
+    misLDQ := 0.U
+  }.otherwise{
+    misLDQ := misLDQ + 1.U
+  }
+
+  assert(misLDQ < 100.U)
 
   //-------------------------------------------------------------
   // Rob Allocation Logic
@@ -1540,7 +1578,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     }
   }
 
-  if (io.traceDoctor.traceWidth >= 148) {//(64 + 64 + (coreWidth * 64))) {
+  if (io.traceDoctor.traceWidth >= 182) {//(64 + 64 + (coreWidth * 64))) {
     // If TracerV is also included, this assignment is redundant
     for (w <- 0 until coreWidth) {
       io.ifu.debug_ftq_idx(w) := rob.io.commit.uops(w).ftq_idx
@@ -1594,6 +1632,16 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     traceData.taint_wakeup_1_valid  := io.lsu.taint_wakeup_port(1).valid
     traceData.taint_wakeup_1_port   := io.lsu.taint_wakeup_port(1).bits
 
+    traceData.dec_0_fire            := dec_fire(0)
+    traceData.ren1_0_yrot           := taint_tracker.io.ren1_yrot(0)
+    traceData.ren1_0_yrot_r         := taint_tracker.io.ren1_yrot_r(0)
+    traceData.ren1_0_tent_ldq_idx   := taint_tracker.io.ren1_tent_ldq_idx(0)
+
+    traceData.dec_1_fire            := dec_fire(1)
+    traceData.ren1_1_yrot           := taint_tracker.io.ren1_yrot(1)
+    traceData.ren1_1_yrot_r         := taint_tracker.io.ren1_yrot_r(1)
+    traceData.ren1_1_tent_ldq_idx   := taint_tracker.io.ren1_tent_ldq_idx(1)
+
     traceData.dis_0_fire            := dis_fire(0)
     traceData.ren2_0_yrot           := taint_tracker.io.ren2_yrot(0)
     traceData.ren2_0_yrot_r         := taint_tracker.io.ren2_yrot_r(0)
@@ -1601,6 +1649,18 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     traceData.dis_1_fire            := dis_fire(1)
     traceData.ren2_1_yrot           := taint_tracker.io.ren2_yrot(1)
     traceData.ren2_1_yrot_r         := taint_tracker.io.ren2_yrot_r(1)
+  
+    traceData.loads_last_cycle      := taint_tracker.io.loads_last_cycle
+    traceData.load_ops_0            := taint_tracker.io.load_ops(0)
+    traceData.load_ops_1            := taint_tracker.io.load_ops(1)
+    traceData.load_ops_2            := taint_tracker.io.load_ops(2)
+    traceData.ldq_will_flip_0       := taint_tracker.io.ldq_will_flip(0)
+    traceData.ldq_will_flip_1       := taint_tracker.io.ldq_will_flip(1)
+    traceData.ldq_will_flip_2       := taint_tracker.io.ldq_will_flip(2)
+    traceData.ldq_will_flip_3       := taint_tracker.io.ldq_will_flip(3)
+
+    traceData.rollback            := rob.io.commit.rollback
+    traceData.br_mispredict       := b2.mispredict
 
     io.traceDoctor.valid := true.B
     io.traceDoctor.bits := traceData.asUInt.asBools

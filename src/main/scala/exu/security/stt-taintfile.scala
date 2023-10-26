@@ -61,7 +61,18 @@ class TaintTracker(
 
         val ldq_flipped     = Input(Bool())
 
+        // Debug
         val int_taint_valids = Output(UInt(32.W))
+        val ren1_yrot = Output(Vec(plWidth, (UInt(ldqAddrSz.W))))
+        val ren1_yrot_r = Output(Vec(plWidth, Bool()))
+
+        val loads_last_cycle = Output(UInt(2.W))
+        val load_ops = Output(Vec(plWidth + 1, UInt(2.W)))
+        val ldq_will_flip = Output(Vec(plWidth + 2, Bool()))
+        val ren1_tent_ldq_idx = Output(Vec(plWidth, UInt(ldqAddrSz.W)))
+
+        // Assert debug
+        val ren2_ldq_idx = Output(Vec(plWidth, UInt(ldqAddrSz.W)))
     })
 
     val int_type = RT_FIX
@@ -198,6 +209,7 @@ class TaintTracker(
 
     val load_ops = ((io.dec_fire zip io.dec_uops) map { case (f, u) => (f && u.uses_ldq)})
                     .scanLeft(0.U(4.W))((total, load) => total + load.asUInt())
+    
     val loads_last_cycle = RegNext(load_ops.last)
 
     val ldq_will_flip = load_ops.scanLeft(io.ldq_tail + loads_last_cycle)
@@ -269,12 +281,14 @@ class TaintTracker(
         
         val new_tent = WireInit(t_ent)
 
-        when(ren1_fire(i) && ren1_uops(i).uses_ldq) {
+        when(ren1_fire(i) && ren1_uops(i).uses_ldq && (!ren1_uops(i).is_problematic)) {
             new_tent.ldq_idx := WrapAdd(io.ldq_tail, loads_last_cycle + load_ops(i), numLdqEntries) //ren1_uops(i).ldq_idx
             new_tent.age := WrapAdd(io.ldq_tail, loads_last_cycle +  load_ops(i), numLdqEntries) //ren1_uops(i).ldq_idx
             new_tent.flipped_age := Mux(ldq_will_flip(i), !io.ldq_flipped, io.ldq_flipped)
             new_tent.valid := true.B
-        }. elsewhen(ren1_fire(i)) {
+            // Assert Debug
+            ren1_uops(i).ldq_idx := new_tent.ldq_idx
+        }. elsewhen(ren1_fire(i) && (!ren1_uops(i).is_problematic)) {
             // Is the load that is tainting us being declared non-speculative this cycle?
             for (j <- 0 until numTaintWakeupPorts) {
                 when(io.taint_wakeup_port(j).valid && (io.taint_wakeup_port(j).bits === t_ent.ldq_idx)) {
@@ -291,6 +305,8 @@ class TaintTracker(
 
         ren1_uops(i).yrot := t_ent.ldq_idx
         ren1_uops(i).yrot_r := !(t_ent.valid)
+
+        io.ren1_tent_ldq_idx(i) := new_tent.ldq_idx
     }
 
     // Find remapped int entries, by checking reallocations for each of the width micro-ops
@@ -404,6 +420,10 @@ class TaintTracker(
 
         dontTouch(next_uop)
         dontTouch(r_uop)
+
+        //Debug 
+        io.ren1_yrot(w) := temp.yrot
+        io.ren1_yrot_r(w) := temp.yrot_r
     }
 
 
@@ -417,6 +437,12 @@ class TaintTracker(
     // For debug purposes
     io.int_taint_valids := temp_int_file.foldLeft(0.U(32.W))
                             {(uint, entry) => (uint << 1) | (entry.valid.asUInt(0))}
+    io.loads_last_cycle := loads_last_cycle
+    io.load_ops := load_ops
+    io.ldq_will_flip := ldq_will_flip
+
+    // Assert Debug
+    io.ren2_ldq_idx := ren2_uops map {u => u.ldq_idx}
 
     when(io.rollback) {
         for (i <- 0 until numLregs) {
