@@ -58,6 +58,7 @@ class TaintTracker(
         val com_uops        = Input(Vec(plWidth, new MicroOp()))
         val rbk_valids      = Input(Vec(plWidth, Bool()))
         val rollback        = Input(Bool())
+        val exception       = Input(Bool())
 
         val ldq_flipped     = Input(Bool())
 
@@ -207,15 +208,6 @@ class TaintTracker(
         (t1, t2, t3)
     }
 
-    val load_ops = ((io.dec_fire zip io.dec_uops) map { case (f, u) => (f && u.uses_ldq)})
-                    .scanLeft(0.U(4.W))((total, load) => total + load.asUInt())
-    
-    val loads_last_cycle = RegNext(load_ops.last)
-
-    val ldq_will_flip = load_ops.scanLeft(io.ldq_tail + loads_last_cycle)
-                            { case (sum, add) => sum + add}
-                            .map( i => i >= numLdqEntries.U)
-
     // Taint files for int and fp registers
     val int_taint_file              = Reg(Vec(numLregs, new TaintEntry()))
     val fp_taint_file               = Reg(Vec(numLregs, new TaintEntry()))
@@ -234,6 +226,24 @@ class TaintTracker(
     val int_taint_file_freed_taints = Wire(Vec(numLregs, new TaintEntry()))
     val fp_taint_file_freed_taints  = Wire(Vec(numLregs, new TaintEntry()))
 
+    val ren2_fire       = io.dis_fire
+    val ren2_ready      = io.dis_ready
+    val ren2_valids     = Wire(Vec(plWidth, Bool()))
+    val ren2_uops       = Wire(Vec(plWidth, new MicroOp))
+
+    val load_ops = ((io.dec_fire zip io.dec_uops) map { case (f, u) => (f && u.uses_ldq)})
+                    .scanLeft(0.U(ldqAddrSz.W))((total, load) => total + load.asUInt())
+
+    val loads_last_cycle = ((ren2_valids zip ren2_uops) map { case (v, u) => (v && u.uses_ldq)})
+                        .foldLeft(0.U(ldqAddrSz.W))((total, load) => total + load.asUInt())
+
+    val ldq_will_flip = load_ops.scanLeft(io.ldq_tail + loads_last_cycle)
+                            { case (sum, add) => sum + add}
+                            .map( i => i >= numLdqEntries.U)
+
+    val last_cycle_int_snapshot = Reg(Vec(numLregs, new TaintEntry()))
+    val last_cycle_fp_snapshot = Reg(Vec(numLregs, new TaintEntry()))
+
     // Handle same-cycle wakeups
     for (i <- 0 until numLregs) {
         val i_ent = int_taint_file(i)
@@ -247,6 +257,10 @@ class TaintTracker(
         fp_taint_file_freed_taints(i).valid := io.taint_wakeup_port.foldLeft(f_ent.valid)
             {case (valid, twake) => valid && !(twake.valid && (twake.bits === f_ent.ldq_idx))}
     }
+
+
+    last_cycle_int_snapshot := int_taint_file_freed_taints
+    last_cycle_fp_snapshot := fp_taint_file_freed_taints
 
     dontTouch(int_taint_file_freed_taints)
     dontTouch(fp_taint_file_freed_taints)
@@ -286,8 +300,6 @@ class TaintTracker(
             new_tent.age := WrapAdd(io.ldq_tail, loads_last_cycle +  load_ops(i), numLdqEntries) //ren1_uops(i).ldq_idx
             new_tent.flipped_age := Mux(ldq_will_flip(i), !io.ldq_flipped, io.ldq_flipped)
             new_tent.valid := true.B
-            // Assert Debug
-            ren1_uops(i).ldq_idx := new_tent.ldq_idx
         }. elsewhen(ren1_fire(i) && (!ren1_uops(i).is_problematic)) {
             // Is the load that is tainting us being declared non-speculative this cycle?
             for (j <- 0 until numTaintWakeupPorts) {
@@ -299,14 +311,17 @@ class TaintTracker(
             new_taint_entries(i) := t_ent
         }. otherwise {
             new_tent.valid := false.B
-        }   
+        }
+
         
         new_taint_entries(i) := new_tent
 
         ren1_uops(i).yrot := t_ent.ldq_idx
         ren1_uops(i).yrot_r := !(t_ent.valid)
 
-        io.ren1_tent_ldq_idx(i) := new_tent.ldq_idx
+        // Assert Debug
+        ren1_uops(i).ldq_idx := WrapAdd(io.ldq_tail, loads_last_cycle + load_ops(i), numLdqEntries)
+        io.ren1_tent_ldq_idx(i) := WrapAdd(io.ldq_tail, loads_last_cycle + load_ops(i), numLdqEntries)
     }
 
     // Find remapped int entries, by checking reallocations for each of the width micro-ops
@@ -334,7 +349,7 @@ class TaintTracker(
 
     if (enableCheckpointTaints) {
         for (i <- 0 until plWidth) {
-            when(ren1_br_tags(i).valid) {
+            when(ren1_br_tags(i).valid && io.dis_fire(i)) {
                 int_br_snapshots(ren1_br_tags(i).bits) := int_br_remap_table(i+1)
                 fp_br_snapshots(ren1_br_tags(i).bits) := fp_br_remap_table(i+1)
             }
@@ -373,17 +388,15 @@ class TaintTracker(
             int_taint_file := VecInit.fill(numLregs)(dud_entry)
             fp_taint_file := VecInit.fill(numLregs)(dud_entry)
         }
-
+    // When frontend is stalled, only receive taint wakeup requests
+    }.elsewhen(!io.dis_ready) {
+        int_taint_file := int_taint_file_freed_taints
+        fp_taint_file := fp_taint_file_freed_taints
     // Update the taint_file with the most updated mappings
     } .otherwise {
         int_taint_file := int_br_remap_table(plWidth)
         fp_taint_file := fp_br_remap_table(plWidth)
     }
-
-    val ren2_fire       = io.dis_fire
-    val ren2_ready      = io.dis_ready
-    val ren2_valids     = Wire(Vec(plWidth, Bool()))
-    val ren2_uops       = Wire(Vec(plWidth, new MicroOp))
 
     dontTouch(ren2_uops)
     dontTouch(ren2_valids)
@@ -444,7 +457,7 @@ class TaintTracker(
     // Assert Debug
     io.ren2_ldq_idx := ren2_uops map {u => u.ldq_idx}
 
-    when(io.rollback) {
+    when(io.rollback || io.exception) {
         for (i <- 0 until numLregs) {
             int_taint_file(i)   := dud_entry
             fp_taint_file(i)    := dud_entry
@@ -453,6 +466,16 @@ class TaintTracker(
                 int_br_snapshots(j)(i)  := dud_entry
                 fp_br_snapshots(j)(i)   := dud_entry
             }
+        }
+    }.elsewhen(io.kill && !io.brupdate.b2.mispredict) {
+        for (i <- 0 until numLregs) {
+            int_taint_file(i) := last_cycle_int_snapshot(i)
+            int_taint_file(i).valid := io.taint_wakeup_port.foldLeft(last_cycle_int_snapshot(i).valid)
+            {case (valid, twake) => valid && !(twake.valid && (twake.bits === last_cycle_int_snapshot(i).ldq_idx))}
+
+            fp_taint_file(i) := last_cycle_fp_snapshot(i)
+            fp_taint_file(i).valid := io.taint_wakeup_port.foldLeft(last_cycle_fp_snapshot(i).valid)
+            {case (valid, twake) => valid && !(twake.valid && (twake.bits === last_cycle_fp_snapshot(i).ldq_idx))}
         }
     }
 

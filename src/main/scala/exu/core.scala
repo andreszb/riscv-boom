@@ -99,6 +99,8 @@ class TraceBundle(implicit p: Parameters) extends BoomBundle {
 
   val rollback = Bool()
   val br_mispredict = Bool()
+  val core_exception = Bool()
+  val misLDQ = UInt(7.W)
 }
 
 /**
@@ -724,6 +726,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   taint_tracker.io.com_uops := rob.io.commit.uops
   taint_tracker.io.rbk_valids := rob.io.commit.rbk_valids
   taint_tracker.io.rollback := rob.io.commit.rollback
+  taint_tracker.io.exception := RegNext(rob.io.flush.valid)
 
   taint_tracker.io.ldq_flipped := io.lsu.ldq_flipped
   }
@@ -831,7 +834,8 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     dis_uops(w).ldq_idx := io.lsu.dis_ldq_idx(w)
     dis_uops(w).stq_idx := io.lsu.dis_stq_idx(w)
     //Assert correct ldq idx calculation
-    missed(w) := !(taint_tracker.io.ren2_ldq_idx(w) === io.lsu.dis_ldq_idx(w) || !(dis_fire(w) && dis_uops(w).uses_ldq))
+    missed(w) := !(taint_tracker.io.ren2_ldq_idx(w) === io.lsu.dis_ldq_idx(w) ||
+                 !(dis_fire(w) && dis_uops(w).uses_ldq && !dis_uops(w).exception))
   }
   missed_once := missed_once || missed.foldLeft(false.B)(_||_)
 
@@ -840,7 +844,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   }.otherwise{
     misLDQ := misLDQ + 1.U
   }
-
+  // This assert can trigger during mispredicts and during exceptions
   assert(misLDQ < 100.U)
 
   //-------------------------------------------------------------
@@ -1578,7 +1582,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     }
   }
 
-  if (io.traceDoctor.traceWidth >= 182) {//(64 + 64 + (coreWidth * 64))) {
+  if (io.traceDoctor.traceWidth >= 190) {//(64 + 64 + (coreWidth * 64))) {
     // If TracerV is also included, this assignment is redundant
     for (w <- 0 until coreWidth) {
       io.ifu.debug_ftq_idx(w) := rob.io.commit.uops(w).ftq_idx
@@ -1661,6 +1665,8 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
 
     traceData.rollback            := rob.io.commit.rollback
     traceData.br_mispredict       := b2.mispredict
+    traceData.core_exception      := io.lsu.exception
+    traceData.misLDQ              := misLDQ
 
     io.traceDoctor.valid := true.B
     io.traceDoctor.bits := traceData.asUInt.asBools
