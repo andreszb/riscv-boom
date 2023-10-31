@@ -835,7 +835,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     dis_uops(w).stq_idx := io.lsu.dis_stq_idx(w)
     //Assert correct ldq idx calculation
     missed(w) := !(taint_tracker.io.ren2_ldq_idx(w) === io.lsu.dis_ldq_idx(w) ||
-                 !(dis_fire(w) && dis_uops(w).uses_ldq && !dis_uops(w).exception))
+                 !(dis_fire(w) && dis_uops(w).uses_ldq && !(dis_uops.foldLeft(false.B)((u, v) => u || v.exception))))
   }
   missed_once := missed_once || missed.foldLeft(false.B)(_||_)
 
