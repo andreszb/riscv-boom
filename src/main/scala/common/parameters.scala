@@ -101,6 +101,7 @@ case class BoomCoreParams(
   enableTaintTracking: Boolean = false,
   numTaintWakeupPorts: Int = 2,
   enableCheckpointTaints: Boolean = false,
+  inOrderBranchResolution: Boolean = false,
 
   /* debug stuff */
   enableCommitLogPrintf: Boolean = false,
@@ -181,6 +182,9 @@ trait HasBoomCoreParameters extends freechips.rocketchip.tile.HasCoreParameters
   val numTaintWakeupPorts = boomParams.numTaintWakeupPorts
   val enableTaintTracking = boomParams.enableTaintTracking
   val enableCheckpointTaints   = boomParams.enableCheckpointTaints
+  val inOrderBranchResolution = boomParams.inOrderBranchResolution
+
+  require(enableCheckpointTaints != inOrderBranchResolution, "Must have either checkpoint tainting or in-order branches")
 
   val numIntPhysRegs= boomParams.numIntPhysRegisters // size of the integer physical register file
   val numFpPhysRegs = boomParams.numFpPhysRegisters  // size of the floating point physical register file

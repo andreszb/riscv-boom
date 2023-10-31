@@ -280,7 +280,12 @@ class IssueSlot(val numWakeupPorts: Int)(implicit p: Parameters)
 
   when (state === s_valid_1) {
     // yrot_r is STT
-    io.request := p1 && p2 && p3 && ppred && yrot_r && !io.kill
+    if (inOrderBranchResolution) {
+      val ready = p1 && p2 && p3 && ppred && yrot_r && !io.kill
+      io.request := Mux(slot_uop.is_br, ready && next_br_mask === 0.U, ready)
+    } else {
+      io.request := p1 && p2 && p3 && ppred && yrot_r && !io.kill
+    }
   } .elsewhen (state === s_valid_2) {
     io.request := (p1 || p2) && ppred && !io.kill
   } .otherwise {
