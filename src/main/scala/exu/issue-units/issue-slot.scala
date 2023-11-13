@@ -46,6 +46,8 @@ class IssueSlotIO(val numWakeupPorts: Int)(implicit p: Parameters) extends BoomB
   val pred_wakeup_port = Flipped(Valid(UInt(log2Ceil(ftqSz).W)))
   val spec_ld_wakeup = Flipped(Vec(memWidth, Valid(UInt(width=maxPregSz.W))))
   val taint_wakeup_port = Flipped(Vec(numTaintWakeupPorts, Valid(UInt(ldqAddrSz.W))))
+  val yrot = Input(Valid(UInt(ldqAddrSz.W)))
+  val yrot_r = Input(Bool())
 
   //Taint debug
   val ldq_head = Input(UInt(ldqAddrSz.W))
@@ -218,7 +220,7 @@ class IssueSlot(val numWakeupPorts: Int)(implicit p: Parameters)
       yrot_r := true.B
     }
   }
-
+  
   def idxBetween(idx: UInt, ldq_head: UInt, ldq_tail: UInt) : Bool = {
         val isBetween = Mux(ldq_head <= ldq_tail,
                            (ldq_head <= idx) && (idx < ldq_tail),
@@ -287,7 +289,7 @@ class IssueSlot(val numWakeupPorts: Int)(implicit p: Parameters)
       io.request := p1 && p2 && p3 && ppred && yrot_r && !io.kill
     }
   } .elsewhen (state === s_valid_2) {
-    io.request := (p1 || p2) && ppred && !io.kill
+    io.request := (p1 || p2) && ppred && yrot_r && !io.kill
   } .otherwise {
     io.request := false.B
   }
@@ -301,7 +303,8 @@ class IssueSlot(val numWakeupPorts: Int)(implicit p: Parameters)
   // micro-op will vacate due to grant.
   val may_vacate = io.grant && ((state === s_valid_1) || (state === s_valid_2) && p1 && p2 && ppred)
   val squash_grant = io.ldspec_miss && (p1_poisoned || p2_poisoned)
-  io.will_be_valid := is_valid && !(may_vacate && !squash_grant)
+  val taint_squash_grant = !slot_uop.taint_set && slot_uop.transmitter && (!io.yrot_r)
+  io.will_be_valid := is_valid && !(may_vacate && !squash_grant && !taint_squash_grant)
 
   io.out_uop            := slot_uop
   io.out_uop.iw_state   := next_state
@@ -312,7 +315,9 @@ class IssueSlot(val numWakeupPorts: Int)(implicit p: Parameters)
   io.out_uop.prs1_busy  := !p1
   io.out_uop.prs2_busy  := !p2
   io.out_uop.prs3_busy  := !p3
-  io.out_uop.yrot_r     := yrot_r
+  io.out_uop.yrot       := Mux(io.yrot.valid, io.yrot.bits, slot_uop.yrot)
+  io.out_uop.yrot_r     := Mux(io.yrot.valid, io.yrot_r, yrot_r)
+  io.out_uop.taint_set  := Mux(io.yrot.valid, true.B, slot_uop.taint_set)
   io.out_uop.ppred_busy := !ppred
   io.out_uop.iw_p1_poisoned := p1_poisoned
   io.out_uop.iw_p2_poisoned := p2_poisoned

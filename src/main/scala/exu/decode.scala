@@ -80,6 +80,7 @@ class CtrlSigs extends Bundle
   val rocc            = Bool()
   //STT
   val transmitter     = Bool()
+  val taint_set       = Bool()
   // End STT
 
   def decode(inst: UInt, table: Iterable[(BitPat, List[BitPat])]) = {
@@ -92,6 +93,7 @@ class CtrlSigs extends Bundle
       sigs zip decoder map {case(s,d) => s := d}
       rocc := false.B
       transmitter := false.B
+      taint_set := false.B
       this
   }
 }
@@ -581,7 +583,7 @@ class DecodeUnit(implicit p: Parameters) extends BoomModule
   uop.bypassable   := cs.bypassable
 
   // STT
-  if (enableTaintTracking) {
+  if (enableRenameTaintTracking || enableRegisterTaintTracking) {
   uop.transmitter := cs.uses_ldq || cs.uses_stq || 
     cs.inst_unique            || cs.is_br
     (cs.uopc === uopFDIV_S)   || (cs.uopc === uopFDIV_D)  ||
@@ -591,6 +593,7 @@ class DecodeUnit(implicit p: Parameters) extends BoomModule
     (cs.uopc === uopREM)      || (cs.uopc === uopREMU)    ||
     (cs.uopc === uopREMW)     || (cs.uopc === uopREMUW)   ||
     (cs.uopc === uopJAL)      || (cs.uopc === uopJALR)
+  uop.taint_set := false.B
   } else {
     uop.transmitter := false.B
   } // End STT

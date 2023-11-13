@@ -147,6 +147,7 @@ class MicroOp(implicit p: Parameters) extends BoomBundle
   val yrot             = UInt(ldqAddrSz.W)
   val yrot_r           = Bool()
   val transmitter      = Bool()
+  val taint_set        = Bool()
   // End STT
   
   // Do we allocate a branch tag for this?

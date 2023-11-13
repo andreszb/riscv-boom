@@ -162,9 +162,14 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
 
 
   // STT
-  val taint_tracker = if (enableTaintTracking) Module(new TaintTracker(
+  val ren_taint_tracker = if (enableRenameTaintTracking) Module(new RenameTaintTracker(
     coreWidth,
     32
+  )) else null
+  val reg_taint_tracker = if (enableRegisterTaintTracking) Module(new RegisterTaintTracker(
+    exe_units.length,
+    numIntPhysRegs,
+    false
   )) else null
   // End STT
 
@@ -706,29 +711,68 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   //-------------------------------------------------------------
   //-------------------------------------------------------------
 
-  if (enableTaintTracking) {
-  taint_tracker.io.kill := io.ifu.redirect_flush
-  taint_tracker.io.brupdate := brupdate
+  if (enableRenameTaintTracking) {
+    ren_taint_tracker.io.kill := io.ifu.redirect_flush
+    ren_taint_tracker.io.brupdate := brupdate
 
-  taint_tracker.io.dec_fire := dec_fire
-  taint_tracker.io.dec_uops := dec_uops
+    ren_taint_tracker.io.dec_fire := dec_fire
+    ren_taint_tracker.io.dec_uops := dec_uops
 
-  taint_tracker.io.dis_fire := dis_fire
-  taint_tracker.io.dis_ready := dis_ready
+    ren_taint_tracker.io.dis_fire := dis_fire
+    ren_taint_tracker.io.dis_ready := dis_ready
 
-  taint_tracker.io.ldq_head := io.lsu.ldq_head
-  taint_tracker.io.ldq_btc_head := io.lsu.ldq_btc_head
-  taint_tracker.io.ldq_tail := io.lsu.ldq_tail
+    ren_taint_tracker.io.ldq_head := io.lsu.ldq_head
+    ren_taint_tracker.io.ldq_btc_head := io.lsu.ldq_btc_head
+    ren_taint_tracker.io.ldq_tail := io.lsu.ldq_tail
 
-  taint_tracker.io.taint_wakeup_port := io.lsu.taint_wakeup_port
+    ren_taint_tracker.io.taint_wakeup_port := io.lsu.taint_wakeup_port
 
-  taint_tracker.io.com_valids := rob.io.commit.valids
-  taint_tracker.io.com_uops := rob.io.commit.uops
-  taint_tracker.io.rbk_valids := rob.io.commit.rbk_valids
-  taint_tracker.io.rollback := rob.io.commit.rollback
-  taint_tracker.io.exception := RegNext(rob.io.flush.valid)
+    ren_taint_tracker.io.com_valids := rob.io.commit.valids
+    ren_taint_tracker.io.com_uops := rob.io.commit.uops
+    ren_taint_tracker.io.rbk_valids := rob.io.commit.rbk_valids
+    ren_taint_tracker.io.rollback := rob.io.commit.rollback
+    ren_taint_tracker.io.exception := RegNext(rob.io.flush.valid)
 
-  taint_tracker.io.ldq_flipped := io.lsu.ldq_flipped
+    ren_taint_tracker.io.ldq_flipped := io.lsu.ldq_flipped
+  }
+
+  if (enableRegisterTaintTracking) {
+    reg_taint_tracker.io.taint_wakeup_port := io.lsu.taint_wakeup_port
+    reg_taint_tracker.io.ldq_flipped       := io.lsu.ldq_flipped
+    
+    var iss_idx = 0
+    var int_iss_cnt = 0
+    var mem_iss_cnt = 0
+
+    for (w <- 0 until exe_units.length) {
+      var exe_unit = exe_units(w)
+      if (exe_unit.readsIrf) {
+        if (exe_unit.hasMem) {
+          reg_taint_tracker.io.req_valids(iss_idx) := mem_iss_unit.io.iss_valids(mem_iss_cnt)
+          reg_taint_tracker.io.req_uops(iss_idx) := mem_iss_unit.io.iss_uops(mem_iss_cnt)
+          int_iss_unit.io.yrot(mem_iss_cnt).valid := true.B
+          int_iss_unit.io.yrot(mem_iss_cnt).bits := reg_taint_tracker.io.req_yrot(iss_idx)
+          int_iss_unit.io.yrot_r(mem_iss_cnt) := reg_taint_tracker.io.req_yrot_r(iss_idx)
+          
+          mem_iss_cnt += 1
+        } else {
+          reg_taint_tracker.io.req_valids(iss_idx) := int_iss_unit.io.iss_valids(int_iss_cnt)
+          reg_taint_tracker.io.req_uops(iss_idx) := int_iss_unit.io.iss_uops(int_iss_cnt)
+          int_iss_unit.io.yrot(int_iss_cnt).valid := true.B
+          int_iss_unit.io.yrot(int_iss_cnt).bits := reg_taint_tracker.io.req_yrot(iss_idx)
+          int_iss_unit.io.yrot_r(int_iss_cnt) := reg_taint_tracker.io.req_yrot_r(iss_idx)
+          
+          int_iss_cnt += 1
+        }
+      }
+      iss_idx += 1
+    }
+
+    reg_taint_tracker.io.ext_entries_in := fp_pipeline.io.ext_entries_out
+    reg_taint_tracker.io.ext_entries_in_idx := fp_pipeline.io.ext_entries_out_idx
+
+    fp_pipeline.io.ext_entries_in := reg_taint_tracker.io.ext_entries_out
+    fp_pipeline.io.ext_entries_in_idx := reg_taint_tracker.io.ext_entries_out_idx
   }
 
   // End STT
@@ -766,9 +810,9 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     ren_stalls(w) := rename_stage.io.ren_stalls(w) || f_stall || p_stall
 
     //STT
-    if (enableTaintTracking) {
-      dis_uops(w).yrot := taint_tracker.io.ren2_yrot(w)
-      dis_uops(w).yrot_r := taint_tracker.io.ren2_yrot_r(w) || !dis_uops(w).transmitter //taint tracker should account for same-cycle wakeups||
+    if (enableRenameTaintTracking) {
+      dis_uops(w).yrot := ren_taint_tracker.io.ren2_yrot(w)
+      dis_uops(w).yrot_r := ren_taint_tracker.io.ren2_yrot_r(w) || !dis_uops(w).transmitter //taint tracker should account for same-cycle wakeups||
                             //io.lsu.taint_wakeup_port.foldLeft(false.B)
                             //{case (y, port) => y || (port.valid && port.bits === taint_tracker.io.ren2_yrot(w))}
     } else {
@@ -832,10 +876,15 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   for (w <- 0 until coreWidth) {
     // Dispatching instructions request load/store queue entries when they can proceed.
     dis_uops(w).ldq_idx := io.lsu.dis_ldq_idx(w)
+    dis_uops(w).ldq_flipped := io.lsu.ldq_flipped(w)
     dis_uops(w).stq_idx := io.lsu.dis_stq_idx(w)
     //Assert correct ldq idx calculation
-    missed(w) := !(taint_tracker.io.ren2_ldq_idx(w) === io.lsu.dis_ldq_idx(w) ||
-                 !(dis_fire(w) && dis_uops(w).uses_ldq && !(dis_uops.foldLeft(false.B)((u, v) => u || v.exception))))
+    if (enableRenameTaintTracking) {
+      missed(w) := !(ren_taint_tracker.io.ren2_ldq_idx(w) === io.lsu.dis_ldq_idx(w) ||
+                   !(dis_fire(w) && dis_uops(w).uses_ldq && !(dis_uops.foldLeft(false.B)((u, v) => u || v.exception))))
+    } else {
+      missed(w) := false.B
+    }
   }
   missed_once := missed_once || missed.foldLeft(false.B)(_||_)
 
@@ -1118,8 +1167,13 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   }
 
   for (w <- 0 until exe_units.numIrfReaders) {
-    iregister_read.io.iss_valids(w) :=
-      iss_valids(w) && !(io.lsu.ld_miss && (iss_uops(w).iw_p1_poisoned || iss_uops(w).iw_p2_poisoned))
+    val val_iss = iss_valids(w) && !(io.lsu.ld_miss && (iss_uops(w).iw_p1_poisoned || iss_uops(w).iw_p2_poisoned))
+    
+    if(enableRegisterTaintTracking) {
+      iregister_read.io.iss_valids(w) := val_iss && reg_taint_tracker.io.req_yrot_r(w) 
+    } else {
+      iregister_read.io.iss_valids(w) := val_iss 
+    }
   }
   iregister_read.io.iss_uops := iss_uops
   iregister_read.io.iss_uops map { u => u.iw_p1_poisoned := false.B; u.iw_p2_poisoned := false.B }
@@ -1616,7 +1670,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     traceData.ldq_btc_head          := io.lsu.ldq_btc_head
     traceData.ldq_tail              := io.lsu.ldq_tail
 
-    traceData.int_taints_valid      := taint_tracker.io.int_taint_valids
+    traceData.int_taints_valid      := ren_taint_tracker.io.int_taint_valids
 
     traceData.int_issue_0_valid     := int_iss_unit.io.slot0_valid
     traceData.int_issue_0_yrot      := int_iss_unit.io.slot0_yrot
@@ -1637,31 +1691,31 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     traceData.taint_wakeup_1_port   := io.lsu.taint_wakeup_port(1).bits
 
     traceData.dec_0_fire            := dec_fire(0)
-    traceData.ren1_0_yrot           := taint_tracker.io.ren1_yrot(0)
-    traceData.ren1_0_yrot_r         := taint_tracker.io.ren1_yrot_r(0)
-    traceData.ren1_0_tent_ldq_idx   := taint_tracker.io.ren1_tent_ldq_idx(0)
+    traceData.ren1_0_yrot           := ren_taint_tracker.io.ren1_yrot(0)
+    traceData.ren1_0_yrot_r         := ren_taint_tracker.io.ren1_yrot_r(0)
+    traceData.ren1_0_tent_ldq_idx   := ren_taint_tracker.io.ren1_tent_ldq_idx(0)
 
     traceData.dec_1_fire            := dec_fire(1)
-    traceData.ren1_1_yrot           := taint_tracker.io.ren1_yrot(1)
-    traceData.ren1_1_yrot_r         := taint_tracker.io.ren1_yrot_r(1)
-    traceData.ren1_1_tent_ldq_idx   := taint_tracker.io.ren1_tent_ldq_idx(1)
+    traceData.ren1_1_yrot           := ren_taint_tracker.io.ren1_yrot(1)
+    traceData.ren1_1_yrot_r         := ren_taint_tracker.io.ren1_yrot_r(1)
+    traceData.ren1_1_tent_ldq_idx   := ren_taint_tracker.io.ren1_tent_ldq_idx(1)
 
     traceData.dis_0_fire            := dis_fire(0)
-    traceData.ren2_0_yrot           := taint_tracker.io.ren2_yrot(0)
-    traceData.ren2_0_yrot_r         := taint_tracker.io.ren2_yrot_r(0)
+    traceData.ren2_0_yrot           := ren_taint_tracker.io.ren2_yrot(0)
+    traceData.ren2_0_yrot_r         := ren_taint_tracker.io.ren2_yrot_r(0)
 
     traceData.dis_1_fire            := dis_fire(1)
-    traceData.ren2_1_yrot           := taint_tracker.io.ren2_yrot(1)
-    traceData.ren2_1_yrot_r         := taint_tracker.io.ren2_yrot_r(1)
+    traceData.ren2_1_yrot           := ren_taint_tracker.io.ren2_yrot(1)
+    traceData.ren2_1_yrot_r         := ren_taint_tracker.io.ren2_yrot_r(1)
   
-    traceData.loads_last_cycle      := taint_tracker.io.loads_last_cycle
-    traceData.load_ops_0            := taint_tracker.io.load_ops(0)
-    traceData.load_ops_1            := taint_tracker.io.load_ops(1)
-    traceData.load_ops_2            := taint_tracker.io.load_ops(2)
-    traceData.ldq_will_flip_0       := taint_tracker.io.ldq_will_flip(0)
-    traceData.ldq_will_flip_1       := taint_tracker.io.ldq_will_flip(1)
-    traceData.ldq_will_flip_2       := taint_tracker.io.ldq_will_flip(2)
-    traceData.ldq_will_flip_3       := taint_tracker.io.ldq_will_flip(3)
+    traceData.loads_last_cycle      := ren_taint_tracker.io.loads_last_cycle
+    traceData.load_ops_0            := ren_taint_tracker.io.load_ops(0)
+    traceData.load_ops_1            := ren_taint_tracker.io.load_ops(1)
+    traceData.load_ops_2            := ren_taint_tracker.io.load_ops(2)
+    traceData.ldq_will_flip_0       := ren_taint_tracker.io.ldq_will_flip(0)
+    traceData.ldq_will_flip_1       := ren_taint_tracker.io.ldq_will_flip(1)
+    traceData.ldq_will_flip_2       := ren_taint_tracker.io.ldq_will_flip(2)
+    traceData.ldq_will_flip_3       := ren_taint_tracker.io.ldq_will_flip(3)
 
     traceData.rollback            := rob.io.commit.rollback
     traceData.br_mispredict       := b2.mispredict

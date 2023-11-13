@@ -98,7 +98,8 @@ case class BoomCoreParams(
   scontextWidth: Int = 0,
 
   /* taint tracking */
-  enableTaintTracking: Boolean = false,
+  enableRenameTaintTracking: Boolean = false,
+  enableRegisterTaintTracking: Boolean = false,
   numTaintWakeupPorts: Int = 2,
   enableCheckpointTaints: Boolean = false,
   inOrderBranchResolution: Boolean = false,
@@ -180,7 +181,8 @@ trait HasBoomCoreParameters extends freechips.rocketchip.tile.HasCoreParameters
 
   // TaintTracking
   val numTaintWakeupPorts = boomParams.numTaintWakeupPorts
-  val enableTaintTracking = boomParams.enableTaintTracking
+  val enableRenameTaintTracking = boomParams.enableRenameTaintTracking
+  val enableRegisterTaintTracking = boomParams.enableRegisterTaintTracking
   val enableCheckpointTaints   = boomParams.enableCheckpointTaints
   val inOrderBranchResolution = boomParams.inOrderBranchResolution
 

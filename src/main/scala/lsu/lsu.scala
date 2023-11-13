@@ -114,6 +114,7 @@ class LSUCoreIO(implicit p: Parameters) extends BoomBundle()(p)
 
   val dis_uops    = Flipped(Vec(coreWidth, Valid(new MicroOp)))
   val dis_ldq_idx = Output(Vec(coreWidth, UInt(ldqAddrSz.W)))
+  val dis_ldq_flipped = Output(Vec(coreWidth, UInt(ldqAddrSz.W)))
   val dis_stq_idx = Output(Vec(coreWidth, UInt(stqAddrSz.W)))
 
   // STT
@@ -320,6 +321,7 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
     ldq_full = WrapInc(ld_enq_idx, numLdqEntries) === ldq_head
     io.core.ldq_full(w)    := ldq_full
     io.core.dis_ldq_idx(w) := ld_enq_idx
+    io.core.dis_ldq_flipped(w) := Mux(ld_enq_idx < ldq_tail, !ldq_flipped, ldq_flipped)
 
     stq_full = WrapInc(st_enq_idx, numStqEntries) === stq_head
     io.core.stq_full(w)    := stq_full

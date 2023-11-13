@@ -20,11 +20,10 @@ class TaintEntry()(implicit p: Parameters) extends BoomBundle
 {
     val valid           = Bool()
     val ldq_idx         = UInt(ldqAddrSz.W)
-    val age             = UInt(ldqAddrSz.W)
     val flipped_age     = Bool()
 }
 
-class TaintTracker(
+class RenameTaintTracker(
   val plWidth: Int,
   val numLregs: Int)(implicit p: Parameters) extends BoomModule
     with HasBoomCoreParameters
@@ -81,7 +80,6 @@ class TaintTracker(
     val dud_entry = Wire(new TaintEntry())
     dud_entry.valid := false.B
     dud_entry.ldq_idx := 0.U
-    dud_entry.age := 0.U
     dud_entry.flipped_age := false.B
 
     def idxBetween(idx: UInt) : Bool = {
@@ -144,11 +142,11 @@ class TaintTracker(
         val t2_valid = t2.valid
         val t3_valid = t3.valid && rs3_en
 
-        val t1_age = t1.age 
+        val t1_age = t1.ldq_idx 
         val t1_flipped = t1.flipped_age
-        val t2_age = t2.age 
+        val t2_age = t2.ldq_idx 
         val t2_flipped = t2.flipped_age
-        val t3_age = t3.age 
+        val t3_age = t3.ldq_idx 
         val t3_flipped = t3.flipped_age
 
         val any_valid = t1_valid || t2_valid || t3_valid
@@ -178,7 +176,6 @@ class TaintTracker(
 
         chosen_t.valid := false.B
         chosen_t.ldq_idx := 0.U
-        chosen_t.age := 0.U
         chosen_t.flipped_age := false.B
         
         when(t1_oldest) {
@@ -297,7 +294,6 @@ class TaintTracker(
 
         when(ren1_fire(i) && ren1_uops(i).uses_ldq && (!ren1_uops(i).is_problematic)) {
             new_tent.ldq_idx := WrapAdd(io.ldq_tail, loads_last_cycle + load_ops(i), numLdqEntries) //ren1_uops(i).ldq_idx
-            new_tent.age := WrapAdd(io.ldq_tail, loads_last_cycle +  load_ops(i), numLdqEntries) //ren1_uops(i).ldq_idx
             new_tent.flipped_age := Mux(ldq_will_flip(i), !io.ldq_flipped, io.ldq_flipped)
             new_tent.valid := true.B
         }. elsewhen(ren1_fire(i) && (!ren1_uops(i).is_problematic)) {

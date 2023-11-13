@@ -125,4 +125,25 @@ class IssueUnitCollapsing(
       uop_issued = (requests(i) && can_allocate && !was_port_issued_yet) | uop_issued
     }
   }
+
+  val taint_port_issued = Array.fill(issueWidth){Bool()}
+  for (w <- 0 until issueWidth) {
+    taint_port_issued(w) = false.B
+  }
+  for (i <- 0 until numIssueSlots) {
+    var uop_yrot_calc = false.B
+
+    for (w <- 0 until issueWidth) {
+      
+      when (requests(i) && !uop_yrot_calc && !taint_port_issued(w)) {
+        io.req_valids(w) := true.B
+        io.req_uops(w) := issue_slots(i).uop
+        issue_slots(i).yrot_r := io.yrot_r(w)
+        issue_slots(i).yrot := io.yrot(w)
+      }
+      val uop_taint_calc_yet = taint_port_issued(w)
+      taint_port_issued(w) = (requests(i) && !uop_yrot_calc) | taint_port_issued(w)
+      uop_yrot_calc = (requests(i) && !uop_taint_calc_yet) | uop_yrot_calc
+    }
+  }
 }
