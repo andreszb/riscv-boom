@@ -67,6 +67,10 @@ class IssueUnitCollapsing(
   for (i <- 0 until numIssueSlots) {
     issue_slots(i).in_uop.valid := false.B
     issue_slots(i).in_uop.bits  := uops(i+1)
+    //STT
+    issue_slots(i).yrot.valid := false.B
+    issue_slots(i).yrot.bits := 0.U
+    issue_slots(i).yrot_r := false.B
     for (j <- 1 to maxShift by 1) {
       when (shamts_oh(i+j) === (1 << (j-1)).U) {
         issue_slots(i).in_uop.valid := will_be_valid(i+j)
@@ -100,6 +104,10 @@ class IssueUnitCollapsing(
     io.iss_uops(w).prs3 := 0.U
     io.iss_uops(w).lrs1_rtype := RT_X
     io.iss_uops(w).lrs2_rtype := RT_X
+
+    // STT
+    io.req_valids(w) := false.B
+    io.req_uops(w) := NullMicroOp
   }
 
   val requests = issue_slots.map(s => s.request)

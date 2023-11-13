@@ -15,7 +15,7 @@ import boom.exu.FUConstants._
 import boom.util._
 
 class RegisterTaintTracker(
-  val issueWidth: Int,
+  val combinedIssueWidth: Int,
   val numPhysRegs: Int,
   val is_fp: Boolean)(implicit p: Parameters) extends BoomModule
     with HasBoomCoreParameters
@@ -26,18 +26,11 @@ class RegisterTaintTracker(
 
         val ldq_flipped    = Input(Bool())
 
-        val req_valids     = Input(Vec(issueWidth, Bool()))
-        val req_uops       = Input(Vec(issueWidth, new MicroOp()))
+        val req_valids     = Input(Vec(combinedIssueWidth, Bool()))
+        val req_uops       = Input(Vec(combinedIssueWidth, new MicroOp()))
 
-        val req_yrot       = Output(Vec(issueWidth, (UInt(ldqAddrSz.W))))
-        val req_yrot_r     = Output(Vec(issueWidth, Bool()))
-
-        val ext_entries_in = Flipped(Vec(issueWidth, Valid(new TaintEntry())))
-        val ext_entries_in_idx = Input(Vec(issueWidth, UInt(ldqAddrSz.W)))
-
-        val ext_entries_out  = Output(Vec(issueWidth, Valid(new TaintEntry())))
-        val ext_entries_out_idx  = Output(Vec(issueWidth, Valid(UInt(ldqAddrSz.W))))
-
+        val req_yrot       = Output(Vec(combinedIssueWidth, (UInt(ldqAddrSz.W))))
+        val req_yrot_r     = Output(Vec(combinedIssueWidth, Bool()))
     })
 
     val int_type = RT_FIX
@@ -113,43 +106,50 @@ class RegisterTaintTracker(
     // Get the matching TaintEntries from TaintFile for a given UOP
     def GetRegTaints(uop: MicroOp) : (TaintEntry, TaintEntry, TaintEntry) = {
 
-        val t1 = Mux(uop.lrs1_rtype =/= t_rtype, dud_entry, taint_file(uop.lrs1))
+        val t1 = MuxLookup(uop.lrs1_rtype, dud_entry,
+                    Array(int_type -> int_taint_file_freed_taints(uop.lrs1),
+                          fp_type -> fp_taint_file_freed_taints(uop.lrs1)))
 
-        val t2 = Mux(uop.lrs2_rtype =/= t_rtype, dud_entry, taint_file(uop.lrs2))
+        val t2 = MuxLookup(uop.lrs2_rtype, dud_entry,
+                    Array(int_type -> int_taint_file_freed_taints(uop.lrs2),
+                          fp_type -> fp_taint_file_freed_taints(uop.lrs2)))
 
-        val t3 = Mux(uop.frs3_en && uop.lrs1_rtype === t_rtype, taint_file(uop.lrs3), dud_entry)
+        val t3 = Mux(uop.frs3_en, fp_taint_file(uop.lrs3), dud_entry)
         
         (t1, t2, t3)
     }
 
     // Taint files for int and fp registers
-    val int_taint_file              = Reg(Vec(numPhysRegs, new TaintEntry()))
+    val int_taint_file              = Reg(Vec(numIntPhysRegs, new TaintEntry()))
+    val fp_taint_file               = Reg(Vec(numFpPhysRegs, new TaintEntry()))
 
-    val req_uops                    = Wire(Vec(issueWidth, new MicroOp()))
-    val req_valids                  = Wire(Vec(issueWidth, Bool()))
-
-    
-    val ext_entries_out         = Reg(Vec(issueWidth, Valid(new TaintEntry())))
-    val ext_entries_out_idx     = Reg(Vec(issueWidth, Valid(UInt(ldqAddrSz.W))))
+    val req_uops                    = Wire(Vec(combinedIssueWidth, new MicroOp()))
+    val req_valids                  = Wire(Vec(combinedIssueWidth, Bool()))
 
     req_uops := io.req_uops
     req_valids := io.req_valids
 
-    val taint_file_freed_taints = Wire(Vec(numPhysRegs, new TaintEntry()))
+    val int_taint_file_freed_taints = Wire(Vec(numIntPhysRegs, new TaintEntry()))
+    val fp_taint_file_freed_taints = Wire(Vec(numFpPhysRegs, new TaintEntry()))
 
-    for (i <- 0 until numPhysRegs) {
-        taint_file_freed_taints(i) := (io.ext_entries_in zip io.ext_entries_in_idx)
-            .foldLeft(taint_file(i))
-                {case (entry, (ext_in, ext_idx)) => Mux(ext_in.valid && ext_idx === i.U, ext_in.bits, entry)}
-        
-        taint_file_freed_taints(i).valid := io.taint_wakeup_port
-            .foldLeft(taint_file_freed_taints(i).valid)
-                {case (valid, twake) => valid && !(twake.valid && (twake.bits === taint_file_freed_taints(i).ldq_idx))}
+    for (i <- 0 until numIntPhysRegs) {
+        int_taint_file_freed_taints(i) := int_taint_file(i)
+        int_taint_file_freed_taints(i).valid := io.taint_wakeup_port
+            .foldLeft(int_taint_file(i).valid)
+                {case (valid, twake) => valid && !(twake.valid && (twake.bits === int_taint_file(i).ldq_idx))}
     }
 
-    val new_taint_entries = Wire(Vec(issueWidth, new TaintEntry()))
+    for (i <- 0 until numFpPhysRegs) {
+        fp_taint_file_freed_taints(i) := fp_taint_file(i)
+        fp_taint_file_freed_taints(i).valid := io.taint_wakeup_port
+            .foldLeft(fp_taint_file(i).valid)
+                {case (valid, twake) => valid && !(twake.valid && (twake.bits === fp_taint_file(i).ldq_idx))}
+    }
 
-    for (i <- 0 until issueWidth) {
+
+    val new_taint_entries = Wire(Vec(combinedIssueWidth, new TaintEntry()))
+
+    for (i <- 0 until combinedIssueWidth) {
         val t_ent = Wire(new TaintEntry())
         val (t1, t2, t3) = GetRegTaints(req_uops(i))
 
@@ -168,39 +168,28 @@ class RegisterTaintTracker(
         }
 
         new_taint_entries(i) := new_tent
+
         io.req_yrot(i) := t_ent.ldq_idx
         io.req_yrot_r(i) := !t_ent.valid
     }
 
-    var ext_entry_count = 0
-    for (i <- 0 until numPhysRegs) {
-        val remapped_entry = (req_uops.map(uop => (uop.ldst_val, uop.ldst, uop.dst_rtype)) zip req_valids zip new_taint_entries)
-            .foldLeft(taint_file_freed_taints(i)) {case (t_ent, (((ldst_val, ldst, rtype), fire), new_t_ent)) =>
-                Mux(fire && ldst_val && ldst === i.U && rtype === t_rtype, new_t_ent, t_ent)}
+    for (i <- 0 until numIntPhysRegs) {
+        val remapped_int_entry = (req_uops.map(uop => (uop.ldst_val, uop.ldst, uop.dst_rtype)) zip req_valids zip new_taint_entries)
+            .foldLeft(int_taint_file_freed_taints(i)) {case (t_ent, (((ldst_val, ldst, rtype), fire), new_t_ent)) =>
+                Mux(fire && ldst_val && ldst === i.U && rtype === int_type, new_t_ent, t_ent)}
 
-        taint_file(i) := remapped_entry
-
-        val ext_entry = (req_uops.map(uop => (uop.ldst_val, uop.ldst, uop.dst_rtype)) zip req_valids zip new_taint_entries)
-            .foldLeft(dud_entry) {case (t_ent, (((ldst_val, ldst, rtype), fire), new_t_ent)) =>
-                Mux(fire && ldst_val && ldst === i.U && rtype =/= t_rtype, new_t_ent, t_ent)}
-        
-        when (ext_entry.valid) {
-            ext_entries_out(ext_entry_count).valid := true.B
-            ext_entries_out(ext_entry_count).bits := ext_entry
-            ext_entries_out_idx(ext_entry_count).bits := i.U
-            ext_entry_count += 1
-        }
+        int_taint_file(i) := remapped_int_entry
     }
 
-    io.ext_entries_out := ext_entries_out
-    io.ext_entries_out_idx := ext_entries_out_idx
-/* 
-    when (io.rollback || io.exception) {
-        for (i <- 0 until numPhysRegs) {
-            taint_file(i) := dud_entry
-        }
-    } */
+    for (i <- 0 until numFpPhysRegs) {
+        val remapped_fp_entry = (req_uops.map(uop => (uop.ldst_val, uop.ldst, uop.dst_rtype)) zip req_valids zip new_taint_entries)
+            .foldLeft(fp_taint_file_freed_taints(i)) {case (t_ent, (((ldst_val, ldst, rtype), fire), new_t_ent)) =>
+                Mux(fire && ldst_val && ldst === i.U && rtype === fp_type, new_t_ent, t_ent)}
 
-    dontTouch(taint_file)
+        fp_taint_file(i) := remapped_fp_entry
+    }
+
+    dontTouch(int_taint_file)
+    dontTouch(fp_taint_file)
 
 }

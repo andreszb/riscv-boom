@@ -167,7 +167,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     32
   )) else null
   val reg_taint_tracker = if (enableRegisterTaintTracking) Module(new RegisterTaintTracker(
-    exe_units.length,
+    exe_units.length + issueParams.find(_.iqType == IQT_FP.litValue).get.issueWidth,
     numIntPhysRegs,
     false
   )) else null
@@ -750,9 +750,9 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
         if (exe_unit.hasMem) {
           reg_taint_tracker.io.req_valids(iss_idx) := mem_iss_unit.io.iss_valids(mem_iss_cnt)
           reg_taint_tracker.io.req_uops(iss_idx) := mem_iss_unit.io.iss_uops(mem_iss_cnt)
-          int_iss_unit.io.yrot(mem_iss_cnt).valid := true.B
-          int_iss_unit.io.yrot(mem_iss_cnt).bits := reg_taint_tracker.io.req_yrot(iss_idx)
-          int_iss_unit.io.yrot_r(mem_iss_cnt) := reg_taint_tracker.io.req_yrot_r(iss_idx)
+          mem_iss_unit.io.yrot(mem_iss_cnt).valid := true.B
+          mem_iss_unit.io.yrot(mem_iss_cnt).bits := reg_taint_tracker.io.req_yrot(iss_idx)
+          mem_iss_unit.io.yrot_r(mem_iss_cnt) := reg_taint_tracker.io.req_yrot_r(iss_idx)
           
           mem_iss_cnt += 1
         } else {
@@ -768,12 +768,16 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
       iss_idx += 1
     }
 
-    reg_taint_tracker.io.ext_entries_in := fp_pipeline.io.ext_entries_out
-    reg_taint_tracker.io.ext_entries_in_idx := fp_pipeline.io.ext_entries_out_idx
-
-    fp_pipeline.io.ext_entries_in := reg_taint_tracker.io.ext_entries_out
-    fp_pipeline.io.ext_entries_in_idx := reg_taint_tracker.io.ext_entries_out_idx
+    for (w <- 0 until issueParams.find(_.iqType == IQT_FP.litValue).get.issueWidth) {
+      reg_taint_tracker.io.req_valids(iss_idx) := fp_pipeline.io.req_valids(w)
+      reg_taint_tracker.io.req_uops(iss_idx) := fp_pipeline.io.req_uops(w)
+      fp_pipeline.io.req_yrot(w) := reg_taint_tracker.io.req_yrot(iss_idx)
+      fp_pipeline.io.req_yrot_r(w) := reg_taint_tracker.io.req_yrot_r(iss_idx)
+      iss_idx += 1
+    }
   }
+
+  fp_pipeline.io.ldq_flipped := io.lsu.ldq_flipped
 
   // End STT
 
@@ -876,7 +880,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   for (w <- 0 until coreWidth) {
     // Dispatching instructions request load/store queue entries when they can proceed.
     dis_uops(w).ldq_idx := io.lsu.dis_ldq_idx(w)
-    dis_uops(w).ldq_flipped := io.lsu.ldq_flipped(w)
+    dis_uops(w).ldq_flipped := io.lsu.dis_ldq_flipped(w)
     dis_uops(w).stq_idx := io.lsu.dis_stq_idx(w)
     //Assert correct ldq idx calculation
     if (enableRenameTaintTracking) {

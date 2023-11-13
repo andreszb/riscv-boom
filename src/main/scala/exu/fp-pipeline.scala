@@ -57,12 +57,12 @@ class FpPipeline(implicit p: Parameters) extends BoomModule with tile.HasFPUPara
 
     val ldq_flipped         = Input(Bool())
 
-    val ext_entries_in      = Input(Vec(memIssueParam.issueWidth + intIssueParam.issueWidth, Valid(new TaintEntry())))
-    val ext_entries_in_idx  = Input(Vec(memIssueParam.issueWidth + intIssueParam.issueWidth, UInt(ldqAddrSz.W)))
+    val req_valids      = Output(Vec(issueParams.find(_.iqType == IQT_FP.litValue).get.issueWidth, Bool()))
+    val req_uops        = Output(Vec(issueParams.find(_.iqType == IQT_FP.litValue).get.issueWidth, new MicroOp()))
 
-    val ext_entries_out      = Flipped(Vec(issueParams.find(_.iqType == IQT_FP.litValue).get.issueWidth, Valid(new TaintEntry())))
-    val ext_entries_out_idx  = Output(Vec(issueParams.find(_.iqType == IQT_FP.litValue).get.issueWidth, UInt(ldqAddrSz.W)))
-
+    val req_yrot        = Input(Vec(issueParams.find(_.iqType == IQT_FP.litValue).get.issueWidth, UInt(ldqAddrSz.W)))
+    val req_yrot_r      = Input(Vec(issueParams.find(_.iqType == IQT_FP.litValue).get.issueWidth, Bool()))
+    
     val debug_tsc_reg    = Input(UInt(width=xLen.W))
     val debug_wb_wdata   = Output(Vec(numWakeupPorts, UInt((fLen+1).W)))
     val slot0_valid      = Output(Bool())
@@ -119,29 +119,16 @@ class FpPipeline(implicit p: Parameters) extends BoomModule with tile.HasFPUPara
 
   require (exe_units.numTotalBypassPorts == 0)
 
-  val taint_tracker = if (enableRegisterTaintTracking) Module(new RegisterTaintTracker(
-    issue_unit.issueWidth,
-    numFpPhysRegs,
-    true
-  )) else null
-
   if (enableRegisterTaintTracking) {
-    taint_tracker.io.taint_wakeup_port := io.taint_wakeup_port
-    taint_tracker.io.ldq_flipped := io.ldq_flipped
 
     for (i <- 0 until issue_unit.issueWidth) {
-      taint_tracker.io.req_valids(i) := issue_unit.io.iss_valids(i)
-      taint_tracker.io.req_uops(i) := issue_unit.io.iss_uops(i)
+      io.req_valids(i) := issue_unit.io.iss_valids(i)
+      io.req_uops(i) := issue_unit.io.iss_uops(i)
       issue_unit.io.yrot(i).valid := true.B
-      issue_unit.io.yrot(i).bits := taint_tracker.io.req_yrot
-      issue_unit.io.yrot_r(i) := taint_tracker.io.req_yrot_r
+      issue_unit.io.yrot(i).bits := io.req_yrot(i)
+      issue_unit.io.yrot_r(i) := io.req_yrot_r(i)
     }
-      taint_tracker.io.ext_entries_in := io.ext_entries_in
-      taint_tracker.io.ext_entries_in_idx := io.ext_entries_in_idx
-
-      io.ext_entries_out := taint_tracker.io.ext_entries_out
-      io.ext_entries_out_idx := taint_tracker.io.ext_entries_out_idx
-    }
+  }
 
   //-------------------------------------------------------------
   // **** Dispatch Stage ****
