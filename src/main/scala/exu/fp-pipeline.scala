@@ -124,8 +124,7 @@ class FpPipeline(implicit p: Parameters) extends BoomModule with tile.HasFPUPara
     for (i <- 0 until issue_unit.issueWidth) {
       io.req_valids(i) := issue_unit.io.iss_valids(i)
       io.req_uops(i) := issue_unit.io.iss_uops(i)
-      issue_unit.io.yrot(i).valid := true.B
-      issue_unit.io.yrot(i).bits := io.req_yrot(i)
+      issue_unit.io.yrot(i) := io.req_yrot(i)
       issue_unit.io.yrot_r(i) := io.req_yrot_r(i)
     }
   }
@@ -145,7 +144,11 @@ class FpPipeline(implicit p: Parameters) extends BoomModule with tile.HasFPUPara
 
   // Output (Issue)
   for (i <- 0 until issue_unit.issueWidth) {
-    iss_valids(i) := issue_unit.io.iss_valids(i)
+    if (enableRegisterTaintTracking) {
+      iss_valids(i) := issue_unit.io.iss_valids(i) && (io.req_yrot_r(i) || (!io.req_valids(i)))
+    } else {
+      iss_valids(i) := issue_unit.io.iss_valids(i)
+    }
     iss_uops(i) := issue_unit.io.iss_uops(i)
 
     var fu_types = exe_units(i).io.fu_types

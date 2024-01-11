@@ -298,6 +298,7 @@ class RenameTaintTracker(
             new_tent.valid := true.B
         }. elsewhen(ren1_fire(i) && (!ren1_uops(i).is_problematic)) {
             // Is the load that is tainting us being declared non-speculative this cycle?
+            // This should be redundant with the freed-taint-file check earlier
             for (j <- 0 until numTaintWakeupPorts) {
                 when(io.taint_wakeup_port(j).valid && (io.taint_wakeup_port(j).bits === t_ent.ldq_idx)) {
                     t_ent.valid := false.B

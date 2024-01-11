@@ -31,6 +31,9 @@ class RegisterTaintTracker(
 
         val req_yrot       = Output(Vec(combinedIssueWidth, (UInt(ldqAddrSz.W))))
         val req_yrot_r     = Output(Vec(combinedIssueWidth, Bool()))
+
+        val ldq_btc_head   = Input(UInt(ldqAddrSz.W))
+        val ldq_tail       = Input(UInt(ldqAddrSz.W))  
     })
 
     val int_type = RT_FIX
@@ -107,16 +110,25 @@ class RegisterTaintTracker(
     def GetRegTaints(uop: MicroOp) : (TaintEntry, TaintEntry, TaintEntry) = {
 
         val t1 = MuxLookup(uop.lrs1_rtype, dud_entry,
-                    Array(int_type -> int_taint_file_freed_taints(uop.lrs1),
-                          fp_type -> fp_taint_file_freed_taints(uop.lrs1)))
+                    Array(int_type -> int_taint_file_freed_taints(uop.prs1),
+                          fp_type -> fp_taint_file_freed_taints(uop.prs1)))
 
         val t2 = MuxLookup(uop.lrs2_rtype, dud_entry,
-                    Array(int_type -> int_taint_file_freed_taints(uop.lrs2),
-                          fp_type -> fp_taint_file_freed_taints(uop.lrs2)))
+                    Array(int_type -> int_taint_file_freed_taints(uop.prs2),
+                          fp_type -> fp_taint_file_freed_taints(uop.prs2)))
 
-        val t3 = Mux(uop.frs3_en, fp_taint_file(uop.lrs3), dud_entry)
+        val t3 = Mux(uop.frs3_en, fp_taint_file(uop.prs3), dud_entry)
         
         (t1, t2, t3)
+    }
+
+    def idxBetween(idx: UInt) : Bool = {
+        val cur_ldq_head = WrapAdd(io.ldq_btc_head, PopCount(io.taint_wakeup_port.map(o => o.valid)), numLdqEntries)
+        val isBetween = Mux(cur_ldq_head <= io.ldq_tail,
+                           (cur_ldq_head <= idx) && (idx < io.ldq_tail),
+                           (cur_ldq_head <= idx) || (idx < io.ldq_tail))
+
+        isBetween
     }
 
     // Taint files for int and fp registers
@@ -160,7 +172,7 @@ class RegisterTaintTracker(
         when (req_valids(i) && req_uops(i).uses_ldq && (!req_uops(i).is_problematic)) {
             new_tent.ldq_idx := req_uops(i).ldq_idx
             new_tent.flipped_age := req_uops(i).ldq_flipped
-            new_tent.valid := true.B
+            new_tent.valid := idxBetween(req_uops(i).ldq_idx)
         }.elsewhen(req_valids(i) && (!req_uops(i).is_problematic)) {
             new_taint_entries(i) := t_ent
         }. otherwise {
@@ -170,21 +182,21 @@ class RegisterTaintTracker(
         new_taint_entries(i) := new_tent
 
         io.req_yrot(i) := t_ent.ldq_idx
-        io.req_yrot_r(i) := !t_ent.valid
+        io.req_yrot_r(i) := !t_ent.valid || (!io.req_uops(i).transmitter)
     }
 
     for (i <- 0 until numIntPhysRegs) {
-        val remapped_int_entry = (req_uops.map(uop => (uop.ldst_val, uop.ldst, uop.dst_rtype)) zip req_valids zip new_taint_entries)
-            .foldLeft(int_taint_file_freed_taints(i)) {case (t_ent, (((ldst_val, ldst, rtype), fire), new_t_ent)) =>
-                Mux(fire && ldst_val && ldst === i.U && rtype === int_type, new_t_ent, t_ent)}
+        val remapped_int_entry = (req_uops.map(uop => (uop.ldst_val, uop.pdst, uop.dst_rtype)) zip req_valids zip new_taint_entries)
+            .foldLeft(int_taint_file_freed_taints(i)) {case (t_ent, (((ldst_val, pdst, rtype), fire), new_t_ent)) =>
+                Mux(fire && ldst_val && pdst === i.U && rtype === int_type, new_t_ent, t_ent)}
 
         int_taint_file(i) := remapped_int_entry
     }
 
     for (i <- 0 until numFpPhysRegs) {
-        val remapped_fp_entry = (req_uops.map(uop => (uop.ldst_val, uop.ldst, uop.dst_rtype)) zip req_valids zip new_taint_entries)
-            .foldLeft(fp_taint_file_freed_taints(i)) {case (t_ent, (((ldst_val, ldst, rtype), fire), new_t_ent)) =>
-                Mux(fire && ldst_val && ldst === i.U && rtype === fp_type, new_t_ent, t_ent)}
+        val remapped_fp_entry = (req_uops.map(uop => (uop.ldst_val, uop.pdst, uop.dst_rtype)) zip req_valids zip new_taint_entries)
+            .foldLeft(fp_taint_file_freed_taints(i)) {case (t_ent, (((ldst_val, pdst, rtype), fire), new_t_ent)) =>
+                Mux(fire && ldst_val && pdst === i.U && rtype === fp_type, new_t_ent, t_ent)}
 
         fp_taint_file(i) := remapped_fp_entry
     }

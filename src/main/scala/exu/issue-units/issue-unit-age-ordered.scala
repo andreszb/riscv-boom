@@ -144,10 +144,11 @@ class IssueUnitCollapsing(
     for (w <- 0 until issueWidth) {
       
       when (requests(i) && !uop_yrot_calc && !taint_port_issued(w)) {
-        io.req_valids(w) := true.B
+        io.req_valids(w) := !issue_slots(i).uop.taint_set
         io.req_uops(w) := issue_slots(i).uop
         issue_slots(i).yrot_r := io.yrot_r(w)
-        issue_slots(i).yrot := io.yrot(w)
+        issue_slots(i).yrot.valid := !issue_slots(i).uop.taint_set
+        issue_slots(i).yrot.bits := io.yrot(w)
       }
       val uop_taint_calc_yet = taint_port_issued(w)
       taint_port_issued(w) = (requests(i) && !uop_yrot_calc) | taint_port_issued(w)

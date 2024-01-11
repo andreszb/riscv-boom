@@ -144,11 +144,25 @@ class IssueSlot(val numWakeupPorts: Int)(implicit p: Parameters)
   } .elsewhen ((io.grant && (state === s_valid_1)) ||
     (io.grant && (state === s_valid_2) && p1 && p2 && ppred)) {
     // try to issue this uop.
-    when (!(io.ldspec_miss && (p1_poisoned || p2_poisoned))) {
-      next_state := s_invalid
-    }
+    if (enableRegisterTaintTracking) {
+      when ((!(io.ldspec_miss && (p1_poisoned || p2_poisoned))) &&
+            (io.yrot_r || slot_uop.taint_set)) {
+        next_state := s_invalid
+        } 
+      } else {
+      when (!(io.ldspec_miss && (p1_poisoned || p2_poisoned))) {
+        next_state := s_invalid
+        }
+      } 
   } .elsewhen (io.grant && (state === s_valid_2)) {
-    when (!(io.ldspec_miss && (p1_poisoned || p2_poisoned))) {
+    val is_valid_s2_grant = WireInit(false.B)
+    if (enableRegisterTaintTracking) {
+      is_valid_s2_grant := !(io.ldspec_miss && (p1_poisoned || p2_poisoned)) &&
+                            (io.yrot_r || slot_uop.taint_set)
+    } else {
+      is_valid_s2_grant := !(io.ldspec_miss && (p1_poisoned || p2_poisoned))
+    }
+    when (is_valid_s2_grant) {
       next_state := s_valid_1
       when (p1) {
         slot_uop.uopc := uopSTD
