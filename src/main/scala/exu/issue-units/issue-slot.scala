@@ -179,8 +179,12 @@ class IssueSlot(val numWakeupPorts: Int)(implicit p: Parameters)
   when (io.in_uop.valid) {
     slot_uop := io.in_uop.bits
     assert (is_invalid || io.clear || io.kill, "trying to overwrite a valid issue slot.")
+  }.otherwise{
+    slot_uop.taint_set  := Mux(io.yrot.valid, true.B, slot_uop.taint_set)
+    slot_uop.yrot       := Mux(io.yrot.valid, io.yrot.bits, slot_uop.yrot)
+    slot_uop.yrot_r     := Mux(io.yrot.valid, io.yrot_r, yrot_r)
+    yrot_r := Mux(io.yrot.valid, io.yrot_r, yrot_r)
   }
-
   // Wakeup Compare Logic
 
   // these signals are the "next_p*" for the current slot's micro-op.
@@ -316,7 +320,7 @@ class IssueSlot(val numWakeupPorts: Int)(implicit p: Parameters)
 
   // micro-op will vacate due to grant.
   val may_vacate = io.grant && ((state === s_valid_1) || (state === s_valid_2) && p1 && p2 && ppred)
-  val squash_grant = io.ldspec_miss && (p1_poisoned || p2_poisoned)
+  val squash_grant = io.ldspec_miss && (p1_poisoned || p2_poisoned) 
   val taint_squash_grant = !slot_uop.taint_set && slot_uop.transmitter && (!io.yrot_r)
   io.will_be_valid := is_valid && !(may_vacate && !squash_grant && !taint_squash_grant)
 

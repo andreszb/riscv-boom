@@ -129,6 +129,9 @@ class FpPipeline(implicit p: Parameters) extends BoomModule with tile.HasFPUPara
     }
   }
 
+  dontTouch(io.req_valids)
+  dontTouch(io.req_uops)
+
   //-------------------------------------------------------------
   // **** Dispatch Stage ****
   //-------------------------------------------------------------

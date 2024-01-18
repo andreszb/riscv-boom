@@ -117,7 +117,7 @@ class RegisterTaintTracker(
                     Array(int_type -> int_taint_file_freed_taints(uop.prs2),
                           fp_type -> fp_taint_file_freed_taints(uop.prs2)))
 
-        val t3 = Mux(uop.frs3_en, fp_taint_file(uop.prs3), dud_entry)
+        val t3 = Mux(uop.frs3_en, fp_taint_file_freed_taints(uop.prs3), dud_entry)
         
         (t1, t2, t3)
     }

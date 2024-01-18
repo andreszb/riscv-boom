@@ -1680,7 +1680,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     traceData.ldq_btc_head          := io.lsu.ldq_btc_head
     traceData.ldq_tail              := io.lsu.ldq_tail
 
-    traceData.int_taints_valid      := ren_taint_tracker.io.int_taint_valids
+    if (enableRenameTaintTracking) traceData.int_taints_valid      := ren_taint_tracker.io.int_taint_valids
 
     traceData.int_issue_0_valid     := int_iss_unit.io.slot0_valid
     traceData.int_issue_0_yrot      := int_iss_unit.io.slot0_yrot
@@ -1701,31 +1701,31 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     traceData.taint_wakeup_1_port   := io.lsu.taint_wakeup_port(1).bits
 
     traceData.dec_0_fire            := dec_fire(0)
-    traceData.ren1_0_yrot           := ren_taint_tracker.io.ren1_yrot(0)
-    traceData.ren1_0_yrot_r         := ren_taint_tracker.io.ren1_yrot_r(0)
-    traceData.ren1_0_tent_ldq_idx   := ren_taint_tracker.io.ren1_tent_ldq_idx(0)
+    if (enableRenameTaintTracking) traceData.ren1_0_yrot           := ren_taint_tracker.io.ren1_yrot(0)
+    if (enableRenameTaintTracking) traceData.ren1_0_yrot_r         := ren_taint_tracker.io.ren1_yrot_r(0)
+    if (enableRenameTaintTracking) traceData.ren1_0_tent_ldq_idx   := ren_taint_tracker.io.ren1_tent_ldq_idx(0)
 
     traceData.dec_1_fire            := dec_fire(1)
-    traceData.ren1_1_yrot           := ren_taint_tracker.io.ren1_yrot(1)
-    traceData.ren1_1_yrot_r         := ren_taint_tracker.io.ren1_yrot_r(1)
-    traceData.ren1_1_tent_ldq_idx   := ren_taint_tracker.io.ren1_tent_ldq_idx(1)
+    if (enableRenameTaintTracking) traceData.ren1_1_yrot           := ren_taint_tracker.io.ren1_yrot(1)
+    if (enableRenameTaintTracking) traceData.ren1_1_yrot_r         := ren_taint_tracker.io.ren1_yrot_r(1)
+    if (enableRenameTaintTracking) traceData.ren1_1_tent_ldq_idx   := ren_taint_tracker.io.ren1_tent_ldq_idx(1)
 
     traceData.dis_0_fire            := dis_fire(0)
-    traceData.ren2_0_yrot           := ren_taint_tracker.io.ren2_yrot(0)
-    traceData.ren2_0_yrot_r         := ren_taint_tracker.io.ren2_yrot_r(0)
+    if (enableRenameTaintTracking) traceData.ren2_0_yrot           := ren_taint_tracker.io.ren2_yrot(0)
+    if (enableRenameTaintTracking) traceData.ren2_0_yrot_r         := ren_taint_tracker.io.ren2_yrot_r(0)
 
     traceData.dis_1_fire            := dis_fire(1)
-    traceData.ren2_1_yrot           := ren_taint_tracker.io.ren2_yrot(1)
-    traceData.ren2_1_yrot_r         := ren_taint_tracker.io.ren2_yrot_r(1)
+    if (enableRenameTaintTracking) traceData.ren2_1_yrot           := ren_taint_tracker.io.ren2_yrot(1)
+    if (enableRenameTaintTracking) traceData.ren2_1_yrot_r         := ren_taint_tracker.io.ren2_yrot_r(1)
   
-    traceData.loads_last_cycle      := ren_taint_tracker.io.loads_last_cycle
-    traceData.load_ops_0            := ren_taint_tracker.io.load_ops(0)
-    traceData.load_ops_1            := ren_taint_tracker.io.load_ops(1)
-    traceData.load_ops_2            := ren_taint_tracker.io.load_ops(2)
-    traceData.ldq_will_flip_0       := ren_taint_tracker.io.ldq_will_flip(0)
-    traceData.ldq_will_flip_1       := ren_taint_tracker.io.ldq_will_flip(1)
-    traceData.ldq_will_flip_2       := ren_taint_tracker.io.ldq_will_flip(2)
-    traceData.ldq_will_flip_3       := ren_taint_tracker.io.ldq_will_flip(3)
+    if (enableRenameTaintTracking) traceData.loads_last_cycle      := ren_taint_tracker.io.loads_last_cycle
+    if (enableRenameTaintTracking) traceData.load_ops_0            := ren_taint_tracker.io.load_ops(0)
+    if (enableRenameTaintTracking) traceData.load_ops_1            := ren_taint_tracker.io.load_ops(1)
+    if (enableRenameTaintTracking) traceData.load_ops_2            := ren_taint_tracker.io.load_ops(2)
+    if (enableRenameTaintTracking) traceData.ldq_will_flip_0       := ren_taint_tracker.io.ldq_will_flip(0)
+    if (enableRenameTaintTracking) traceData.ldq_will_flip_1       := ren_taint_tracker.io.ldq_will_flip(1)
+    if (enableRenameTaintTracking) traceData.ldq_will_flip_2       := ren_taint_tracker.io.ldq_will_flip(2)
+    if (enableRenameTaintTracking) traceData.ldq_will_flip_3       := ren_taint_tracker.io.ldq_will_flip(3)
 
     traceData.rollback            := rob.io.commit.rollback
     traceData.br_mispredict       := b2.mispredict

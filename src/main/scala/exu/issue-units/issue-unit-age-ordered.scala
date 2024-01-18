@@ -116,6 +116,8 @@ class IssueUnitCollapsing(
     port_issued(w) = false.B
   }
 
+  val assigned_issue_debug = WireInit(32.U)
+
   for (i <- 0 until numIssueSlots) {
     issue_slots(i).grant := false.B
     var uop_issued = false.B
@@ -127,6 +129,14 @@ class IssueUnitCollapsing(
         issue_slots(i).grant := true.B
         io.iss_valids(w) := true.B
         io.iss_uops(w) := issue_slots(i).uop
+
+        io.req_valids(w) := !issue_slots(i).uop.taint_set
+        io.req_uops(w) := issue_slots(i).uop
+        issue_slots(i).yrot_r := io.yrot_r(w)
+        issue_slots(i).yrot.valid := !issue_slots(i).uop.taint_set
+        issue_slots(i).yrot.bits := io.yrot(w)
+
+        assigned_issue_debug := i.U
       }
       val was_port_issued_yet = port_issued(w)
       port_issued(w) = (requests(i) && !uop_issued && can_allocate) | port_issued(w)
@@ -134,25 +144,9 @@ class IssueUnitCollapsing(
     }
   }
 
-  val taint_port_issued = Array.fill(issueWidth){Bool()}
-  for (w <- 0 until issueWidth) {
-    taint_port_issued(w) = false.B
-  }
-  for (i <- 0 until numIssueSlots) {
-    var uop_yrot_calc = false.B
-
-    for (w <- 0 until issueWidth) {
-      
-      when (requests(i) && !uop_yrot_calc && !taint_port_issued(w)) {
-        io.req_valids(w) := !issue_slots(i).uop.taint_set
-        io.req_uops(w) := issue_slots(i).uop
-        issue_slots(i).yrot_r := io.yrot_r(w)
-        issue_slots(i).yrot.valid := !issue_slots(i).uop.taint_set
-        issue_slots(i).yrot.bits := io.yrot(w)
-      }
-      val uop_taint_calc_yet = taint_port_issued(w)
-      taint_port_issued(w) = (requests(i) && !uop_yrot_calc) | taint_port_issued(w)
-      uop_yrot_calc = (requests(i) && !uop_taint_calc_yet) | uop_yrot_calc
-    }
-  }
+  dontTouch(io.req_valids)
+  dontTouch(io.req_uops)
+  dontTouch(io.yrot_r)
+  dontTouch(io.yrot)
+  dontTouch(assigned_issue_debug)
 }
