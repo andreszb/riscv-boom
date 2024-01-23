@@ -57,11 +57,11 @@ class FpPipeline(implicit p: Parameters) extends BoomModule with tile.HasFPUPara
 
     val ldq_flipped         = Input(Bool())
 
-    val req_valids      = Output(Vec(issueParams.find(_.iqType == IQT_FP.litValue).get.issueWidth, Bool()))
-    val req_uops        = Output(Vec(issueParams.find(_.iqType == IQT_FP.litValue).get.issueWidth, new MicroOp()))
+    val req_valids      = if (enableRegisterTaintTracking) Output(Vec(issueParams.find(_.iqType == IQT_FP.litValue).get.issueWidth, Bool())) else null
+    val req_uops        = if (enableRegisterTaintTracking) Output(Vec(issueParams.find(_.iqType == IQT_FP.litValue).get.issueWidth, new MicroOp())) else null
 
-    val req_yrot        = Input(Vec(issueParams.find(_.iqType == IQT_FP.litValue).get.issueWidth, UInt(ldqAddrSz.W)))
-    val req_yrot_r      = Input(Vec(issueParams.find(_.iqType == IQT_FP.litValue).get.issueWidth, Bool()))
+    val req_yrot        = if (enableRegisterTaintTracking) Input(Vec(issueParams.find(_.iqType == IQT_FP.litValue).get.issueWidth, UInt(ldqAddrSz.W))) else null
+    val req_yrot_r      = if (enableRegisterTaintTracking) Input(Vec(issueParams.find(_.iqType == IQT_FP.litValue).get.issueWidth, Bool())) else null
     
     val debug_tsc_reg    = Input(UInt(width=xLen.W))
     val debug_wb_wdata   = Output(Vec(numWakeupPorts, UInt((fLen+1).W)))
@@ -129,8 +129,10 @@ class FpPipeline(implicit p: Parameters) extends BoomModule with tile.HasFPUPara
     }
   }
 
-  dontTouch(io.req_valids)
-  dontTouch(io.req_uops)
+  if (enableRegisterTaintTracking) {
+    dontTouch(io.req_valids)
+    dontTouch(io.req_uops)
+  }
 
   //-------------------------------------------------------------
   // **** Dispatch Stage ****

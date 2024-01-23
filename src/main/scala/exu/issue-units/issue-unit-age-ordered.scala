@@ -132,10 +132,11 @@ class IssueUnitCollapsing(
 
         io.req_valids(w) := !issue_slots(i).uop.taint_set
         io.req_uops(w) := issue_slots(i).uop
-        issue_slots(i).yrot_r := io.yrot_r(w)
-        issue_slots(i).yrot.valid := !issue_slots(i).uop.taint_set
-        issue_slots(i).yrot.bits := io.yrot(w)
-
+        if (enableRegisterTaintTracking) {
+          issue_slots(i).yrot_r := io.yrot_r(w)
+          issue_slots(i).yrot.valid := !issue_slots(i).uop.taint_set
+          issue_slots(i).yrot.bits := io.yrot(w)
+        }
         assigned_issue_debug := i.U
       }
       val was_port_issued_yet = port_issued(w)
@@ -146,7 +147,9 @@ class IssueUnitCollapsing(
 
   dontTouch(io.req_valids)
   dontTouch(io.req_uops)
-  dontTouch(io.yrot_r)
-  dontTouch(io.yrot)
+  if (enableRegisterTaintTracking) {
+    dontTouch(io.yrot_r)
+    dontTouch(io.yrot)
+  }
   dontTouch(assigned_issue_debug)
 }
