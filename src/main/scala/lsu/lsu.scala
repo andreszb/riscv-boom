@@ -164,6 +164,10 @@ class LSUCoreIO(implicit p: Parameters) extends BoomBundle()(p)
     val release = Bool()
     val tlbMiss = Bool()
   })
+
+  // Tell ROB about the addr of the head for load-pair tracking.
+  val head_addr = Output(Vec(coreWidth, UInt(coreMaxAddrBits.W)))
+
 }
 
 class LSUIO(implicit p: Parameters, edge: TLEdgeOut) extends BoomBundle()(p)
@@ -1629,9 +1633,13 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
     temp_ldq_head        = Mux(commit_load,
                                WrapInc(temp_ldq_head, numLdqEntries),
                                temp_ldq_head)
+    // Update the latest address that has been committed.
+    when(commit_load){
+        io.core.head_addr(w) := ldq(temp_ldq_head).bits.addr.bits
+    }
   }
-  stq_commit_head := temp_stq_commit_head
-  ldq_head        := temp_ldq_head
+  stq_commit_head   := temp_stq_commit_head
+  ldq_head          := temp_ldq_head
 
   // store has been committed AND successfully sent data to memory
   when (stq(stq_head).valid && stq(stq_head).bits.committed)

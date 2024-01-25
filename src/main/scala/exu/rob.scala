@@ -112,6 +112,8 @@ class RobIo(
 
 
   val debug_tsc = Input(UInt(xLen.W))
+
+  val lpt_load_addr = Input(Vec(coreWidth, UInt(coreMaxAddrBits.W)))
 }
 
 /**
@@ -319,6 +321,35 @@ class Rob(
 
     val rob_debug_wdata = Mem(numRobRows, UInt(xLen.W))
 
+    
+    // Load pair tracking
+
+    // LPT (Load Pair Table)
+    val rob_lpt_active = Reg(Vec(numIntPhysRegs, Bool()))
+    val rob_lpt_addr   = Reg(Vec(numIntPhysRegs, UInt(coreMaxAddrBits.W)))
+    val rob_lpt_revealed = Reg(Vec(numIntPhysRegs, Bool()))
+    dontTouch(rob_lpt_active)
+    dontTouch(rob_lpt_addr)
+    dontTouch(rob_lpt_revealed)
+    // Store load address
+    // Store load address in LPT table when:
+    // - Head uop will commit
+    // - Head uop is a load instruction
+    when(will_commit(w)){
+      when(rob_uop(rob_head).uses_ldq){
+        when(rob_lpt_active(rob_uop(rob_head).pdst)===false.B){
+          rob_lpt_active(rob_uop(rob_head).pdst) := true.B
+          rob_lpt_addr(rob_uop(rob_head).pdst)   := io.lpt_load_addr(w)
+        }
+        when(rob_lpt_active(rob_uop(rob_head).prs1)===true.B){
+          rob_lpt_revealed(rob_uop(rob_head).pdst) := true.B
+        }
+      }.otherwise{
+          rob_lpt_active(rob_uop(rob_head).pdst) := false.B
+          rob_lpt_revealed(rob_uop(rob_head).pdst) := false.B
+      }
+    }
+    
     //-----------------------------------------------
     // Dispatch: Add Entry to ROB
 
