@@ -72,6 +72,7 @@ class BoomDCacheReq(implicit p: Parameters) extends BoomBundle()(p)
   val data  = Bits(coreDataBits.W)
   val is_hella = Bool() // Is this the hellacache req? If so this is not tracked in LDQ or STQ
   val is_hella_prft = Bool() // this response can be ignored
+  val is_revealed = Bool() // Set the data as revealed load pair
 }
 
 class BoomDCacheResp(implicit p: Parameters) extends BoomBundle()(p)
@@ -167,6 +168,8 @@ class LSUCoreIO(implicit p: Parameters) extends BoomBundle()(p)
 
   // Tell ROB about the addr of the head for load-pair tracking.
   val head_addr = Output(Vec(coreWidth, UInt(coreMaxAddrBits.W)))
+  val revealed_addr = Input(Vec(coreWidth, UInt(coreMaxAddrBits.W)))
+  val is_revealed = Input(Bool())
 
 }
 
@@ -798,6 +801,7 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
     dmem_req(w).bits.data  := 0.U
     dmem_req(w).bits.is_hella := false.B
     dmem_req(w).bits.is_hella_prft := false.B
+    dmem_req(w).bits.is_revealed := false.B
 
     io.dmem.s1_kill(w) := false.B
 
@@ -868,6 +872,9 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
       dmem_req(w).bits.uop.mem_signed := hella_req.signed
       dmem_req(w).bits.is_hella       := true.B
       dmem_req(w).bits.is_hella_prft  := isPrefetch(hella_req.cmd)
+    } .elsewhen (io.core.is_revealed(w)) {
+      dmem_req(w).bits.addr := io.core.revealed_addr(w)
+      dmem_req(w).bits.is_revealed := true.B
     }
 
     dmem_req(w).bits.uop.memory_latency.foreach(_ := io.core.tsc_reg)
