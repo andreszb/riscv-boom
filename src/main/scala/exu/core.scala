@@ -1113,6 +1113,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   dontTouch(rob.io.lpt_load_addr)
   // io.lsu.recon_cmd     := rob.io.recon_cmd
 
+
   // tell LSU that it should fire a load that waits for the rob to clear
   io.lsu.commit_load_at_rob_head := rob.io.com_load_is_at_rob_head
 

@@ -395,6 +395,14 @@ class Rob(
             fifo.io.in.bits.cmd  := 0.U
           }
       }
+    }  
+
+    // ReCon FIFO
+    when(enq_reCon_fifo){
+        reCon_fifo.io.enq.valid := true.B
+        reCon_fifo.io.enq.bits := rob_lpt_addr(rob_uop(rob_head).prs1)
+    }.elsewhen(deq_reCon_fifo){
+        reCon_fifo.io.deq.ready := true.B   
     }
 
     when(io.recon_ack && fifo.io.out.valid) {

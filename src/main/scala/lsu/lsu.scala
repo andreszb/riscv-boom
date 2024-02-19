@@ -65,6 +65,13 @@ class LSUExeIO(implicit p: Parameters) extends BoomBundle()(p)
   val fresp    = new DecoupledIO(new boom.exu.ExeUnitResp(xLen+1)) // TODO: Should this be fLen?
 }
 
+class LSURobIO(implicit p: Parameters) extends BoomBundle()(p)
+{
+  val head_addr = Output(UInt(coreMaxAddrBits.W))
+  val revealed_addr = Input(UInt(coreMaxAddrBits.W))
+  val is_revealed = Input(Bool()) 
+}
+
 class BoomDCacheReq(implicit p: Parameters) extends BoomBundle()(p)
   with HasBoomUOP
 {
@@ -72,7 +79,7 @@ class BoomDCacheReq(implicit p: Parameters) extends BoomBundle()(p)
   val data  = Bits(coreDataBits.W)
   val is_hella = Bool() // Is this the hellacache req? If so this is not tracked in LDQ or STQ
   val is_hella_prft = Bool() // this response can be ignored
-  val is_revealed = Bool() // Set the data as revealed load pair
+  val is_revealed = Bool() // Set the data as revealed load pair // Set this in ctrl 
 }
 
 class BoomDCacheResp(implicit p: Parameters) extends BoomBundle()(p)
@@ -81,6 +88,7 @@ class BoomDCacheResp(implicit p: Parameters) extends BoomBundle()(p)
   val data = Bits(coreDataBits.W)
   val is_hella = Bool()
   val is_hella_prft = Bool() // this response can be ignored
+  // TODO: Set the acknowledge signal
 }
 
 class LSUDMemIO(implicit p: Parameters, edge: TLEdgeOut) extends BoomBundle()(p)
@@ -120,6 +128,7 @@ class LSUClearPSV(implicit p: Parameters) extends BoomBundle()(p) {
 class LSUCoreIO(implicit p: Parameters) extends BoomBundle()(p)
 {
   val exe = Vec(memWidth, new LSUExeIO)
+  val rob = Vec(memWidth, new LSURobIO)
 
   val dis_uops    = Flipped(Vec(coreWidth, Valid(new MicroOp)))
   val dis_ldq_idx = Output(Vec(coreWidth, UInt(ldqAddrSz.W)))
@@ -165,11 +174,6 @@ class LSUCoreIO(implicit p: Parameters) extends BoomBundle()(p)
     val release = Bool()
     val tlbMiss = Bool()
   })
-
-  // Tell ROB about the addr of the head for load-pair tracking.
-  val head_addr = Output(Vec(coreWidth, UInt(coreMaxAddrBits.W)))
-  val revealed_addr = Input(Vec(coreWidth, UInt(coreMaxAddrBits.W)))
-  val is_revealed = Input(Bool())
 
 }
 
@@ -221,11 +225,8 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
 {
   val io = IO(new LSUIO)
 
-
   val ldq = Reg(Vec(numLdqEntries, Valid(new LDQEntry)))
   val stq = Reg(Vec(numStqEntries, Valid(new STQEntry)))
-
-
 
   val ldq_head         = Reg(UInt(ldqAddrSz.W))
   val ldq_tail         = Reg(UInt(ldqAddrSz.W))
@@ -278,7 +279,6 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
 
 
   def widthMap[T <: Data](f: Int => T) = VecInit((0 until memWidth).map(f))
-
 
   //-------------------------------------------------------------
   //-------------------------------------------------------------
@@ -398,6 +398,8 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
   val will_fire_sta_retry      = Wire(Vec(memWidth, Bool()))
   val will_fire_store_commit   = Wire(Vec(memWidth, Bool()))
   val will_fire_load_wakeup    = Wire(Vec(memWidth, Bool()))
+  val will_fire_lpt_reveal     = Wire(Vec(memWidth, Bool()))
+  val will_fire_lpt_conceal    = Wire(Vec(memWidth, Bool()))
 
   val exe_req = WireInit(VecInit(io.core.exe.map(_.req)))
   // Sfence goes through all pipes
@@ -538,6 +540,17 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
   // Can we fire a hellacache request that the dcache nack'd
   val can_fire_hella_wakeup    = WireInit(widthMap(w => false.B)) // This is assigned to in the hellashim controller
 
+  // Can a load pair address be revealed in cache
+  val can_fire_lpt_reveal      = widthMap(w =>
+    (
+      io.core.rob(w).is_revealed
+    )  
+  )
+  // val can_fire_lpt_reveal      = WireInit(widthMap(w => false.B))
+
+  // Can a load pair address be concealed in cache
+  val can_fire_lpt_conceal     = WireInit(widthMap(w => false.B))
+
   //---------------------------------------------------------
   // Controller logic. Arbitrate which request actually fires
 
@@ -580,7 +593,8 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
     will_fire_sta_retry     (w) := lsu_sched(can_fire_sta_retry     (w) , true , false, true , true)  // TLB ,    , LCAM , ROB // TODO: This should be higher priority
     will_fire_load_wakeup   (w) := lsu_sched(can_fire_load_wakeup   (w) , false, true , true , false) //     , DC , LCAM1
     will_fire_store_commit  (w) := lsu_sched(can_fire_store_commit  (w) , false, true , false, false) //     , DC
-
+    will_fire_lpt_reveal    (w) := lsu_sched(can_fire_lpt_reveal    (w) , false, true , false, false)
+    will_fire_lpt_conceal   (w) := lsu_sched(can_fire_lpt_conceal   (w) , false, true , false, false)
 
     assert(!(exe_req(w).valid && !(will_fire_load_incoming(w) || will_fire_stad_incoming(w) || will_fire_sta_incoming(w) || will_fire_std_incoming(w) || will_fire_sfence(w))))
 
@@ -872,8 +886,9 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
       dmem_req(w).bits.uop.mem_signed := hella_req.signed
       dmem_req(w).bits.is_hella       := true.B
       dmem_req(w).bits.is_hella_prft  := isPrefetch(hella_req.cmd)
-    } .elsewhen (io.core.is_revealed(w)) {
-      dmem_req(w).bits.addr := io.core.revealed_addr(w)
+    } .elsewhen (will_fire_lpt_reveal(w)) {
+      dmem_req(w).valid     := true.B
+      dmem_req(w).bits.addr := io.core.rob(w).revealed_addr
       dmem_req(w).bits.is_revealed := true.B
     }
 
@@ -1642,7 +1657,7 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
                                temp_ldq_head)
     // Update the latest address that has been committed.
     when(commit_load){
-        io.core.head_addr(w) := ldq(temp_ldq_head).bits.addr.bits
+        io.core.rob(w).head_addr := ldq(temp_ldq_head).bits.addr.bits
     }
   }
   stq_commit_head   := temp_stq_commit_head
