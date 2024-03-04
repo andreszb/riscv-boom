@@ -36,6 +36,21 @@ import boom.common._
 import boom.lsu.LSUClearPSV
 import boom.util._
 
+class ReConFifoItem (implicit p: Parameters) extends BoomBundle {
+  val addr = UInt(coreMaxAddrBits.W)
+  val cmd  = UInt(1.W) // 0 = conceal, 1 = reveal
+}
+
+class ReConFIFO (implicit p: Parameters) extends BoomModule {
+  val io = IO(new Bundle {
+    val in = Flipped(Decoupled(new ReConFifoItem))
+    val out = Decoupled(new ReConFifoItem)
+  })
+
+  val fifo = Queue(io.in, 10)
+  io.out <> fifo
+}
+
 /**
  * IO bundle to interact with the ROB
  *
@@ -114,6 +129,8 @@ class RobIo(
   val debug_tsc = Input(UInt(xLen.W))
 
   val lpt_load_addr = Input(Vec(coreWidth, UInt(coreMaxAddrBits.W)))
+  val recon_cmd = Output(new ReConFifoItem)
+  val recon_ack = Input(Bool())
 }
 
 /**
@@ -222,6 +239,10 @@ class Rob(
   )(implicit p: Parameters) extends BoomModule
 {
   val io = IO(new RobIo(numWakeupPorts, numFpuPorts))
+  dontTouch(io.lpt_load_addr)
+  dontTouch(io.recon_cmd.addr)
+  dontTouch(io.recon_cmd.cmd)
+  dontTouch(io.recon_ack)
 
   // ROB Finite State Machine
   val s_reset :: s_normal :: s_rollback :: s_wait_till_empty :: Nil = Enum(4)
@@ -327,27 +348,62 @@ class Rob(
     // LPT (Load Pair Table)
     val rob_lpt_active = Reg(Vec(numIntPhysRegs, Bool()))
     val rob_lpt_addr   = Reg(Vec(numIntPhysRegs, UInt(coreMaxAddrBits.W)))
-    val rob_lpt_revealed = Reg(Vec(numIntPhysRegs, Bool()))
     dontTouch(rob_lpt_active)
     dontTouch(rob_lpt_addr)
-    dontTouch(rob_lpt_revealed)
-    // Store load address
-    // Store load address in LPT table when:
-    // - Head uop will commit
-    // - Head uop is a load instruction
+
+    // Debug signals
+    val reveal = Wire(Bool())
+    dontTouch(reveal)
+    reveal := false.B
+    val conceal = Wire(Bool())
+    dontTouch(conceal)
+    conceal := false.B
+    val out_update = Wire(Bool())
+    dontTouch(out_update)
+    out_update := false.B
+
+    val fifo = Module(new ReConFIFO)
+    fifo.io.in.valid := false.B
+    fifo.io.in.bits.addr := 0.U
+    fifo.io.in.bits.cmd := 0.U
+    dontTouch(fifo.io)
+
     when(will_commit(w)){
       when(rob_uop(rob_head).uses_ldq){
-        when(rob_lpt_active(rob_uop(rob_head).pdst)===false.B){
+        when(rob_lpt_active(rob_uop(rob_head).pdst)===false.B)
+        {
           rob_lpt_active(rob_uop(rob_head).pdst) := true.B
           rob_lpt_addr(rob_uop(rob_head).pdst)   := io.lpt_load_addr(w)
         }
-        when(rob_lpt_active(rob_uop(rob_head).prs1)===true.B){
-          rob_lpt_revealed(rob_uop(rob_head).pdst) := true.B
+        when(rob_lpt_active(rob_uop(rob_head).prs1)===true.B)
+        {
+          when(fifo.io.in.ready)
+          {
+            reveal := true.B
+            fifo.io.in.valid      := true.B
+            fifo.io.in.bits.addr  := rob_lpt_addr(rob_uop(rob_head).prs1)
+            fifo.io.in.bits.cmd   := 1.U
+          }
         }
-      }.otherwise{
+      }.elsewhen(rob_uop(rob_head).uses_stq) {
           rob_lpt_active(rob_uop(rob_head).pdst) := false.B
-          rob_lpt_revealed(rob_uop(rob_head).pdst) := false.B
+          when(fifo.io.in.ready)
+          {
+            conceal := true.B
+            fifo.io.in.valid := true.B
+            fifo.io.in.bits.addr := rob_lpt_addr(rob_uop(rob_head).prs1)
+            fifo.io.in.bits.cmd  := 0.U
+          }
       }
+    }
+
+    when(io.recon_ack && fifo.io.out.valid) {
+      out_update := true.B
+      fifo.io.out.ready := true.B
+      io.recon_cmd := fifo.io.out.bits
+    } .otherwise {
+      fifo.io.out.ready := false.B
+      io.recon_cmd := 0.U.asTypeOf(new ReConFifoItem)
     }
     
     //-----------------------------------------------

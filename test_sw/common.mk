@@ -8,7 +8,7 @@ OBJDUMP := $(TARGET)-objdump
 
 CFLAGS += -I $(srcdir)
 CFLAGS += -I /usr/include/
-CFLAGS += -I /usr/lib/gcc/riscv64-unknown-elf/9.3.0/include/
+CFLAGS += -I /usr/lib/gcc/riscv64-unknown-elf/13.1.0/include/
 
 hdrs := $(wildcard *.h) $(wildcard $(srcdir)/*.h)
 objs ?=

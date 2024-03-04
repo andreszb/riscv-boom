@@ -6,3 +6,5 @@ lib
 *#
 *~
 .nfs*
+
+test_sw/bare/test.riscv

@@ -1,0 +1,50 @@
+@startuml BOOM Load Instruction Flow with ReCon
+actor "Instruction Queue" as IQueue
+box "Reorder Buffer"
+participant "Load Pair Table" as lpt
+participant "ReCon Logic" as recon
+end box
+participant "Load-store Unit" as lsu
+participant "Data Cache" as dcache
+participant "Register File" as regfile
+
+' First Load Instruction
+IQueue -> lpt: First load commit
+activate lpt
+lpt -> lsu: Send first load request
+activate lsu
+lsu -> dcache: Access first memory address
+activate dcache
+dcache --> lsu: Return first data
+deactivate dcache
+lsu --> lpt: First load data ready
+deactivate lsu
+rob -> regfile: Write first data to register
+activate regfile
+regfile --> rob: Acknowledge first write
+deactivate regfile
+
+' Second Load Instruction
+IQueue -> rob: Issue second load instruction
+activate rob
+rob -> lsu: Send second load request
+activate lsu
+lsu -> dcache: Access second memory address
+activate dcache
+dcache --> lsu: Return second data
+deactivate dcache
+lsu --> rob: Second load data ready
+deactivate lsu
+rob -> regfile: Write second data to register
+activate regfile
+regfile --> rob: Acknowledge second write
+deactivate regfile
+
+' ReCon Load Pair Detection and Address Reveal
+rob -> lpt: Check destination register for active bit
+rob -> lpt: Check source register for active bit
+lpt --> rob: Load pair detected
+rob -> recon: Mark address as revealed
+recon -> dcache: Send reveal request for first load address
+deactivate rob
+@enduml
