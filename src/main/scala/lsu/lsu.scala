@@ -55,6 +55,7 @@ import boom.common._
 import boom.exu.{BrUpdateInfo, Exception, FuncUnitResp, CommitSignals, ExeUnitResp}
 import boom.util.{BoolToChar, AgePriorityEncoder, IsKilledByBranch, GetNewBrMask, WrapInc, IsOlder, UpdateBrMask}
 import freechips.rocketchip.rocket.isPrefetch
+import boom.exu.ReConFifoItem
 
 class LSUExeIO(implicit p: Parameters) extends BoomBundle()(p)
 {
@@ -65,12 +66,10 @@ class LSUExeIO(implicit p: Parameters) extends BoomBundle()(p)
   val fresp    = new DecoupledIO(new boom.exu.ExeUnitResp(xLen+1)) // TODO: Should this be fLen?
 }
 
-class LSURobIO(implicit p: Parameters) extends BoomBundle()(p)
-{
-  val head_addr = Output(UInt(coreMaxAddrBits.W))
-  val revealed_addr = Input(UInt(coreMaxAddrBits.W))
-  val is_revealed = Input(Bool()) 
-}
+// class LSURobIO(implicit p: Parameters) extends BoomBundle()(p)
+// {
+
+// }
 
 class BoomDCacheReq(implicit p: Parameters) extends BoomBundle()(p)
   with HasBoomUOP
@@ -79,7 +78,7 @@ class BoomDCacheReq(implicit p: Parameters) extends BoomBundle()(p)
   val data  = Bits(coreDataBits.W)
   val is_hella = Bool() // Is this the hellacache req? If so this is not tracked in LDQ or STQ
   val is_hella_prft = Bool() // this response can be ignored
-  val is_revealed = Bool() // Set the data as revealed load pair // Set this in ctrl 
+  val is_recon = Bool()
 }
 
 class BoomDCacheResp(implicit p: Parameters) extends BoomBundle()(p)
@@ -128,7 +127,6 @@ class LSUClearPSV(implicit p: Parameters) extends BoomBundle()(p) {
 class LSUCoreIO(implicit p: Parameters) extends BoomBundle()(p)
 {
   val exe = Vec(memWidth, new LSUExeIO)
-  val rob = Vec(memWidth, new LSURobIO)
 
   val dis_uops    = Flipped(Vec(coreWidth, Valid(new MicroOp)))
   val dis_ldq_idx = Output(Vec(coreWidth, UInt(ldqAddrSz.W)))
@@ -175,12 +173,15 @@ class LSUCoreIO(implicit p: Parameters) extends BoomBundle()(p)
     val tlbMiss = Bool()
   })
 
+  val lsu_recon_out_addr = Output(UInt(coreMaxAddrBits.W))
+  val lsu_recon_in_rqst  = Input(new ReConFifoItem)
 }
 
 class LSUIO(implicit p: Parameters, edge: TLEdgeOut) extends BoomBundle()(p)
 {
   val ptw   = new rocket.TLBPTWIO
   val core  = new LSUCoreIO
+
   val dmem  = new LSUDMemIO
 
   val hellacache = Flipped(new freechips.rocketchip.rocket.HellaCacheIO)
@@ -224,7 +225,8 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
   with rocket.HasL1HellaCacheParameters
 {
   val io = IO(new LSUIO)
-
+  dontTouch(io.core.lsu_recon_in_rqst)
+  dontTouch(io.core.lsu_recon_out_addr)
   val ldq = Reg(Vec(numLdqEntries, Valid(new LDQEntry)))
   val stq = Reg(Vec(numStqEntries, Valid(new STQEntry)))
 
@@ -265,8 +267,10 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
   val dtlb = Module(new NBDTLB(
     instruction = false, lgMaxSize = log2Ceil(coreDataBytes), rocket.TLBConfig(dcacheParams.nTLBSets, dcacheParams.nTLBWays)))
 
-  io.ptw <> dtlb.io.ptw
-  io.core.perf.tlbMiss := io.ptw.req.fire
+  io.ptw <> dtlb.io.ptw // Page Table Walker
+
+  // Performance counters
+  io.core.perf.tlbMiss := io.ptw.req.fire 
   io.core.perf.acquire := io.dmem.perf.acquire
   io.core.perf.release := io.dmem.perf.release
 
@@ -398,9 +402,9 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
   val will_fire_sta_retry      = Wire(Vec(memWidth, Bool()))
   val will_fire_store_commit   = Wire(Vec(memWidth, Bool()))
   val will_fire_load_wakeup    = Wire(Vec(memWidth, Bool()))
-  val will_fire_lpt_reveal     = Wire(Vec(memWidth, Bool()))
-  val will_fire_lpt_conceal    = Wire(Vec(memWidth, Bool()))
+  val will_fire_recon          = Wire(Vec(memWidth, Bool()))
 
+  // Vector of memWidth with exe requests.
   val exe_req = WireInit(VecInit(io.core.exe.map(_.req)))
   // Sfence goes through all pipes
   for (i <- 0 until memWidth) {
@@ -453,6 +457,8 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
     e.addr.valid && !e.executed && !e.succeeded && !e.addr_is_virtual && !block
   }), ldq_head))
   val ldq_wakeup_e   = ldq(ldq_wakeup_idx)
+
+  // Add here some storing of the FIFO item
 
   // -----------------------
   // Determine what can fire
@@ -540,16 +546,10 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
   // Can we fire a hellacache request that the dcache nack'd
   val can_fire_hella_wakeup    = WireInit(widthMap(w => false.B)) // This is assigned to in the hellashim controller
 
-  // Can a load pair address be revealed in cache
-  val can_fire_lpt_reveal      = widthMap(w =>
-    (
-      io.core.rob(w).is_revealed
-    )  
-  )
-  // val can_fire_lpt_reveal      = WireInit(widthMap(w => false.B))
-
-  // Can a load pair address be concealed in cache
-  val can_fire_lpt_conceal     = WireInit(widthMap(w => false.B))
+  // When can we fire a recon signal ? when we get a valid recon request 
+  // 
+  val can_fire_recon           = widthMap(w => ( io.core.lsu_recon_in_rqst.valid ))
+  dontTouch(can_fire_recon)
 
   //---------------------------------------------------------
   // Controller logic. Arbitrate which request actually fires
@@ -593,8 +593,8 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
     will_fire_sta_retry     (w) := lsu_sched(can_fire_sta_retry     (w) , true , false, true , true)  // TLB ,    , LCAM , ROB // TODO: This should be higher priority
     will_fire_load_wakeup   (w) := lsu_sched(can_fire_load_wakeup   (w) , false, true , true , false) //     , DC , LCAM1
     will_fire_store_commit  (w) := lsu_sched(can_fire_store_commit  (w) , false, true , false, false) //     , DC
-    will_fire_lpt_reveal    (w) := lsu_sched(can_fire_lpt_reveal    (w) , false, true , false, false)
-    will_fire_lpt_conceal   (w) := lsu_sched(can_fire_lpt_conceal   (w) , false, true , false, false)
+    will_fire_recon         (w) := lsu_sched(can_fire_recon         (w) , false, true , false, false)
+    dontTouch(will_fire_recon)
 
     assert(!(exe_req(w).valid && !(will_fire_load_incoming(w) || will_fire_stad_incoming(w) || will_fire_sta_incoming(w) || will_fire_std_incoming(w) || will_fire_sfence(w))))
 
@@ -815,7 +815,7 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
     dmem_req(w).bits.data  := 0.U
     dmem_req(w).bits.is_hella := false.B
     dmem_req(w).bits.is_hella_prft := false.B
-    dmem_req(w).bits.is_revealed := false.B
+    dmem_req(w).bits.is_recon := false.B
 
     io.dmem.s1_kill(w) := false.B
 
@@ -886,10 +886,10 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
       dmem_req(w).bits.uop.mem_signed := hella_req.signed
       dmem_req(w).bits.is_hella       := true.B
       dmem_req(w).bits.is_hella_prft  := isPrefetch(hella_req.cmd)
-    } .elsewhen (will_fire_lpt_reveal(w)) {
+    } .elsewhen (will_fire_recon(w)) {
       dmem_req(w).valid     := true.B
-      dmem_req(w).bits.addr := io.core.rob(w).revealed_addr
-      dmem_req(w).bits.is_revealed := true.B
+      dmem_req(w).bits.addr := io.core.lsu_recon_in_rqst.addr
+      dmem_req(w).bits.is_recon := true.B
     }
 
     dmem_req(w).bits.uop.memory_latency.foreach(_ := io.core.tsc_reg)
@@ -994,6 +994,8 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
   val fired_load_wakeup    = widthMap(w => RegNext(will_fire_load_wakeup  (w) && !IsKilledByBranch(io.core.brupdate, ldq_wakeup_e.bits.uop)))
   val fired_hella_incoming = RegNext(will_fire_hella_incoming)
   val fired_hella_wakeup   = RegNext(will_fire_hella_wakeup)
+  val fired_recon          = RegNext(will_fire_recon)
+  dontTouch(fired_recon)
 
   val mem_incoming_uop     = RegNext(widthMap(w => UpdateBrMask(io.core.brupdate, exe_req(w).bits.uop)))
   val mem_ldq_incoming_e   = RegNext(widthMap(w => UpdateBrMask(io.core.brupdate, ldq_incoming_e(w))))
@@ -1080,6 +1082,8 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
       val stq_idx = mem_stq_retry_e.bits.uop.stq_idx
       clr_bsy_dtlb_pmiss (w) := stq(stq_idx).bits.uop.tea_psv.dtlb_pmiss
       clr_bsy_dtlb_smiss (w) := stq(stq_idx).bits.uop.tea_psv.dtlb_smiss
+    } .elsewhen (fired_recon(w)) {
+      // NOP
     }
 
     io.core.clr_bsy(w).valid := clr_bsy_valid(w) &&
@@ -1657,7 +1661,7 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
                                temp_ldq_head)
     // Update the latest address that has been committed.
     when(commit_load){
-        io.core.rob(w).head_addr := ldq(temp_ldq_head).bits.addr.bits
+        io.core.lsu_recon_out_addr := ldq(temp_ldq_head).bits.addr.bits
     }
   }
   stq_commit_head   := temp_stq_commit_head

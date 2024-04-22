@@ -11,7 +11,7 @@ participant "Register File" as regfile
 ' First Load Instruction
 IQueue -> lpt: First load commit
 activate lpt
-lpt -> lsu: Send first load request
+lpt -> lsu: Send first load
 activate lsu
 lsu -> dcache: Access first memory address
 activate dcache

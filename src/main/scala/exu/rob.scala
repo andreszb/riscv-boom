@@ -37,6 +37,7 @@ import boom.lsu.LSUClearPSV
 import boom.util._
 
 class ReConFifoItem (implicit p: Parameters) extends BoomBundle {
+  val valid = Bool()
   val addr = UInt(coreMaxAddrBits.W)
   val cmd  = UInt(1.W) // 0 = conceal, 1 = reveal
 }
@@ -128,9 +129,9 @@ class RobIo(
 
   val debug_tsc = Input(UInt(xLen.W))
 
-  val lpt_load_addr = Input(Vec(coreWidth, UInt(coreMaxAddrBits.W)))
-  val recon_cmd = Output(new ReConFifoItem)
-  val recon_ack = Input(Bool())
+  val rob_recon_in_addr = Input(UInt(coreMaxAddrBits.W))
+  val rob_recon_out_rqst = Output(new ReConFifoItem)
+  val rob_recon_in_ack = Input(Bool())
 }
 
 /**
@@ -239,10 +240,10 @@ class Rob(
   )(implicit p: Parameters) extends BoomModule
 {
   val io = IO(new RobIo(numWakeupPorts, numFpuPorts))
-  dontTouch(io.lpt_load_addr)
-  dontTouch(io.recon_cmd.addr)
-  dontTouch(io.recon_cmd.cmd)
-  dontTouch(io.recon_ack)
+  dontTouch(io.rob_recon_in_addr)
+  dontTouch(io.rob_recon_out_rqst.addr)
+  dontTouch(io.rob_recon_out_rqst.cmd)
+  dontTouch(io.rob_recon_in_ack)
 
   // ROB Finite State Machine
   val s_reset :: s_normal :: s_rollback :: s_wait_till_empty :: Nil = Enum(4)
@@ -364,6 +365,7 @@ class Rob(
 
     val fifo = Module(new ReConFIFO)
     fifo.io.in.valid := false.B
+    fifo.io.in.bits.valid := 0.U
     fifo.io.in.bits.addr := 0.U
     fifo.io.in.bits.cmd := 0.U
     dontTouch(fifo.io)
@@ -373,7 +375,7 @@ class Rob(
         when(rob_lpt_active(rob_uop(rob_head).pdst)===false.B)
         {
           rob_lpt_active(rob_uop(rob_head).pdst) := true.B
-          rob_lpt_addr(rob_uop(rob_head).pdst)   := io.lpt_load_addr(w)
+          rob_lpt_addr(rob_uop(rob_head).pdst)   := io.rob_recon_in_addr
         }
         when(rob_lpt_active(rob_uop(rob_head).prs1)===true.B)
         {
@@ -381,6 +383,7 @@ class Rob(
           {
             reveal := true.B
             fifo.io.in.valid      := true.B
+            fifo.io.in.bits.valid := true.B
             fifo.io.in.bits.addr  := rob_lpt_addr(rob_uop(rob_head).prs1)
             fifo.io.in.bits.cmd   := 1.U
           }
@@ -391,27 +394,20 @@ class Rob(
           {
             conceal := true.B
             fifo.io.in.valid := true.B
+            fifo.io.in.bits.valid := true.B
             fifo.io.in.bits.addr := rob_lpt_addr(rob_uop(rob_head).prs1)
             fifo.io.in.bits.cmd  := 0.U
           }
       }
     }  
 
-    // ReCon FIFO
-    when(enq_reCon_fifo){
-        reCon_fifo.io.enq.valid := true.B
-        reCon_fifo.io.enq.bits := rob_lpt_addr(rob_uop(rob_head).prs1)
-    }.elsewhen(deq_reCon_fifo){
-        reCon_fifo.io.deq.ready := true.B   
-    }
-
-    when(io.recon_ack && fifo.io.out.valid) {
+    when(io.rob_recon_in_ack && fifo.io.out.valid) {
       out_update := true.B
       fifo.io.out.ready := true.B
-      io.recon_cmd := fifo.io.out.bits
+      io.rob_recon_out_rqst := fifo.io.out.bits
     } .otherwise {
       fifo.io.out.ready := false.B
-      io.recon_cmd := 0.U.asTypeOf(new ReConFifoItem)
+      io.rob_recon_out_rqst := 0.U.asTypeOf(new ReConFifoItem)
     }
     
     //-----------------------------------------------

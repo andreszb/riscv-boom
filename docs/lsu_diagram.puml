@@ -1,0 +1,38 @@
+@startuml
+
+start
+
+:Declare variables;
+:Initialize live_store_mask;
+:Define widthMap function;
+
+:Enqueue new entries;
+:Check for full LDQ and STQ;
+:Enqueue loads and stores;
+:Update enqueue indices;
+
+:Check for ordered DMem and fence readiness;
+
+:Execute stage;
+:Initialize exception wires;
+:Define can-fire and will-fire signals;
+:Define scheduling signals;
+:Define retry and wakeup indices;
+:Check what can fire;
+:Update block masks;
+:Prioritize store queue emptying;
+:Check for store needs order;
+:Perform LCAM search;
+:Perform store-load forwarding checks;
+:Update failed and nacking loads;
+:Set memory forward signals;
+:Handle writeback and forwarding;
+:Handle speculative load wakeups;
+:Kill speculated entries on branch mispredict;
+:Handle branch mispredict and exception;
+:Dequeue old entries on commit;
+:Clear stores and update heads;
+
+stop
+
+@enduml

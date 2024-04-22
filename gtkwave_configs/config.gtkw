@@ -1,15 +1,15 @@
 [*]
-[*] GTKWave Analyzer v3.3.118 (w)1999-2023 BSI
-[*] Mon Mar  4 11:24:49 2024
+[*] GTKWave Analyzer v3.3.117 (w)1999-2023 BSI
+[*] Mon Mar 11 12:14:14 2024
 [*]
 [dumpfile] "/home/andres/Dev/recon/sims/verilator/output/chipyard.TestHarness.SmallBoomConfig/test.vcd"
-[dumpfile_mtime] "Mon Mar  4 11:17:17 2024"
-[dumpfile_size] 383231866
+[dumpfile_mtime] "Mon Mar 11 12:11:41 2024"
+[dumpfile_size] 4917816
 [savefile] "/home/andres/Dev/recon/generators/boom/gtkwave_configs/config.gtkw"
-[timestart] 54286
-[size] 946 523
+[timestart] 0
+[size] 1919 1199
 [pos] -27 -24
-*-4.200000 54322 54303 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+*-16.799999 0 54303 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
 [treeopen] TOP.
 [treeopen] TOP.TestHarness.
 [treeopen] TOP.TestHarness.chiptop.
@@ -18,12 +18,13 @@
 [treeopen] TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.
 [treeopen] TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.
 [treeopen] TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.core.
-[treeopen] TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.core.rob.
 [treeopen] TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.core.rob.fifo.
-[sst_width] 273
-[signals_width] 262
+[treeopen] TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.dcache.
+[treeopen] TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.lsu.
+[sst_width] 391
+[signals_width] 350
 [sst_expanded] 1
-[sst_vpaned_height] 129
+[sst_vpaned_height] 359
 @22
 TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.frontend.io_cpu_get_pc_0_pc[39:0]
 @200
@@ -60,7 +61,6 @@ TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.core
 TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.core.rob.fifo.fifo.ram_addr[8][39:0]
 TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.core.rob.fifo.fifo.ram_addr[9][39:0]
 @200
--FIFO_END
 -ROB_START
 @28
 TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.core.rob.clock
@@ -71,15 +71,51 @@ TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.core
 TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.core.rob.rob_head_uses_stq_0
 TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.core.rob.rob_head_uses_ldq_0
 @200
--ROB_END
 -RECON_START
 @28
-TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.core.rob.io_recon_ack
+TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.core.rob.io_rob_recon_in_ack
 @22
-TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.core.rob.io_recon_cmd_addr[39:0]
+TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.core.rob.io_rob_recon_in_addr[39:0]
+TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.core.rob.io_rob_recon_out_rqst_addr[39:0]
 @28
-TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.core.rob.io_recon_cmd_cmd
+TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.core.rob.io_rob_recon_out_rqst_cmd
 @200
 -RECON_END
+-LSU_RECON
+@22
+TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.lsu.io_core_lsu_recon_in_rqst_addr[39:0]
+@28
+TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.lsu.io_core_lsu_recon_in_rqst_valid
+TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.lsu.io_core_lsu_recon_in_rqst_cmd
+@22
+TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.lsu.io_core_lsu_recon_out_addr[39:0]
+@28
+TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.lsu.can_fire_recon_0
+TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.lsu.will_fire_recon_0
+TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.lsu.will_fire_recon_0_will_fire
+TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.lsu.fired_recon_0
+@200
+-DCACHE
+@22
+TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.dcache.io_lsu_req_bits_0_bits_addr[39:0]
+TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.dcache.io_lsu_req_bits_0_bits_data[63:0]
+@28
+TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.dcache.io_lsu_req_bits_0_bits_is_hella
+@23
+TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.dcache.io_lsu_req_bits_0_bits_uop_br_mask[7:0]
+@28
+TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.dcache.io_lsu_req_bits_0_bits_uop_is_amo
+TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.dcache.io_lsu_req_bits_0_bits_uop_ldq_idx[2:0]
+@22
+TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.dcache.io_lsu_req_bits_0_bits_uop_mem_cmd[4:0]
+@28
+TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.dcache.io_lsu_req_bits_0_bits_uop_mem_signed
+TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.dcache.io_lsu_req_bits_0_bits_uop_mem_size[1:0]
+TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.dcache.io_lsu_req_bits_0_bits_uop_stq_idx[2:0]
+TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.dcache.io_lsu_req_bits_0_bits_uop_uses_ldq
+TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.dcache.io_lsu_req_bits_0_bits_uop_uses_stq
+TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.dcache.io_lsu_req_bits_0_valid
+TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.dcache.io_lsu_req_ready
+TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.dcache.io_lsu_req_valid
 [pattern_trace] 1
 [pattern_trace] 0

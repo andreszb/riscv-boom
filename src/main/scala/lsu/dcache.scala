@@ -476,19 +476,26 @@ class BoomNonBlockingDCacheModule(outer: BoomNonBlockingDCache) extends LazyModu
 
   // ------------
   // New requests
+  val recon_request_active = Wire(Bool())
+  recon_request_active := false.B
 
   io.lsu.req.ready := metaReadArb.io.in(4).ready && dataReadArb.io.in(2).ready
   metaReadArb.io.in(4).valid := io.lsu.req.valid
   dataReadArb.io.in(2).valid := io.lsu.req.valid
   for (w <- 0 until memWidth) {
     // Tag read for new requests
-    metaReadArb.io.in(4).bits.req(w).idx    := io.lsu.req.bits(w).bits.addr >> blockOffBits
-    metaReadArb.io.in(4).bits.req(w).way_en := DontCare
-    metaReadArb.io.in(4).bits.req(w).tag    := DontCare
-    // Data read for new requests
-    dataReadArb.io.in(2).bits.valid(w)      := io.lsu.req.bits(w).valid
-    dataReadArb.io.in(2).bits.req(w).addr   := io.lsu.req.bits(w).bits.addr
-    dataReadArb.io.in(2).bits.req(w).way_en := ~0.U(nWays.W)
+    when(io.lsu.req.valid && io.lsu.req.bits(w).bits.is_recon){
+      printf("Entering branch for recon request\n")
+      recon_request_active := true.B
+    }.otherwise{
+      metaReadArb.io.in(4).bits.req(w).idx    := io.lsu.req.bits(w).bits.addr >> blockOffBits
+      metaReadArb.io.in(4).bits.req(w).way_en := DontCare
+      metaReadArb.io.in(4).bits.req(w).tag    := DontCare
+      // Data read for new requests
+      dataReadArb.io.in(2).bits.valid(w)      := io.lsu.req.bits(w).valid
+      dataReadArb.io.in(2).bits.req(w).addr   := io.lsu.req.bits(w).bits.addr
+      dataReadArb.io.in(2).bits.req(w).way_en := ~0.U(nWays.W)  
+    }
   }
 
   // ------------

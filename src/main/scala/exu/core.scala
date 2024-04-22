@@ -1108,11 +1108,9 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   io.lsu.commit                  := rob.io.commit
   
   // tell ROB about what the address of the next load is for pair tracking.
-  rob.io.lpt_load_addr := io.lsu.head_addr 
-  rob.io.recon_ack     := true.B
-  dontTouch(rob.io.lpt_load_addr)
-  // io.lsu.recon_cmd     := rob.io.recon_cmd
-
+  rob.io.rob_recon_in_addr := io.lsu.lsu_recon_out_addr
+  rob.io.rob_recon_in_ack  := true.B
+  io.lsu.lsu_recon_in_rqst := rob.io.rob_recon_out_rqst
 
   // tell LSU that it should fire a load that waits for the rob to clear
   io.lsu.commit_load_at_rob_head := rob.io.com_load_is_at_rob_head

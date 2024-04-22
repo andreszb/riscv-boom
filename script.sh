@@ -60,14 +60,10 @@ function run() {
   case "${1:-small}" in
     small)
       echo "Running simulation for Small Boom Config..."
-      clean
-      compile
       make -C $SIM -j$(nproc) run-binary-debug CONFIG=SmallBoomConfig BINARY="$BINARY" || return 1
       ;;
     medium)
       echo "Running simulation for Medium Boom Config..."
-      clean
-      compile
       make -C $SIM -j$(nproc) run-binary-debug CONFIG=MediumBoomConfig BINARY="$BINARY" || return 1
       ;;
     *)
@@ -81,7 +77,7 @@ function run() {
 function view(){
   case "${1:-small}" in
     small)
-      gtkwave $SIM/output/chipyard.TestHarness.SmallBoomConfig/test.vcd --dark --save=./gtkwave_configs/config.gtkw --saveonexit --cpu=10 --start=54309 &
+      gtkwave $SIM/output/chipyard.TestHarness.SmallBoomConfig/test.vcd --dark --save=./gtkwave_configs/config.gtkw --saveonexit --cpu=10 --start=54309 --rcfile ./gtkwave_configs/config.gtkwaverc &
       ;;
     medium)
       gtkwave $SIM/output/chipyard.TestHarness.MediumBoomConfig/test.vcd --save=./gtkwave_configs/config.gtkw --dark --saveonexit --cpu=10 &
