@@ -1420,6 +1420,9 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
       when (io.dmem.nack(w).bits.is_hella)
       {
         assert(hella_state === h_wait || hella_state === h_dead)
+      } .elsewhen(io.dmem.nack(w).bits.is_recon)
+      {
+        printf("is_recon\n")
       }
         .elsewhen (io.dmem.nack(w).bits.uop.uses_ldq)
       {

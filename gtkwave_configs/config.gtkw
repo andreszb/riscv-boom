@@ -1,15 +1,15 @@
 [*]
-[*] GTKWave Analyzer v3.3.117 (w)1999-2023 BSI
-[*] Mon Mar 11 12:14:14 2024
+[*] GTKWave Analyzer v3.3.119 (w)1999-2024 BSI
+[*] Mon Apr 22 11:19:49 2024
 [*]
 [dumpfile] "/home/andres/Dev/recon/sims/verilator/output/chipyard.TestHarness.SmallBoomConfig/test.vcd"
-[dumpfile_mtime] "Mon Mar 11 12:11:41 2024"
-[dumpfile_size] 4917816
+[dumpfile_mtime] "Mon Apr 22 11:10:36 2024"
+[dumpfile_size] 383281970
 [savefile] "/home/andres/Dev/recon/generators/boom/gtkwave_configs/config.gtkw"
 [timestart] 0
-[size] 1919 1199
+[size] 930 1067
 [pos] -27 -24
-*-16.799999 0 54303 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+*-16.799999 54303 54303 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
 [treeopen] TOP.
 [treeopen] TOP.TestHarness.
 [treeopen] TOP.TestHarness.chiptop.
@@ -21,10 +21,10 @@
 [treeopen] TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.core.rob.fifo.
 [treeopen] TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.dcache.
 [treeopen] TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.lsu.
-[sst_width] 391
+[sst_width] 273
 [signals_width] 350
 [sst_expanded] 1
-[sst_vpaned_height] 359
+[sst_vpaned_height] 318
 @22
 TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.frontend.io_cpu_get_pc_0_pc[39:0]
 @200
