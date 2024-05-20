@@ -1,18 +1,19 @@
 [*]
 [*] GTKWave Analyzer v3.3.119 (w)1999-2024 BSI
-[*] Mon May 20 12:52:20 2024
+[*] Mon May 20 08:29:07 2024
 [*]
 [dumpfile] "/home/andres/Dev/recon/sims/verilator/output/chipyard.TestHarness.SmallBoomConfig/test.vcd"
-[dumpfile_mtime] "Mon May 20 12:48:42 2024"
-[dumpfile_size] 388227750
+[dumpfile_mtime] "Mon May 20 08:28:57 2024"
+[dumpfile_size] 380716423
 [savefile] "/home/andres/Dev/recon/generators/boom/gtkwave_configs/config.gtkw"
-[timestart] 54462
+[timestart] 54069
 [size] 930 1068
 [pos] -27 -24
-*-4.499998 54477 -1 54305 54461 54565 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
-[markername] BProgram Start
-[markername] CFirst load commits
-[markername] DSecond load commits
+*-5.999998 54386 54303 54345 54375 54383 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[markername] AProgram Start
+[markername] BFirst load
+[markername] CSecond load
+[markername] DRecon bit set
 [treeopen] TOP.
 [treeopen] TOP.TestHarness.
 [treeopen] TOP.TestHarness.chiptop.
@@ -23,7 +24,7 @@
 [treeopen] TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.core.
 [treeopen] TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.core.rob.fifo.
 [sst_width] 273
-[signals_width] 345
+[signals_width] 302
 [sst_expanded] 1
 [sst_vpaned_height] 538
 @28
@@ -34,17 +35,11 @@ TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.lsu.
 @200
 -REVEAL
 -Check first load is stored in LPT
-@22
-TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.core.rob.rob_head_debug_pc[39:0]
 @28
 TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.core.rob.will_commit_0
 TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.core.rob.rob_head_uses_ldq_0
 @24
 TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.core.rob.dst_reg[5:0]
-@28
-TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.core.rob.rob_lpt_active_12
-@22
-TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.core.rob.rob_lpt_addr_12[39:0]
 @28
 TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.core.rob.rob_lpt_active_38
 @22
@@ -60,7 +55,7 @@ TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.core
 TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.core.rob.reveal
 TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.core.rob.fifo_io_in_valid
 TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.core.rob.fifo_io_in_bits_valid
-@22
+@23
 TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.core.rob.fifo_io_in_bits_addr[39:0]
 @28
 TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.core.rob.fifo_io_in_bits_cmd

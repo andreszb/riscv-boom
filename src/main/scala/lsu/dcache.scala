@@ -497,15 +497,19 @@ class BoomNonBlockingDCacheModule(outer: BoomNonBlockingDCache) extends LazyModu
   val recon_fire = io.lsu.req.bits(0).bits.is_recon
   val recon_req  = Wire(Vec(memWidth, new BoomDCacheReq))
   recon_req      := DontCare
-  // metaReadArb.io.in(6).valid := io.lsu.req.valid
-  // for (w <- 0 until memWidth) {
-  //   metaReadArb.io.in(6).bits.req(w).idx    := io.lsu.req.bits(w).bits.addr >> blockOffBits
-  //   metaReadArb.io.in(6).bits.req(w).way_en := DontCare
-  //   metaReadArb.io.in(6).bits.req(w).tag    := DontCare
-  //   dataReadArb.io.in(3).bits.valid(w)      := io.lsu.req.bits(w).valid
-  //   dataReadArb.io.in(3).bits.req(w).addr   := io.lsu.req.bits(w).bits.addr
-  //   dataReadArb.io.in(3).bits.req(w).way_en := ~0.U(nWays.W)  
-  // }
+  dontTouch(recon_fire)
+  dontTouch(recon_req)
+  recon_req(0).addr := io.lsu.req.bits(0).bits.addr
+  recon_req(0).recon_cmd := io.lsu.req.bits(0).bits.recon_cmd
+  metaReadArb.io.in(6).valid := io.lsu.req.valid
+  for (w <- 0 until memWidth) {
+    metaReadArb.io.in(6).bits.req(w).idx    := io.lsu.req.bits(w).bits.addr >> blockOffBits
+    metaReadArb.io.in(6).bits.req(w).way_en := DontCare
+    metaReadArb.io.in(6).bits.req(w).tag    := DontCare
+    dataReadArb.io.in(3).bits.valid(w)      := io.lsu.req.bits(w).valid
+    dataReadArb.io.in(3).bits.req(w).addr   := io.lsu.req.bits(w).bits.addr
+    // dataReadArb.io.in(3).bits.req(w).way_en := ~0.U(nWays.W)  way_en
+  }
 
   // ------------
   // MSHR Replays
@@ -736,8 +740,11 @@ class BoomNonBlockingDCacheModule(outer: BoomNonBlockingDCache) extends LazyModu
   }
   assert(debug_sc_fail_cnt < 100.U, "L1DCache failed too many SCs in a row")
 
+  val shiftedAddr = WireInit(0.U)
+  dontTouch(shiftedAddr)
   when(s2_type === t_recon){
-    reCon(0)(0) := true.B
+    shiftedAddr := s2_req(0).addr(5,0)
+    reCon(shiftedAddr)(0) := s2_req(0).recon_cmd
   }
 
   val s2_data = Wire(Vec(memWidth, Vec(nWays, UInt(encRowBits.W))))

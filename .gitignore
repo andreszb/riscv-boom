@@ -10,3 +10,5 @@ lib
 test_sw/bare/test.riscv
 
 .metals/
+
+gtkwave_small.log

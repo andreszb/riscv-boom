@@ -243,7 +243,7 @@ class Rob(
   dontTouch(io.rob_recon_in_addr)
   dontTouch(io.rob_recon_out_rqst.addr)
   dontTouch(io.rob_recon_out_rqst.cmd)
-  dontTouch(io.rob_recon_in_ack)
+  val cycle_recon = RegNext(io.rob_recon_in_ack, init = false.B)
 
   // ROB Finite State Machine
   val s_reset :: s_normal :: s_rollback :: s_wait_till_empty :: Nil = Enum(4)
@@ -362,6 +362,9 @@ class Rob(
     val out_update = Wire(Bool())
     dontTouch(out_update)
     out_update := false.B
+    val rob_head_debug_pc = Wire(UInt(coreMaxAddrBits.W))
+    rob_head_debug_pc := rob_uop(rob_head).debug_pc
+    dontTouch(rob_head_debug_pc)
 
     val fifo = Module(new ReConFIFO)
     fifo.io.in.valid := false.B
@@ -370,38 +373,44 @@ class Rob(
     fifo.io.in.bits.cmd := 0.U
     dontTouch(fifo.io)
 
+    val dst_reg = Wire(UInt())
+    dst_reg := rob_uop(rob_head).pdst
+    dontTouch(dst_reg)
+    val src_reg = Wire(UInt())
+    src_reg := rob_uop(rob_head).prs1    
+    dontTouch(src_reg)
     when(will_commit(w)){
       when(rob_uop(rob_head).uses_ldq){
-        when(rob_lpt_active(rob_uop(rob_head).pdst)===false.B)
+        when(rob_lpt_active(dst_reg) === false.B)
         {
-          rob_lpt_active(rob_uop(rob_head).pdst) := true.B
-          rob_lpt_addr(rob_uop(rob_head).pdst)   := io.rob_recon_in_addr
+          rob_lpt_active(dst_reg) := true.B
+          rob_lpt_addr(dst_reg)   := io.rob_recon_in_addr
         }
-        when(rob_lpt_active(rob_uop(rob_head).prs1)===true.B)
+        when(rob_lpt_active(src_reg)===true.B)
         {
           when(fifo.io.in.ready)
           {
             reveal := true.B
             fifo.io.in.valid      := true.B
             fifo.io.in.bits.valid := true.B
-            fifo.io.in.bits.addr  := rob_lpt_addr(rob_uop(rob_head).prs1)
+            fifo.io.in.bits.addr  := rob_lpt_addr(src_reg)
             fifo.io.in.bits.cmd   := 1.U
           }
         }
-      }.elsewhen(rob_uop(rob_head).uses_stq) {
-          rob_lpt_active(rob_uop(rob_head).pdst) := false.B
+      }.elsewhen(rob_uop(rob_head).uses_stq && rob_lpt_active(dst_reg)) {
+          rob_lpt_active(dst_reg) := false.B
           when(fifo.io.in.ready)
           {
             conceal := true.B
             fifo.io.in.valid := true.B
             fifo.io.in.bits.valid := true.B
-            fifo.io.in.bits.addr := rob_lpt_addr(rob_uop(rob_head).prs1)
+            fifo.io.in.bits.addr := rob_lpt_addr(dst_reg)
             fifo.io.in.bits.cmd  := 0.U
           }
       }
     }  
 
-    when(io.rob_recon_in_ack && fifo.io.out.valid) {
+    when(cycle_recon && fifo.io.out.valid) {
       out_update := true.B
       fifo.io.out.ready := true.B
       io.rob_recon_out_rqst := fifo.io.out.bits

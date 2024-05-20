@@ -40,12 +40,10 @@ function info(){
 function build() {
   case "${1:-small}" in
     small)
-      compile
       echo "Building Small Boom Config..."
       make -C $SIM -j$(nproc) CONFIG=SmallBoomConfig || return 1
       ;;
     medium)
-      compile
       echo "Building Medium Boom Config..."
       make -C $SIM -j$(nproc) CONFIG=MediumBoomConfig || return 1
       ;;
@@ -59,10 +57,12 @@ function build() {
 function run() {
   case "${1:-small}" in
     small)
+      compile
       echo "Running simulation for Small Boom Config..."
       make -C $SIM -j$(nproc) run-binary-debug CONFIG=SmallBoomConfig BINARY="$BINARY" || return 1
       ;;
     medium)
+      compile
       echo "Running simulation for Medium Boom Config..."
       make -C $SIM -j$(nproc) run-binary-debug CONFIG=MediumBoomConfig BINARY="$BINARY" || return 1
       ;;
@@ -77,10 +77,10 @@ function run() {
 function view(){
   case "${1:-small}" in
     small)
-      gtkwave $SIM/output/chipyard.TestHarness.SmallBoomConfig/test.vcd --dark --save=./gtkwave_configs/config.gtkw --saveonexit --cpu=10 --start=54309 --rcfile ./gtkwave_configs/config.gtkwaverc &
+      nohup gtkwave $SIM/output/chipyard.TestHarness.SmallBoomConfig/test.vcd --dark --save=./gtkwave_configs/config.gtkw --saveonexit --cpu=10 --start=54309 --rcfile ./gtkwave_configs/config.gtkwaverc > ./gtkwave_small.log 2>&1 &
       ;;
     medium)
-      gtkwave $SIM/output/chipyard.TestHarness.MediumBoomConfig/test.vcd --save=./gtkwave_configs/config.gtkw --dark --saveonexit --cpu=10 &
+      nohup gtkwave $SIM/output/chipyard.TestHarness.MediumBoomConfig/test.vcd --save=./gtkwave_configs/config.gtkw --dark --saveonexit --cpu=10 > ./gtkwave_medium.log 2>&1 &
       ;;
     *)
       echo "Invalid run option. Please specify 'small' or 'medium'."
@@ -102,5 +102,5 @@ function clean(){
 
 # Main @ 0x80001048
 function dump() {
-  riscv64-unknown-elf-objdump -S "$BINARY" || return 1
+  riscv64-unknown-elf-objdump -S -l "$BINARY" || return 1
 }

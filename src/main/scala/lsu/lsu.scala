@@ -79,6 +79,7 @@ class BoomDCacheReq(implicit p: Parameters) extends BoomBundle()(p)
   val is_hella = Bool() // Is this the hellacache req? If so this is not tracked in LDQ or STQ
   val is_hella_prft = Bool() // this response can be ignored
   val is_recon = Bool()
+  val recon_cmd = Bool()
 }
 
 class BoomDCacheResp(implicit p: Parameters) extends BoomBundle()(p)
@@ -174,6 +175,7 @@ class LSUCoreIO(implicit p: Parameters) extends BoomBundle()(p)
   })
 
   val lsu_recon_out_addr = Output(UInt(coreMaxAddrBits.W))
+  val lsu_recon_out_ack  = Output(Bool())
   val lsu_recon_in_rqst  = Input(new ReConFifoItem)
 }
 
@@ -225,8 +227,10 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
   with rocket.HasL1HellaCacheParameters
 {
   val io = IO(new LSUIO)
+  io.core.lsu_recon_out_ack := false.B
   dontTouch(io.core.lsu_recon_in_rqst)
   dontTouch(io.core.lsu_recon_out_addr)
+  dontTouch(io.core.lsu_recon_out_ack)
   val ldq = Reg(Vec(numLdqEntries, Valid(new LDQEntry)))
   val stq = Reg(Vec(numStqEntries, Valid(new STQEntry)))
 
@@ -558,6 +562,7 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
   for (w <- 0 until memWidth) {
     var tlb_avail  = true.B
     var dc_avail   = true.B
+    // dontTouch(dc_avail)
     var lcam_avail = true.B
     var rob_avail  = true.B
 
@@ -816,7 +821,7 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
     dmem_req(w).bits.is_hella := false.B
     dmem_req(w).bits.is_hella_prft := false.B
     dmem_req(w).bits.is_recon := false.B
-
+    dmem_req(w).bits.recon_cmd := false.B
     io.dmem.s1_kill(w) := false.B
 
     when (will_fire_load_incoming(w)) {
@@ -890,6 +895,8 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
       dmem_req(w).valid     := true.B
       dmem_req(w).bits.addr := io.core.lsu_recon_in_rqst.addr
       dmem_req(w).bits.is_recon := true.B
+      dmem_req(w).bits.recon_cmd := io.core.lsu_recon_in_rqst.cmd
+      io.core.lsu_recon_out_ack := true.B
     }
 
     dmem_req(w).bits.uop.memory_latency.foreach(_ := io.core.tsc_reg)
@@ -1620,8 +1627,9 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
   //-------------------------------------------------------------
   //-------------------------------------------------------------
 
-  var temp_stq_commit_head = stq_commit_head
-  var temp_ldq_head        = ldq_head
+  var temp_stq_commit_head  = stq_commit_head
+  var temp_ldq_head         = ldq_head
+  // val latest_committed_addr = RegInit(0.U(coreMaxAddrBits.W))
   for (w <- 0 until coreWidth)
   {
     val commit_store = io.core.commit.valids(w) && io.core.commit.uops(w).uses_stq
@@ -1664,9 +1672,10 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
                                temp_ldq_head)
     // Update the latest address that has been committed.
     when(commit_load){
-        io.core.lsu_recon_out_addr := ldq(temp_ldq_head).bits.addr.bits
+        io.core.lsu_recon_out_addr  := ldq(temp_ldq_head).bits.addr.bits
     }
   }
+  // io.core.lsu_recon_out_addr := latest_committed_addr
   stq_commit_head   := temp_stq_commit_head
   ldq_head          := temp_ldq_head
 

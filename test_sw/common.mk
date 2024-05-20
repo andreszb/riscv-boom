@@ -6,6 +6,7 @@ PROGRAMS ?= test
 CC := $(TARGET)-gcc
 OBJDUMP := $(TARGET)-objdump
 
+CFLAGS += -g
 CFLAGS += -I $(srcdir)
 CFLAGS += -I /usr/include/
 CFLAGS += -I /usr/lib/gcc/riscv64-unknown-elf/13.1.0/include/
