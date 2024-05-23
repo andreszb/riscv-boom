@@ -102,5 +102,11 @@ function clean(){
 
 # Main @ 0x80001048
 function dump() {
-  riscv64-unknown-elf-objdump -S -l "$BINARY" || return 1
+  riscv64-unknown-elf-objdump -S -l "$BINARY" | awk '/0000000080001048 <main>:/{flag=1} /<printArray>:/ {flag=0} flag' > dump.txt || return 1
 }
+
+# Main @ 0x80001048
+function dumpall() {
+  riscv64-unknown-elf-objdump -S -l "$BINARY" > dump.txt || return 1
+}
+

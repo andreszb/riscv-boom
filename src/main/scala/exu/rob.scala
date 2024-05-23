@@ -379,6 +379,14 @@ class Rob(
     val src_reg = Wire(UInt())
     src_reg := rob_uop(rob_head).prs1    
     dontTouch(src_reg)
+
+    when(rob_head_debug_pc === "h80001048".U) {
+      for (i <- 0 until numIntPhysRegs) {
+        rob_lpt_active(i) := false.B
+        rob_lpt_addr(i) := 0.U
+      }
+    }
+
     when(will_commit(w)){
       when(rob_uop(rob_head).uses_ldq){
         when(rob_lpt_active(dst_reg) === false.B)
