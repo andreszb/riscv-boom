@@ -416,7 +416,7 @@ class BoomNonBlockingDCacheModule(outer: BoomNonBlockingDCache) extends LazyModu
   implicit val edge = outer.node.edges.out(0)
   val (tl_out, _) = outer.node.out(0)
   val io = IO(new BoomDCacheBundle)
-
+  dontTouch(io.lsu.recon_reset)
   private val fifoManagers = edge.manager.managers.filter(TLFIFOFixer.allVolatile)
   fifoManagers.foreach { m =>
     require (m.fifoId == fifoManagers.head.fifoId,
@@ -459,6 +459,13 @@ class BoomNonBlockingDCacheModule(outer: BoomNonBlockingDCache) extends LazyModu
   val data = Module(if (boomParams.numDCacheBanks == 1) new BoomDuplicatedDataArray else new BoomBankedDataArray)
   val reCon = Reg(Vec(nSets, Vec(rowWords, Bool())))
   dontTouch(reCon)
+  when(io.lsu.recon_reset){
+    for (set <- 0 until nSets) {
+      for (word <- 0 until rowWords) {
+        reCon(set)(word) := false.B
+      }
+    }
+  }
   val dataWriteArb = Module(new Arbiter(new L1DataWriteReq, 2))
   // 0 goes to pipeline, 1 goes to MSHR refills
   val dataReadArb = Module(new Arbiter(new BoomL1DataReadReq, 4))
@@ -740,10 +747,9 @@ class BoomNonBlockingDCacheModule(outer: BoomNonBlockingDCache) extends LazyModu
   }
   assert(debug_sc_fail_cnt < 100.U, "L1DCache failed too many SCs in a row")
 
-  val shiftedAddr = WireInit(0.U)
+  val shiftedAddr = s2_req(0).addr(5,0)
   dontTouch(shiftedAddr)
   when(s2_type === t_recon){
-    shiftedAddr := s2_req(0).addr(5,0)
     reCon(shiftedAddr)(0) := s2_req(0).recon_cmd
   }
 
@@ -785,6 +791,11 @@ class BoomNonBlockingDCacheModule(outer: BoomNonBlockingDCache) extends LazyModu
   // If MSHR is not available, LSU has to replay this request later
   // If MSHR is available and this is only a store(not a amo), we don't need to wait for resp later
   s2_store_failed := s2_valid(0) && s2_nack(0) && s2_send_nack(0) && s2_req(0).uop.uses_stq
+  dontTouch(s2_store_failed)
+
+  when(s2_req(0).uop.uses_stq & ~s2_store_failed){
+    reCon(shiftedAddr)(0) := 0.U
+  }
 
   // Miss handling
   for (w <- 0 until memWidth) {

@@ -132,6 +132,7 @@ class RobIo(
   val rob_recon_in_addr = Input(UInt(coreMaxAddrBits.W))
   val rob_recon_out_rqst = Output(new ReConFifoItem)
   val rob_recon_in_ack = Input(Bool())
+  val rob_recon_out_reset = Output(Bool())
 }
 
 /**
@@ -243,6 +244,7 @@ class Rob(
   dontTouch(io.rob_recon_in_addr)
   dontTouch(io.rob_recon_out_rqst.addr)
   dontTouch(io.rob_recon_out_rqst.cmd)
+  io.rob_recon_out_reset := false.B
   val cycle_recon = RegNext(io.rob_recon_in_ack, init = false.B)
 
   // ROB Finite State Machine
@@ -384,6 +386,7 @@ class Rob(
       for (i <- 0 until numIntPhysRegs) {
         rob_lpt_active(i) := false.B
         rob_lpt_addr(i) := 0.U
+        io.rob_recon_out_reset := true.B
       }
     }
 
@@ -405,14 +408,15 @@ class Rob(
             fifo.io.in.bits.cmd   := 1.U
           }
         }
-      }.elsewhen(rob_uop(rob_head).uses_stq && rob_lpt_active(dst_reg)) {
-          rob_lpt_active(dst_reg) := false.B
+      }
+      .elsewhen(rob_uop(rob_head).uses_stq) {
+          rob_lpt_active(src_reg) := false.B
           when(fifo.io.in.ready)
           {
             conceal := true.B
             fifo.io.in.valid := true.B
             fifo.io.in.bits.valid := true.B
-            fifo.io.in.bits.addr := rob_lpt_addr(dst_reg)
+            fifo.io.in.bits.addr := rob_lpt_addr(src_reg)
             fifo.io.in.bits.cmd  := 0.U
           }
       }

@@ -118,6 +118,8 @@ class LSUDMemIO(implicit p: Parameters, edge: TLEdgeOut) extends BoomBundle()(p)
     val release = Bool()
   })
 
+  val recon_reset = Output(Bool())
+
 }
 
 class LSUClearPSV(implicit p: Parameters) extends BoomBundle()(p) {
@@ -177,6 +179,7 @@ class LSUCoreIO(implicit p: Parameters) extends BoomBundle()(p)
   val lsu_recon_out_addr = Output(UInt(coreMaxAddrBits.W))
   val lsu_recon_out_ack  = Output(Bool())
   val lsu_recon_in_rqst  = Input(new ReConFifoItem)
+  val lsu_recon_in_reset = Input(Bool())
 }
 
 class LSUIO(implicit p: Parameters, edge: TLEdgeOut) extends BoomBundle()(p)
@@ -228,9 +231,11 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
 {
   val io = IO(new LSUIO)
   io.core.lsu_recon_out_ack := false.B
+  io.dmem.recon_reset := io.core.lsu_recon_in_reset
   dontTouch(io.core.lsu_recon_in_rqst)
   dontTouch(io.core.lsu_recon_out_addr)
   dontTouch(io.core.lsu_recon_out_ack)
+  // dontTouch(io.core.commit.uops(0))
   val ldq = Reg(Vec(numLdqEntries, Valid(new LDQEntry)))
   val stq = Reg(Vec(numStqEntries, Valid(new STQEntry)))
 
@@ -1630,14 +1635,24 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
   var temp_stq_commit_head  = stq_commit_head
   var temp_ldq_head         = ldq_head
   // val latest_committed_addr = RegInit(0.U(coreMaxAddrBits.W))
+  io.core.lsu_recon_out_addr  := ldq(ldq_head).bits.addr.bits
   for (w <- 0 until coreWidth)
   {
     val commit_store = io.core.commit.valids(w) && io.core.commit.uops(w).uses_stq
     val commit_load  = io.core.commit.valids(w) && io.core.commit.uops(w).uses_ldq
+    // Update the latest address that has been committed.
+    // when(commit_load){
+    //     io.core.lsu_recon_out_addr  := ldq(ldq_head).bits.addr.bits
+    // }.otherwise{
+    //     io.core.lsu_recon_out_addr := 0.U
+    // }
     val idx = Mux(commit_store, temp_stq_commit_head, temp_ldq_head)
+    dontTouch(idx)
     when (commit_store)
     {
       stq(idx).bits.committed := true.B
+      // val s_addr_recon = stq(idx).bits.addr.bits
+      // dontTouch(s_addr_recon)
     } .elsewhen (commit_load) {
       assert (ldq(idx).valid, "[lsu] trying to commit an un-allocated load entry.")
       assert ((ldq(idx).bits.executed || ldq(idx).bits.forward_std_val) && ldq(idx).bits.succeeded ,
@@ -1670,10 +1685,6 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
     temp_ldq_head        = Mux(commit_load,
                                WrapInc(temp_ldq_head, numLdqEntries),
                                temp_ldq_head)
-    // Update the latest address that has been committed.
-    when(commit_load){
-        io.core.lsu_recon_out_addr  := ldq(temp_ldq_head).bits.addr.bits
-    }
   }
   // io.core.lsu_recon_out_addr := latest_committed_addr
   stq_commit_head   := temp_stq_commit_head
