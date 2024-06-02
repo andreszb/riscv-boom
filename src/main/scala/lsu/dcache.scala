@@ -280,6 +280,14 @@ class BoomDuplicatedDataArray(implicit p: Parameters) extends AbstractBoomDataAr
 {
 
   val waddr = io.write.bits.addr >> rowOffBits
+  println("BoomDuplicatedDataArray Info")
+  println("rowOffBits: " + rowOffBits)
+  println("memWidth: " + memWidth)
+  println("nWays:" + nWays)
+  println("nSets:" + nSets)
+  println("refillCycles:" + refillCycles)
+  println("rowWords:" + rowWords)
+  println("encDataBits:" + encDataBits)
   for (j <- 0 until memWidth) {
 
     val raddr = io.read(j).bits.addr >> rowOffBits
@@ -457,12 +465,12 @@ class BoomNonBlockingDCacheModule(outer: BoomNonBlockingDCache) extends LazyModu
 
   // data
   val data = Module(if (boomParams.numDCacheBanks == 1) new BoomDuplicatedDataArray else new BoomBankedDataArray)
-  val reCon = Reg(Vec(nSets, Vec(rowWords, Bool())))
+  val reCon = Reg(Vec(nWays, Vec(nSets, Bool())))
   dontTouch(reCon)
   when(io.lsu.recon_reset){
-    for (set <- 0 until nSets) {
+    for (way <- 0 until nWays) {
       for (word <- 0 until rowWords) {
-        reCon(set)(word) := false.B
+        reCon(way)(word) := false.B
       }
     }
   }

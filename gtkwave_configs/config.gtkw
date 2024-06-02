@@ -1,26 +1,25 @@
 [*]
 [*] GTKWave Analyzer v3.3.119 (w)1999-2024 BSI
-[*] Fri May 24 15:01:33 2024
+[*] Sun Jun  2 12:57:29 2024
 [*]
 [dumpfile] "/home/andres/Dev/recon/sims/verilator/output/chipyard.TestHarness.SmallBoomConfig/test.vcd"
-[dumpfile_mtime] "Fri May 24 14:56:51 2024"
-[dumpfile_size] 382003938
+[dumpfile_mtime] "Sun Jun  2 11:46:25 2024"
+[dumpfile_size] 382012962
 [savefile] "/home/andres/Dev/recon/generators/boom/gtkwave_configs/config.gtkw"
-[timestart] 54247
-[size] 930 1068
+[timestart] 54245
+[size] 1886 1068
 [pos] -27 -24
-*-2.724967 54274 54173 54259 54267 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+*-2.724967 54265 54173 54259 54267 54209 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
 [treeopen] TOP.
 [treeopen] TOP.TestHarness.
 [treeopen] TOP.TestHarness.chiptop.
 [treeopen] TOP.TestHarness.chiptop.system.
-[treeopen] TOP.TestHarness.chiptop.system.tile_prci_domain.
 [treeopen] TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.
 [treeopen] TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.
 [treeopen] TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.core.
 [treeopen] TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.core.rob.
 [treeopen] TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.core.rob.fifo.
-[sst_width] 359
+[sst_width] 273
 [signals_width] 302
 [sst_expanded] 1
 [sst_vpaned_height] 616
@@ -54,7 +53,6 @@ TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.core
 @24
 TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.core.rob.src_reg[5:0]
 @28
-TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.core.rob.reveal
 TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.core.rob.fifo_io_in_valid
 TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.core.rob.fifo_io_in_bits_valid
 @22
@@ -96,11 +94,8 @@ TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.dcac
 TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.dcache.s2_req_0_addr[39:0]
 @1001200
 -group_end
-@28
-TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.dcache.s2_req_0_recon_cmd
-TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.dcache.reCon_56_0
 @29
-TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.dcache.reCon_56_0
+TOP.TestHarness.chiptop.system.tile_prci_domain.tile_reset_domain.boom_tile.dcache.s2_req_0_recon_cmd
 @200
 -CONCEAL
 @28

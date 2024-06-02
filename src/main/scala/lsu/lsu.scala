@@ -1094,8 +1094,6 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
       val stq_idx = mem_stq_retry_e.bits.uop.stq_idx
       clr_bsy_dtlb_pmiss (w) := stq(stq_idx).bits.uop.tea_psv.dtlb_pmiss
       clr_bsy_dtlb_smiss (w) := stq(stq_idx).bits.uop.tea_psv.dtlb_smiss
-    } .elsewhen (fired_recon(w)) {
-      // NOP
     }
 
     io.core.clr_bsy(w).valid := clr_bsy_valid(w) &&
@@ -1651,6 +1649,7 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
     when (commit_store)
     {
       stq(idx).bits.committed := true.B
+      // TODO: Send cache rquest to conceal here
       // val s_addr_recon = stq(idx).bits.addr.bits
       // dontTouch(s_addr_recon)
     } .elsewhen (commit_load) {
