@@ -35,22 +35,7 @@ import freechips.rocketchip.util.Str
 import boom.common._
 import boom.lsu.LSUClearPSV
 import boom.util._
-
-class ReConFifoItem (implicit p: Parameters) extends BoomBundle {
-  val valid = Bool()
-  val addr = UInt(coreMaxAddrBits.W)
-  val cmd  = UInt(1.W) // 0 = conceal, 1 = reveal
-}
-
-class ReConFIFO (implicit p: Parameters) extends BoomModule {
-  val io = IO(new Bundle {
-    val in = Flipped(Decoupled(new ReConFifoItem))
-    val out = Decoupled(new ReConFifoItem)
-  })
-
-  val fifo = Queue(io.in, 10)
-  io.out <> fifo
-}
+import java.net.URI
 
 /**
  * IO bundle to interact with the ROB
@@ -126,13 +111,10 @@ class RobIo(
   // Stall the frontend if we know we will redirect the PC
   val flush_frontend = Output(Bool())
 
-
   val debug_tsc = Input(UInt(xLen.W))
 
-  val rob_recon_in_addr = Input(UInt(coreMaxAddrBits.W))
-  val rob_recon_out_rqst = Output(new ReConFifoItem)
-  val rob_recon_in_ack = Input(Bool())
-  val rob_recon_out_reset = Output(Bool())
+  val rob_recon_in_addr  = Input(UInt(coreMaxAddrBits.W))
+  val rob_recon_out_rqst = new DecoupledIO(UInt(coreMaxAddrBits.W))
 }
 
 /**
@@ -240,12 +222,8 @@ class Rob(
   val numFpuPorts: Int
   )(implicit p: Parameters) extends BoomModule
 {
+
   val io = IO(new RobIo(numWakeupPorts, numFpuPorts))
-  dontTouch(io.rob_recon_in_addr)
-  dontTouch(io.rob_recon_out_rqst.addr)
-  dontTouch(io.rob_recon_out_rqst.cmd)
-  io.rob_recon_out_reset := false.B
-  val cycle_recon = RegNext(io.rob_recon_in_ack, init = false.B)
 
   // ROB Finite State Machine
   val s_reset :: s_normal :: s_rollback :: s_wait_till_empty :: Nil = Enum(4)
@@ -344,92 +322,6 @@ class Rob(
     val rob_fflags    = Mem(numRobRows, Bits(freechips.rocketchip.tile.FPConstants.FLAGS_SZ.W))
 
     val rob_debug_wdata = Mem(numRobRows, UInt(xLen.W))
-
-    
-    // Load pair tracking
-
-    // LPT (Load Pair Table)
-    val rob_lpt_active = Reg(Vec(numIntPhysRegs, Bool()))
-    val rob_lpt_addr   = Reg(Vec(numIntPhysRegs, UInt(coreMaxAddrBits.W)))
-    dontTouch(rob_lpt_active)
-    dontTouch(rob_lpt_addr)
-
-    // Debug signals
-    val reveal = Wire(Bool())
-    dontTouch(reveal)
-    reveal := false.B
-    val conceal = Wire(Bool())
-    dontTouch(conceal)
-    conceal := false.B
-    val out_update = Wire(Bool())
-    dontTouch(out_update)
-    out_update := false.B
-    val rob_head_debug_pc = Wire(UInt(coreMaxAddrBits.W))
-    rob_head_debug_pc := rob_uop(rob_head).debug_pc
-    dontTouch(rob_head_debug_pc)
-
-    val fifo = Module(new ReConFIFO)
-    fifo.io.in.valid := false.B
-    fifo.io.in.bits.valid := 0.U
-    fifo.io.in.bits.addr := 0.U
-    fifo.io.in.bits.cmd := 0.U
-    dontTouch(fifo.io)
-
-    val dst_reg = Wire(UInt())
-    dst_reg := rob_uop(rob_head).pdst
-    dontTouch(dst_reg)
-    val src_reg = Wire(UInt())
-    src_reg := rob_uop(rob_head).prs1    
-    dontTouch(src_reg)
-
-    when(rob_head_debug_pc === "h80001048".U) {
-      for (i <- 0 until numIntPhysRegs) {
-        rob_lpt_active(i) := false.B
-        rob_lpt_addr(i) := 0.U
-        io.rob_recon_out_reset := true.B
-      }
-    }
-
-    when(will_commit(w)){
-      when(rob_uop(rob_head).uses_ldq){
-        when(rob_lpt_active(dst_reg) === false.B)
-        {
-          rob_lpt_active(dst_reg) := true.B
-          rob_lpt_addr(dst_reg)   := io.rob_recon_in_addr
-        }
-        when(rob_lpt_active(src_reg)===true.B)
-        {
-          when(fifo.io.in.ready)
-          {
-            reveal := true.B
-            fifo.io.in.valid      := true.B
-            fifo.io.in.bits.valid := true.B
-            fifo.io.in.bits.addr  := rob_lpt_addr(src_reg)
-            fifo.io.in.bits.cmd   := 1.U
-          }
-        }
-      }
-      .elsewhen(rob_uop(rob_head).uses_stq) {
-          rob_lpt_active(src_reg) := false.B
-          when(fifo.io.in.ready)
-          {
-            conceal := true.B
-            fifo.io.in.valid := true.B
-            fifo.io.in.bits.valid := true.B
-            fifo.io.in.bits.addr := rob_lpt_addr(src_reg)
-            fifo.io.in.bits.cmd  := 0.U
-          }
-      }
-    }  
-
-    when(cycle_recon && fifo.io.out.valid) {
-      out_update := true.B
-      fifo.io.out.ready := true.B
-      io.rob_recon_out_rqst := fifo.io.out.bits
-    } .otherwise {
-      fifo.io.out.ready := false.B
-      io.rob_recon_out_rqst := 0.U.asTypeOf(new ReConFifoItem)
-    }
     
     //-----------------------------------------------
     // Dispatch: Add Entry to ROB
@@ -561,7 +453,6 @@ class Rob(
     // Can this instruction commit? (the check for exceptions/rob_state happens later).
     can_commit(w) := rob_val(rob_head) && !(rob_bsy(rob_head)) && !io.csr_stall
 
-
     // use the same "com_uop" for both rollback AND commit
     // Perform Commit
     io.commit.valids(w) := will_commit(w)
@@ -636,6 +527,19 @@ class Rob(
     when (will_commit(w)) {
       rob_val(rob_head) := false.B
     }
+
+    val rob_head_debug_pc = Wire(UInt(coreMaxAddrBits.W))
+    rob_head_debug_pc := rob_uop(rob_head).debug_pc
+    dontTouch(rob_head_debug_pc)
+
+    val lpt = Module(new LPT())
+    // Pair tracking
+    lpt.io.addr_in  := io.rob_recon_in_addr
+    lpt.io.en       := will_commit(w) & rob_uop(rob_head).uses_ldq
+    lpt.io.dst_reg  := rob_uop(rob_head).pdst
+    lpt.io.src_reg  := rob_uop(rob_head).prs1
+    // Address output
+    io.rob_recon_out_rqst <> lpt.io.addr_out
 
     // -----------------------------------------------
     // Outputs
@@ -1029,8 +933,6 @@ class Rob(
 
   io.com_load_is_at_rob_head := RegNext(rob_head_uses_ldq(PriorityEncoder(rob_head_vals.asUInt)) &&
                                         !will_commit.reduce(_||_))
-
-
 
   override def toString: String = BoomCoreStringPrefix(
     "==ROB==",

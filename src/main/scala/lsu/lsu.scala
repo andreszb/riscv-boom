@@ -55,7 +55,7 @@ import boom.common._
 import boom.exu.{BrUpdateInfo, Exception, FuncUnitResp, CommitSignals, ExeUnitResp}
 import boom.util.{BoolToChar, AgePriorityEncoder, IsKilledByBranch, GetNewBrMask, WrapInc, IsOlder, UpdateBrMask}
 import freechips.rocketchip.rocket.isPrefetch
-import boom.exu.ReConFifoItem
+// import boom.exu.ReConFifoItem
 
 class LSUExeIO(implicit p: Parameters) extends BoomBundle()(p)
 {
@@ -79,7 +79,6 @@ class BoomDCacheReq(implicit p: Parameters) extends BoomBundle()(p)
   val is_hella = Bool() // Is this the hellacache req? If so this is not tracked in LDQ or STQ
   val is_hella_prft = Bool() // this response can be ignored
   val is_recon = Bool()
-  val recon_cmd = Bool()
 }
 
 class BoomDCacheResp(implicit p: Parameters) extends BoomBundle()(p)
@@ -117,9 +116,6 @@ class LSUDMemIO(implicit p: Parameters, edge: TLEdgeOut) extends BoomBundle()(p)
     val acquire = Bool()
     val release = Bool()
   })
-
-  val recon_reset = Output(Bool())
-
 }
 
 class LSUClearPSV(implicit p: Parameters) extends BoomBundle()(p) {
@@ -177,9 +173,7 @@ class LSUCoreIO(implicit p: Parameters) extends BoomBundle()(p)
   })
 
   val lsu_recon_out_addr = Output(UInt(coreMaxAddrBits.W))
-  val lsu_recon_out_ack  = Output(Bool())
-  val lsu_recon_in_rqst  = Input(new ReConFifoItem)
-  val lsu_recon_in_reset = Input(Bool())
+  val lsu_recon_in_rqst  = Flipped(new DecoupledIO(UInt(coreMaxAddrBits.W)))
 }
 
 class LSUIO(implicit p: Parameters, edge: TLEdgeOut) extends BoomBundle()(p)
@@ -230,12 +224,7 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
   with rocket.HasL1HellaCacheParameters
 {
   val io = IO(new LSUIO)
-  io.core.lsu_recon_out_ack := false.B
-  io.dmem.recon_reset := io.core.lsu_recon_in_reset
-  dontTouch(io.core.lsu_recon_in_rqst)
-  dontTouch(io.core.lsu_recon_out_addr)
-  dontTouch(io.core.lsu_recon_out_ack)
-  // dontTouch(io.core.commit.uops(0))
+
   val ldq = Reg(Vec(numLdqEntries, Valid(new LDQEntry)))
   val stq = Reg(Vec(numStqEntries, Valid(new STQEntry)))
 
@@ -290,6 +279,7 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
   var next_live_store_mask = Mux(clear_store, live_store_mask & ~(1.U << stq_head),
                                               live_store_mask)
 
+  io.core.lsu_recon_in_rqst.ready := false.B
 
   def widthMap[T <: Data](f: Int => T) = VecInit((0 until memWidth).map(f))
 
@@ -826,7 +816,6 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
     dmem_req(w).bits.is_hella := false.B
     dmem_req(w).bits.is_hella_prft := false.B
     dmem_req(w).bits.is_recon := false.B
-    dmem_req(w).bits.recon_cmd := false.B
     io.dmem.s1_kill(w) := false.B
 
     when (will_fire_load_incoming(w)) {
@@ -898,10 +887,9 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
       dmem_req(w).bits.is_hella_prft  := isPrefetch(hella_req.cmd)
     } .elsewhen (will_fire_recon(w)) {
       dmem_req(w).valid     := true.B
-      dmem_req(w).bits.addr := io.core.lsu_recon_in_rqst.addr
+      dmem_req(w).bits.addr := io.core.lsu_recon_in_rqst.bits
       dmem_req(w).bits.is_recon := true.B
-      dmem_req(w).bits.recon_cmd := io.core.lsu_recon_in_rqst.cmd
-      io.core.lsu_recon_out_ack := true.B
+      io.core.lsu_recon_in_rqst.ready := true.B
     }
 
     dmem_req(w).bits.uop.memory_latency.foreach(_ := io.core.tsc_reg)

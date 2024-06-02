@@ -424,7 +424,6 @@ class BoomNonBlockingDCacheModule(outer: BoomNonBlockingDCache) extends LazyModu
   implicit val edge = outer.node.edges.out(0)
   val (tl_out, _) = outer.node.out(0)
   val io = IO(new BoomDCacheBundle)
-  dontTouch(io.lsu.recon_reset)
   private val fifoManagers = edge.manager.managers.filter(TLFIFOFixer.allVolatile)
   fifoManagers.foreach { m =>
     require (m.fifoId == fifoManagers.head.fifoId,
@@ -467,13 +466,6 @@ class BoomNonBlockingDCacheModule(outer: BoomNonBlockingDCache) extends LazyModu
   val data = Module(if (boomParams.numDCacheBanks == 1) new BoomDuplicatedDataArray else new BoomBankedDataArray)
   val reCon = Reg(Vec(nWays, Vec(nSets, Bool())))
   dontTouch(reCon)
-  when(io.lsu.recon_reset){
-    for (way <- 0 until nWays) {
-      for (word <- 0 until rowWords) {
-        reCon(way)(word) := false.B
-      }
-    }
-  }
   val dataWriteArb = Module(new Arbiter(new L1DataWriteReq, 2))
   // 0 goes to pipeline, 1 goes to MSHR refills
   val dataReadArb = Module(new Arbiter(new BoomL1DataReadReq, 4))
@@ -515,7 +507,6 @@ class BoomNonBlockingDCacheModule(outer: BoomNonBlockingDCache) extends LazyModu
   dontTouch(recon_fire)
   dontTouch(recon_req)
   recon_req(0).addr := io.lsu.req.bits(0).bits.addr
-  recon_req(0).recon_cmd := io.lsu.req.bits(0).bits.recon_cmd
   metaReadArb.io.in(6).valid := io.lsu.req.valid
   for (w <- 0 until memWidth) {
     metaReadArb.io.in(6).bits.req(w).idx    := io.lsu.req.bits(w).bits.addr >> blockOffBits
@@ -758,7 +749,11 @@ class BoomNonBlockingDCacheModule(outer: BoomNonBlockingDCache) extends LazyModu
   val shiftedAddr = s2_req(0).addr(5,0)
   dontTouch(shiftedAddr)
   when(s2_type === t_recon){
-    reCon(shiftedAddr)(0) := s2_req(0).recon_cmd
+    // for (i <- 0 until memWidth) {
+      for (w <- 0 until nWays) {
+        reCon(w)(shiftedAddr) := true.B
+      }
+    // }
   }
 
   val s2_data = Wire(Vec(memWidth, Vec(nWays, UInt(encRowBits.W))))
@@ -802,7 +797,7 @@ class BoomNonBlockingDCacheModule(outer: BoomNonBlockingDCache) extends LazyModu
   dontTouch(s2_store_failed)
 
   when(s2_req(0).uop.uses_stq & ~s2_store_failed){
-    reCon(shiftedAddr)(0) := 0.U
+    reCon(0)(shiftedAddr) := 0.U
   }
 
   // Miss handling
