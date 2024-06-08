@@ -72,6 +72,7 @@ class BoomDCacheReq(implicit p: Parameters) extends BoomBundle()(p)
   val data  = Bits(coreDataBits.W)
   val is_hella = Bool() // Is this the hellacache req? If so this is not tracked in LDQ or STQ
   val is_hella_prft = Bool() // this response can be ignored
+  val is_recon = Bool()
 }
 
 class BoomDCacheResp(implicit p: Parameters) extends BoomBundle()(p)
@@ -80,6 +81,7 @@ class BoomDCacheResp(implicit p: Parameters) extends BoomBundle()(p)
   val data = Bits(coreDataBits.W)
   val is_hella = Bool()
   val is_hella_prft = Bool() // this response can be ignored
+  val revealed = Bool()
 }
 
 class LSUDMemIO(implicit p: Parameters, edge: TLEdgeOut) extends BoomBundle()(p)
@@ -164,6 +166,9 @@ class LSUCoreIO(implicit p: Parameters) extends BoomBundle()(p)
     val release = Bool()
     val tlbMiss = Bool()
   })
+
+  val lsu_recon_out_addr = Output(UInt(coreMaxAddrBits.W))
+  val lsu_recon_in_rqst  = Flipped(new DecoupledIO(UInt(coreMaxAddrBits.W)))
 }
 
 class LSUIO(implicit p: Parameters, edge: TLEdgeOut) extends BoomBundle()(p)
@@ -213,6 +218,7 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
   with rocket.HasL1HellaCacheParameters
 {
   val io = IO(new LSUIO)
+  dontTouch(io.dmem.resp)
 
 
   val ldq = Reg(Vec(numLdqEntries, Valid(new LDQEntry)))
@@ -269,9 +275,9 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
   var next_live_store_mask = Mux(clear_store, live_store_mask & ~(1.U << stq_head),
                                               live_store_mask)
 
+  io.core.lsu_recon_in_rqst.ready := false.B
 
   def widthMap[T <: Data](f: Int => T) = VecInit((0 until memWidth).map(f))
-
 
   //-------------------------------------------------------------
   //-------------------------------------------------------------
@@ -391,6 +397,7 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
   val will_fire_sta_retry      = Wire(Vec(memWidth, Bool()))
   val will_fire_store_commit   = Wire(Vec(memWidth, Bool()))
   val will_fire_load_wakeup    = Wire(Vec(memWidth, Bool()))
+  val will_fire_recon          = Wire(Vec(memWidth, Bool()))
 
   val exe_req = WireInit(VecInit(io.core.exe.map(_.req)))
   // Sfence goes through all pipes
@@ -531,6 +538,10 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
   // Can we fire a hellacache request that the dcache nack'd
   val can_fire_hella_wakeup    = WireInit(widthMap(w => false.B)) // This is assigned to in the hellashim controller
 
+  // When can we fire a recon signal ? when we get a valid recon request 
+  // 
+  val can_fire_recon           = widthMap(w => ( io.core.lsu_recon_in_rqst.valid ))
+
   //---------------------------------------------------------
   // Controller logic. Arbitrate which request actually fires
 
@@ -573,7 +584,7 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
     will_fire_sta_retry     (w) := lsu_sched(can_fire_sta_retry     (w) , true , false, true , true)  // TLB ,    , LCAM , ROB // TODO: This should be higher priority
     will_fire_load_wakeup   (w) := lsu_sched(can_fire_load_wakeup   (w) , false, true , true , false) //     , DC , LCAM1
     will_fire_store_commit  (w) := lsu_sched(can_fire_store_commit  (w) , false, true , false, false) //     , DC
-
+    will_fire_recon         (w) := lsu_sched(can_fire_recon         (w) , false, true , false, false)
 
     assert(!(exe_req(w).valid && !(will_fire_load_incoming(w) || will_fire_stad_incoming(w) || will_fire_sta_incoming(w) || will_fire_std_incoming(w) || will_fire_sfence(w))))
 
@@ -794,7 +805,7 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
     dmem_req(w).bits.data  := 0.U
     dmem_req(w).bits.is_hella := false.B
     dmem_req(w).bits.is_hella_prft := false.B
-
+    dmem_req(w).bits.is_recon := false.B
     io.dmem.s1_kill(w) := false.B
 
     when (will_fire_load_incoming(w)) {
@@ -864,6 +875,11 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
       dmem_req(w).bits.uop.mem_signed := hella_req.signed
       dmem_req(w).bits.is_hella       := true.B
       dmem_req(w).bits.is_hella_prft  := isPrefetch(hella_req.cmd)
+    } .elsewhen (will_fire_recon(w)) {
+      dmem_req(w).valid     := true.B
+      dmem_req(w).bits.addr := io.core.lsu_recon_in_rqst.bits
+      dmem_req(w).bits.is_recon := true.B
+      io.core.lsu_recon_in_rqst.ready := true.B
     }
 
     dmem_req(w).bits.uop.memory_latency.foreach(_ := io.core.tsc_reg)
@@ -968,6 +984,8 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
   val fired_load_wakeup    = widthMap(w => RegNext(will_fire_load_wakeup  (w) && !IsKilledByBranch(io.core.brupdate, ldq_wakeup_e.bits.uop)))
   val fired_hella_incoming = RegNext(will_fire_hella_incoming)
   val fired_hella_wakeup   = RegNext(will_fire_hella_wakeup)
+  val fired_recon          = RegNext(will_fire_recon)
+  dontTouch(fired_recon)
 
   val mem_incoming_uop     = RegNext(widthMap(w => UpdateBrMask(io.core.brupdate, exe_req(w).bits.uop)))
   val mem_ldq_incoming_e   = RegNext(widthMap(w => UpdateBrMask(io.core.brupdate, ldq_incoming_e(w))))
@@ -1587,8 +1605,9 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
   //-------------------------------------------------------------
   //-------------------------------------------------------------
 
-  var temp_stq_commit_head = stq_commit_head
-  var temp_ldq_head        = ldq_head
+  var temp_stq_commit_head  = stq_commit_head
+  var temp_ldq_head         = ldq_head
+  io.core.lsu_recon_out_addr  := ldq(ldq_head).bits.addr.bits
   for (w <- 0 until coreWidth)
   {
     val commit_store = io.core.commit.valids(w) && io.core.commit.uops(w).uses_stq
