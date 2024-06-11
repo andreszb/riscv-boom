@@ -280,22 +280,7 @@ class BoomDuplicatedDataArray(implicit p: Parameters) extends AbstractBoomDataAr
 {
 
   val waddr = io.write.bits.addr >> rowOffBits
-  println("BoomDuplicatedDataArray Info")
-  println("rowBits: " + rowBits)
-  println("rowBytes: " + rowBytes)
-  println("rowOffBits: " + rowOffBits)
-  println("memWidth: " + memWidth)
-  println("nWays:" + nWays)
-  println("nSets:" + nSets)
-  println("refillCycles:" + refillCycles)
-  println("rowWords:" + rowWords)
-  println("encDataBits:" + encDataBits)
-  println("boomParams.numDCacheBanks:" + boomParams.numDCacheBanks)
-  println("wordBits:" + wordBits)
-  println("encRowBits:" + encRowBits)
-  println("coreDataBits:" + coreDataBits)
   for (j <- 0 until memWidth) {
-//
     val raddr = io.read(j).bits.addr >> rowOffBits
     for (w <- 0 until nWays) {
       val array = DescribedSRAM(

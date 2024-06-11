@@ -113,8 +113,6 @@ class RobIo(
 
   val debug_tsc = Input(UInt(xLen.W))
 
-  val debug_tsc = Input(UInt(xLen.W))
-
   val rob_recon_in_addr  = Input(UInt(coreMaxAddrBits.W))
   val rob_recon_out_rqst = new DecoupledIO(UInt(coreMaxAddrBits.W))
 }

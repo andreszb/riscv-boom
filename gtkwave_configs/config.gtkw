@@ -1,13 +1,13 @@
 [*]
 [*] GTKWave Analyzer v3.3.119 (w)1999-2024 BSI
-[*] Tue Jun 11 14:02:09 2024
+[*] Tue Jun 11 15:31:58 2024
 [*]
 [dumpfile] "/home/andres/Dev/recon/sims/verilator/output/chipyard.TestHarness.SmallBoomConfig/test.vcd"
-[dumpfile_mtime] "Tue Jun 11 14:02:04 2024"
-[dumpfile_size] 390531121
+[dumpfile_mtime] "Tue Jun 11 15:31:46 2024"
+[dumpfile_size] 390558001
 [savefile] "/home/andres/Dev/recon/generators/boom/gtkwave_configs/config.gtkw"
 [timestart] 54685
-[size] 645 1068
+[size] 930 1068
 [pos] -27 -24
 *-3.790709 54834 54746 54767 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
 [treeopen] TOP.
