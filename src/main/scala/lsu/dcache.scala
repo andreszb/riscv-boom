@@ -295,7 +295,7 @@ class BoomDuplicatedDataArray(implicit p: Parameters) extends AbstractBoomDataAr
   println("encRowBits:" + encRowBits)
   println("coreDataBits:" + coreDataBits)
   for (j <- 0 until memWidth) {
-
+//
     val raddr = io.read(j).bits.addr >> rowOffBits
     for (w <- 0 until nWays) {
       val array = DescribedSRAM(
@@ -772,7 +772,7 @@ class BoomNonBlockingDCacheModule(outer: BoomNonBlockingDCache) extends LazyModu
   s2_store_failed := s2_valid(0) && s2_nack(0) && s2_send_nack(0) && s2_req(0).uop.uses_stq
 
   val reConT = Module(new reConTable)
-  reConT.io.en   := (s2_type === t_lsu) && s2_req(0).is_recon
+  reConT.io.en   := (s2_type === t_lsu) && s2_req(0).is_recon //&& s2_valid  // check that it was found
   reConT.io.check := (s2_type === t_lsu) && s2_req(0).uop.uses_ldq && (!s2_valid(0) || !s2_nack(0) || !s2_send_nack(0))
   reConT.io.clr  := (s2_type === t_lsu) && s2_req(0).uop.uses_stq && (!s2_valid(0) || !s2_nack(0) || !s2_send_nack(0))
   reConT.io.way  := s2_tag_match_way(0)
@@ -891,7 +891,7 @@ class BoomNonBlockingDCacheModule(outer: BoomNonBlockingDCache) extends LazyModu
     cache_resp(w).bits.data     := loadgen(w).data | s2_sc_fail
     cache_resp(w).bits.is_hella := s2_req(w).is_hella
     cache_resp(w).bits.is_hella_prft := s2_req(w).is_hella_prft
-    cache_resp(w).bits.revealed := revealed.valid
+    cache_resp(w).bits.revealed := revealed.valid && revealed.bits
   }
 
   val uncache_resp = Wire(Valid(new BoomDCacheResp))
