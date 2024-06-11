@@ -1107,7 +1107,6 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   // tell LSU about committing loads and stores to clear entries
   io.lsu.commit                  := rob.io.commit
   
-  // tell ROB about what the address of the next load is for pair tracking.
   rob.io.rob_recon_in_addr := io.lsu.lsu_recon_out_addr
   io.lsu.lsu_recon_in_rqst <> rob.io.rob_recon_out_rqst
 

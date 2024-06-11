@@ -87,7 +87,7 @@ class BoomDCacheResp(implicit p: Parameters) extends BoomBundle()(p)
   val data = Bits(coreDataBits.W)
   val is_hella = Bool()
   val is_hella_prft = Bool() // this response can be ignored
-  // TODO: Set the acknowledge signal
+  val revealed = Bool()
 }
 
 class LSUDMemIO(implicit p: Parameters, edge: TLEdgeOut) extends BoomBundle()(p)
@@ -224,6 +224,7 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
   with rocket.HasL1HellaCacheParameters
 {
   val io = IO(new LSUIO)
+  dontTouch(io.dmem.resp)
 
   val ldq = Reg(Vec(numLdqEntries, Valid(new LDQEntry)))
   val stq = Reg(Vec(numStqEntries, Valid(new STQEntry)))
@@ -548,7 +549,6 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
   // When can we fire a recon signal ? when we get a valid recon request 
   // 
   val can_fire_recon           = widthMap(w => ( io.core.lsu_recon_in_rqst.valid ))
-  dontTouch(can_fire_recon)
 
   //---------------------------------------------------------
   // Controller logic. Arbitrate which request actually fires
@@ -594,7 +594,6 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
     will_fire_load_wakeup   (w) := lsu_sched(can_fire_load_wakeup   (w) , false, true , true , false) //     , DC , LCAM1
     will_fire_store_commit  (w) := lsu_sched(can_fire_store_commit  (w) , false, true , false, false) //     , DC
     will_fire_recon         (w) := lsu_sched(can_fire_recon         (w) , false, true , false, false)
-    dontTouch(will_fire_recon)
 
     assert(!(exe_req(w).valid && !(will_fire_load_incoming(w) || will_fire_stad_incoming(w) || will_fire_sta_incoming(w) || will_fire_std_incoming(w) || will_fire_sfence(w))))
 
@@ -1620,7 +1619,6 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
 
   var temp_stq_commit_head  = stq_commit_head
   var temp_ldq_head         = ldq_head
-  // val latest_committed_addr = RegInit(0.U(coreMaxAddrBits.W))
   io.core.lsu_recon_out_addr  := ldq(ldq_head).bits.addr.bits
   for (w <- 0 until coreWidth)
   {
