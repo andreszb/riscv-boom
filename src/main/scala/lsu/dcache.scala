@@ -295,7 +295,6 @@ class BoomDuplicatedDataArray(implicit p: Parameters) extends AbstractBoomDataAr
   println("encRowBits:" + encRowBits)
   println("coreDataBits:" + coreDataBits)
   for (j <- 0 until memWidth) {
-//
     val raddr = io.read(j).bits.addr >> rowOffBits
     for (w <- 0 until nWays) {
       val array = DescribedSRAM(
@@ -891,7 +890,7 @@ class BoomNonBlockingDCacheModule(outer: BoomNonBlockingDCache) extends LazyModu
     cache_resp(w).bits.data     := loadgen(w).data | s2_sc_fail
     cache_resp(w).bits.is_hella := s2_req(w).is_hella
     cache_resp(w).bits.is_hella_prft := s2_req(w).is_hella_prft
-    cache_resp(w).bits.revealed := revealed.valid && revealed.bits
+    cache_resp(w).bits.revealed := revealed
   }
 
   val uncache_resp = Wire(Valid(new BoomDCacheResp))

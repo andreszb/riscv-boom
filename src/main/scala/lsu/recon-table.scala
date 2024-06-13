@@ -4,45 +4,29 @@ import chisel3._
 import chisel3.util._
 
 import freechips.rocketchip.config.Parameters
-import freechips.rocketchip.diplomacy._
-import freechips.rocketchip.tilelink._
-import freechips.rocketchip.tile._
-import freechips.rocketchip.util._
 import freechips.rocketchip.rocket._
 
 import boom.common._
 
-class reConTableIO (implicit p: Parameters) extends BoomBundle {
+class reConTableIO (implicit p: Parameters) extends BoomBundle with HasL1HellaCacheParameters {
   val en   = Input(Bool())
   val check = Input(Bool())
   val clr  = Input(Bool())
-  val way  = Input(UInt())
+  val way  = Input(UInt(nWays.W))
   val addr = Input(UInt(coreMaxAddrBits.W))
-  val out  = Output(Valid(Bool()))
+  val out  = Output(Bool())
 }
 
 class reConTable (implicit p: Parameters) extends BoomModule with HasL1HellaCacheParameters
 {
     
-    val io = IO(new reConTableIO)
-    dontTouch(io.en)
-    dontTouch(io.check)
-    dontTouch(io.clr)
-    dontTouch(io.way)
-    dontTouch(io.addr)
-    dontTouch(io.out)
-    var reCon = Reg(Vec(nWays, Vec(nSets, Vec(8, Bool()))))
-    // var reCon = Reg(Vec(nWays, Vec(nSets, Vec(rowWords, Bool()))))
-    dontTouch(reCon)
-    val set  = io.addr(11, 6)
-    dontTouch(set)
-    val word = io.addr(5, 3)
-    dontTouch(word)
-
+    val io    = IO(new reConTableIO)
+    var reCon = Reg(Vec(nWays, Vec(nSets * refillCycles, Vec(rowWords, Bool()))))
+    val way   = PriorityEncoder(io.way)
+    val set   = io.addr(untagBits-1,blockOffBits)
+    val word  = if (rowWords == 1) 0.U else io.addr(log2Up(rowWords*wordBytes)-1, log2Up(wordBytes))
     when(io.clr || io.en){
-      reCon(io.way-1.U)(set)(word) := !io.clr && io.en
+      reCon(way)(set)(word) := !io.clr && io.en
     }
-
-    io.out.valid := io.check
-    io.out.bits  := reCon(io.way-1.U)(set)(word)
+    io.out  := reCon(way)(set)(word) && io.check
 }
