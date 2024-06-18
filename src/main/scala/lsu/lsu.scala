@@ -538,8 +538,7 @@ class LSU(implicit p: Parameters, edge: TLEdgeOut) extends BoomModule()(p)
   // Can we fire a hellacache request that the dcache nack'd
   val can_fire_hella_wakeup    = WireInit(widthMap(w => false.B)) // This is assigned to in the hellashim controller
 
-  // When can we fire a recon signal ? when we get a valid recon request 
-  // 
+
   val can_fire_recon           = widthMap(w => ( io.core.lsu_recon_in_rqst.valid ))
 
   //---------------------------------------------------------

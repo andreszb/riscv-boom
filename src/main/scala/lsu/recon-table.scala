@@ -23,7 +23,7 @@ class reConTable (implicit p: Parameters) extends BoomModule with HasL1HellaCach
     val io    = IO(new reConTableIO)
     var reCon = Reg(Vec(nWays, Vec(nSets * refillCycles, Vec(rowWords, Bool()))))
     val way   = PriorityEncoder(io.way)
-    val set   = io.addr(untagBits-1,blockOffBits)
+    val set   = io.addr(untagBits-1,rowOffBits)
     val word  = if (rowWords == 1) 0.U else io.addr(log2Up(rowWords*wordBytes)-1, log2Up(wordBytes))
     when(io.clr || io.en){
       reCon(way)(set)(word) := !io.clr && io.en
