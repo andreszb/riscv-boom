@@ -757,6 +757,18 @@ class BoomNonBlockingDCacheModule(outer: BoomNonBlockingDCache) extends LazyModu
   // If MSHR is available and this is only a store(not a amo), we don't need to wait for resp later
   s2_store_failed := s2_valid(0) && s2_nack(0) && s2_send_nack(0) && s2_req(0).uop.uses_stq
 
+  val revealed = Wire(Vec(memWidth, Bool()))
+  for(w <- 0 until memWidth){
+    val reConT = Module(new reConTable)
+    reConT.io.en    := s2_type === t_lsu && s2_hit(w) && s2_req(w).is_recon 
+    reConT.io.check := s2_type === t_lsu && s2_hit(w) && s2_req(w).uop.uses_ldq
+    reConT.io.clr   := s2_type === t_lsu && s2_req(w).uop.uses_stq && (!s2_valid(w) || !s2_nack(w) || !s2_send_nack(w))
+    reConT.io.way   := s2_tag_match_way(w)
+    reConT.io.addr  := s2_req(w).addr 
+    revealed(w)     := reConT.io.out
+  }
+
+
   // Miss handling
   for (w <- 0 until memWidth) {
     mshrs.io.req(w).valid := s2_valid(w)          &&
@@ -868,6 +880,7 @@ class BoomNonBlockingDCacheModule(outer: BoomNonBlockingDCache) extends LazyModu
     cache_resp(w).bits.data     := loadgen(w).data | s2_sc_fail
     cache_resp(w).bits.is_hella := s2_req(w).is_hella
     cache_resp(w).bits.is_hella_prft := s2_req(w).is_hella_prft
+    cache_resp(w).bits.revealed := revealed(w)
   }
 
   val uncache_resp = Wire(Valid(new BoomDCacheResp))

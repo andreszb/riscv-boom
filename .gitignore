@@ -6,3 +6,11 @@ lib
 *#
 *~
 .nfs*
+
+test_sw/bare/test.riscv
+
+.metals/
+
+gtkwave_small.log
+
+dump.txt
