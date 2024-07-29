@@ -281,6 +281,7 @@ class BoomDuplicatedDataArray(implicit p: Parameters) extends AbstractBoomDataAr
 
   val waddr = io.write.bits.addr >> rowOffBits
   for (j <- 0 until memWidth) {
+
     val raddr = io.read(j).bits.addr >> rowOffBits
     for (w <- 0 until nWays) {
       val array = DescribedSRAM(
@@ -787,13 +788,17 @@ class BoomNonBlockingDCacheModule(outer: BoomNonBlockingDCache) extends LazyModu
   s2_store_failed := s2_valid(0) && s2_nack(0) && s2_send_nack(0) && s2_req(0).uop.uses_stq
   dontTouch(s2_store_failed)
 
-  val reConT = Module(new reConTable)
-  reConT.io.en   := (s2_type === t_lsu) && s2_req(0).is_recon //&& s2_valid  // check that it was found
-  reConT.io.check := (s2_type === t_lsu) && s2_req(0).uop.uses_ldq && (!s2_valid(0) || !s2_nack(0) || !s2_send_nack(0))
-  reConT.io.clr  := (s2_type === t_lsu) && s2_req(0).uop.uses_stq && (!s2_valid(0) || !s2_nack(0) || !s2_send_nack(0))
-  reConT.io.way  := s2_tag_match_way(0)
-  reConT.io.addr := s2_req(0).addr 
-  val revealed   = reConT.io.out
+  val revealed = Wire(Vec(memWidth, Bool()))
+  for(w <- 0 until memWidth){
+    val reConT = Module(new reConTable)
+    reConT.io.en    := s2_type === t_lsu && s2_hit(w) && s2_req(w).is_recon 
+    reConT.io.check := s2_type === t_lsu && s2_hit(w) && s2_req(w).uop.uses_ldq
+    reConT.io.clr   := s2_type === t_lsu && s2_req(w).uop.uses_stq && (!s2_valid(w) || !s2_nack(w) || !s2_send_nack(w))
+    reConT.io.way   := s2_tag_match_way(w)
+    reConT.io.addr  := s2_req(w).addr 
+    revealed(w)     := reConT.io.out
+  }
+
 
   // Miss handling
   for (w <- 0 until memWidth) {
@@ -900,14 +905,13 @@ class BoomNonBlockingDCacheModule(outer: BoomNonBlockingDCache) extends LazyModu
   }
   // Mux between cache responses and uncache responses
   val cache_resp   = Wire(Vec(memWidth, Valid(new BoomDCacheResp)))
-  dontTouch(cache_resp(0).bits.revealed)
   for (w <- 0 until memWidth) {
     cache_resp(w).valid         := s2_valid(w) && s2_send_resp(w)
     cache_resp(w).bits.uop      := s2_req(w).uop
     cache_resp(w).bits.data     := loadgen(w).data | s2_sc_fail
     cache_resp(w).bits.is_hella := s2_req(w).is_hella
     cache_resp(w).bits.is_hella_prft := s2_req(w).is_hella_prft
-    cache_resp(w).bits.revealed := revealed.valid && revealed.bits
+    cache_resp(w).bits.revealed := revealed(w)
   }
 
   val uncache_resp = Wire(Valid(new BoomDCacheResp))
@@ -916,7 +920,6 @@ class BoomNonBlockingDCacheModule(outer: BoomNonBlockingDCache) extends LazyModu
   mshrs.io.resp.ready := !(cache_resp.map(_.valid).reduce(_&&_)) // We can backpressure the MSHRs, but not cache hits
 
   val resp = WireInit(cache_resp)
-  dontTouch(resp)
   var uncache_responding = false.B
   for (w <- 0 until memWidth) {
     val uncache_respond = !cache_resp(w).valid && !uncache_responding

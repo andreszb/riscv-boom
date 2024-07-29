@@ -80,7 +80,7 @@ function view(){
       nohup gtkwave $SIM/output/chipyard.TestHarness.SmallBoomConfig/test.vcd --dark --save=./gtkwave_configs/config.gtkw --saveonexit --cpu=10 --start=54309 --rcfile ./gtkwave_configs/config.gtkwaverc > ./gtkwave_small.log 2>&1 &
       ;;
     medium)
-      nohup gtkwave $SIM/output/chipyard.TestHarness.MediumBoomConfig/test.vcd --save=./gtkwave_configs/config.gtkw --dark --saveonexit --cpu=10 > ./gtkwave_medium.log 2>&1 &
+      nohup gtkwave $SIM/output/chipyard.TestHarness.MediumBoomConfig/test.vcd --dark --save=./gtkwave_configs/config.gtkw --saveonexit --cpu=10 --start=54309 --rcfile ./gtkwave_configs/config.gtkwaverc > ./gtkwave_medium.log 2>&1 &
       ;;
     *)
       echo "Invalid run option. Please specify 'small' or 'medium'."

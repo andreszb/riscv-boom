@@ -1,0 +1,15 @@
+nohup: ignoring input
+
+GTKWave Analyzer v3.3.119 (w)1999-2024 BSI
+
+Warning! File size is 378 MB.  This might fail in recoding.
+Consider converting it to the FST database format instead.  (See the
+vcd2fst(1) manpage for more information.)
+To disable this warning, set rc variable vcd_warning_filesize to zero.
+Alternatively, use the -o, --optimize command line option to convert to FST
+or the -g, --giga command line option to use dynamically compressed memory.
+
+[0] start time.
+[55315] end time.
+GTKWAVE | Wrote save file OK.
+WM Destroy
