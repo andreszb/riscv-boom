@@ -27,6 +27,20 @@ class reConTable (implicit p: Parameters) extends BoomModule with HasL1HellaCach
     val word  = if (rowWords == 1) 0.U else io.addr(log2Up(rowWords*wordBytes)-1, log2Up(wordBytes))
     when(io.clr || io.en){
       reCon(way)(set)(word) := !io.clr && io.en
+      when (reCon(way)(set)(word) =/= (!io.clr && io.en)){
+        // when(io.clr){
+        //   printf("set_conceal\n")
+        // }.elsewhen(io.en){
+        //   printf("set_reveal\n")
+        // }
+      }
     }
     io.out  := reCon(way)(set)(word) && io.check
+    // when (io.check) {
+    //   when (reCon(way)(set)(word)) {
+    //     printf("get_reveal\n")
+    //   } .otherwise {
+    //     printf("get_conceal\n")
+    //   }
+    // }
 }

@@ -110,3 +110,13 @@ function dumpall() {
   riscv64-unknown-elf-objdump -S -l "$BINARY" > dump.txt || return 1
 }
 
+function run_benchmarks(){
+  (
+    cd $SIM
+    mkdir -p logs
+    for file in *.riscv; do
+      script -c "./simulator-chipyard-SmallBoomConfig-debug -V \"$file\"" "logs/${file%.riscv}.log"
+    done
+    cd -
+  )
+}

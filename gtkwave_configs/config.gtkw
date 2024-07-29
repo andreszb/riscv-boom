@@ -1,14 +1,14 @@
 [*]
-[*] GTKWave Analyzer v3.3.119 (w)1999-2024 BSI
-[*] Mon Jun 17 14:34:01 2024
+[*] GTKWave Analyzer v3.3.120 (w)1999-2024 BSI
+[*] Wed Jul 24 13:22:02 2024
 [*]
 [dumpfile] "/home/andres/Dev/recon/sims/verilator/output/chipyard.TestHarness.SmallBoomConfig/test.vcd"
-[dumpfile_mtime] "Mon Jun 17 14:28:55 2024"
-[dumpfile_size] 390530522
+[dumpfile_mtime] "Wed Jul 24 13:14:00 2024"
+[dumpfile_size] 585582060
 [savefile] "/home/andres/Dev/recon/generators/boom/gtkwave_configs/config.gtkw"
 [timestart] 54738
-[size] 1647 1068
-[pos] -27 -24
+[size] 944 498
+[pos] -26 -24
 *-3.490709 54745 54667 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
 [treeopen] TOP.
 [treeopen] TOP.TestHarness.
@@ -24,7 +24,7 @@
 [sst_width] 273
 [signals_width] 358
 [sst_expanded] 1
-[sst_vpaned_height] 314
+[sst_vpaned_height] 121
 @28
 TOP.TestHarness.chiptop.system.clock
 @22
