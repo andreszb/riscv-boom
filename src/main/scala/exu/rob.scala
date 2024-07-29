@@ -112,6 +112,9 @@ class RobIo(
 
 
   val debug_tsc = Input(UInt(xLen.W))
+
+  val rob_recon_in_addr  = Input(UInt(coreMaxAddrBits.W))
+  val rob_recon_out_rqst = new DecoupledIO(UInt(coreMaxAddrBits.W))
 }
 
 /**
@@ -524,6 +527,18 @@ class Rob(
     when (will_commit(w)) {
       rob_val(rob_head) := false.B
     }
+
+
+    val rob_head_debug_pc = WireInit(rob_uop(rob_head).debug_pc)
+    dontTouch(rob_head_debug_pc)
+
+    val lpt = Module(new LPT())
+    lpt.io.addr_in  := io.rob_recon_in_addr
+    lpt.io.en       := will_commit(w) && rob_uop(rob_head).uses_ldq
+    lpt.io.clr      := will_commit(w) && !rob_uop(rob_head).uses_ldq
+    lpt.io.dst_reg  := rob_uop(rob_head).pdst
+    lpt.io.src_reg  := rob_uop(rob_head).prs1
+    io.rob_recon_out_rqst <> lpt.io.addr_out
 
     // -----------------------------------------------
     // Outputs
