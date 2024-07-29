@@ -799,19 +799,6 @@ class BoomNonBlockingDCacheModule(outer: BoomNonBlockingDCache) extends LazyModu
     revealed(w)     := reConT.io.out
   }
 
-
-  val revealed = Wire(Vec(memWidth, Bool()))
-  for(w <- 0 until memWidth){
-    val reConT = Module(new reConTable)
-    reConT.io.en    := s2_type === t_lsu && s2_hit(w) && s2_req(w).is_recon 
-    reConT.io.check := s2_type === t_lsu && s2_hit(w) && s2_req(w).uop.uses_ldq
-    reConT.io.clr   := s2_type === t_lsu && s2_req(w).uop.uses_stq && (!s2_valid(w) || !s2_nack(w) || !s2_send_nack(w))
-    reConT.io.way   := s2_tag_match_way(w)
-    reConT.io.addr  := s2_req(w).addr 
-    revealed(w)     := reConT.io.out
-  }
-
-
   // Miss handling
   for (w <- 0 until memWidth) {
     mshrs.io.req(w).valid := s2_valid(w)          &&
